@@ -88,7 +88,6 @@ class PillSafeDosesSensor(RestoreSensor):
             async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self.reset_data)
         )
 
-        # Track time passage to prune array and update state at midnight
         self.async_on_remove(
             async_track_time_change(
                 self.hass, self._on_midnight, hour=0, minute=0, second=0
@@ -103,12 +102,6 @@ class PillSafeDosesSensor(RestoreSensor):
                 if dt:
                     self._timestamps.append(dt)
             self._update_state()  
-
-    @callback
-    def _on_interval(self, now):
-        """Callback to execute mathematical update each minute."""
-        self._update_state()
-        self.async_write_ha_state()
 
     @callback
     def pill_taken(self, *args, **kwargs):
@@ -132,7 +125,6 @@ class PillSafeDosesSensor(RestoreSensor):
 
     @callback
     def _on_midnight(self, now):
-        """Callback to execute update at midnight."""
         self._update_state()
         self.async_write_ha_state()
 
@@ -147,7 +139,6 @@ class PillSafeDosesSensor(RestoreSensor):
             self._timestamps = [ts for ts in self._timestamps if ts >= cutoff]
             self._attr_native_value = max(0, max_pills - len(self._timestamps))
         elif self._tracking_type == "Regular Interval":
-            # Set native_value to 0 if the time since the last pill is less than hours_between_doses
             hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
             if self._timestamps:
                 last_ts = self._timestamps[-1]
@@ -159,28 +150,20 @@ class PillSafeDosesSensor(RestoreSensor):
                 self._attr_native_value = max_pills
         elif self._tracking_type == "Time of Day":
             time_of_day = entry.options.get("time_of_day", entry.data.get("time_of_day"))
-            if self._timestamps:
-                last_ts = self._timestamps[-1]
-
-                if time_of_day:
-                    try:
-                        target_hour, target_minute = map(int, time_of_day.split(":"))
-                    except (ValueError, AttributeError):
-                        target_hour, target_minute = 8, 0
-
-                    # The safe dose becomes available on the day after the last pill was taken, at the target time.
-                    # This ensures that Safe Doses is 0 until the expected next dose time passes.
+            if time_of_day:
+                try:
+                    target_hour, target_minute = map(int, time_of_day.split(":"))
+                except (ValueError, AttributeError):
+                    target_hour, target_minute = 8, 0
+                if self._timestamps:
+                    last_ts = self._timestamps[-1]
                     release_time = last_ts.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0) + timedelta(days=1)
-
                     if now >= release_time:
                         self._attr_native_value = max_pills
                     else:
                         self._attr_native_value = 0
                 else:
-                    if last_ts.date() == now.date():
-                        self._attr_native_value = 0
-                    else:
-                        self._attr_native_value = max_pills
+                    self._attr_native_value = max_pills
             else:
                 self._attr_native_value = max_pills
             
@@ -215,7 +198,6 @@ class PillNextDoseSensor(RestoreSensor):
             async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self.reset_data)
         )  
 
-        # Track time passage to recalculate the next dose mathematically every minute
         self.async_on_remove(
             async_track_time_interval(
                 self.hass, self._on_interval, timedelta(minutes=1)
@@ -233,7 +215,6 @@ class PillNextDoseSensor(RestoreSensor):
 
     @callback
     def _on_interval(self, now):
-        """Callback to execute mathematical update each minute."""
         self._update_state()
         self.async_write_ha_state()
 
@@ -278,7 +259,6 @@ class PillNextDoseSensor(RestoreSensor):
                 target_today = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
                 if self._timestamps:
                     last_ts = self._timestamps[-1]
-                    # Check if the last_ts is on the same calendar day in local time
                     if last_ts.date() == now.date():
                         self._attr_native_value = target_today + timedelta(days=1)
                     else:
@@ -288,25 +268,19 @@ class PillNextDoseSensor(RestoreSensor):
         elif self._tracking_type == "As Needed":
             max_pills = entry.options.get("safe_doses", entry.data.get("safe_doses", entry.data.get("max_pills_allowed", 1)))
             time_window = entry.options.get("time_window_hours", entry.data.get("time_window_hours", 0))
-
             cutoff_for_safe_doses = now - timedelta(hours=time_window)
             valid_timestamps_for_calc = [ts for ts in self._timestamps if ts >= cutoff_for_safe_doses]
             safe_doses = max(0, max_pills - len(valid_timestamps_for_calc))
-
             if safe_doses == 0 and valid_timestamps_for_calc:
-                # Limit reached: show when the next dose becomes available (future)
                 self._attr_native_value = valid_timestamps_for_calc[0] + timedelta(hours=time_window)
             elif self._timestamps:
-                # Doses available: show the last pill taken (past)
                 self._attr_native_value = self._timestamps[-1]
             else:
                 self._attr_native_value = None
-
             self._attr_extra_state_attributes = {
                 "timestamps": [ts.isoformat() for ts in self._timestamps],
                 "safe_doses_calculated": safe_doses
             }
-            
         if self._tracking_type != "As Needed":
             self._attr_extra_state_attributes = {
                 "timestamps": [ts.isoformat() for ts in self._timestamps]
@@ -386,14 +360,11 @@ class PillAvgDosesSensor(RestoreSensor):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self.reset_data)
         )
-
-        # Track time passage to prune array and update state at midnight
         self.async_on_remove(
             async_track_time_change(
                 self.hass, self._on_midnight, hour=0, minute=0, second=0
             )
         )
-
         last_state_obj = await self.async_get_last_state()
         if last_state_obj:
             if "timestamps" in last_state_obj.attributes:
@@ -404,10 +375,8 @@ class PillAvgDosesSensor(RestoreSensor):
                         self._timestamps.append(dt)
             if "history_start_date" in last_state_obj.attributes and last_state_obj.attributes["history_start_date"]:
                 self._history_start_date = dt_util.parse_datetime(last_state_obj.attributes["history_start_date"])
-
         if self._history_start_date is None:
             self._history_start_date = dt_util.now()
-
         self._update_state()
 
     @callback
@@ -440,7 +409,6 @@ class PillAvgDosesSensor(RestoreSensor):
     def _get_next_dose_time(self):
         now = dt_util.now()
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-
         if self._tracking_type == "Regular Interval":
             hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
             if self._timestamps:
@@ -457,39 +425,30 @@ class PillAvgDosesSensor(RestoreSensor):
                 target_today = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
                 if self._timestamps:
                     last_ts = self._timestamps[-1]
-                    # Check if the last_ts is on the same calendar day in local time
                     if last_ts.date() == now.date():
                         return target_today + timedelta(days=1)
                     else:
                         return target_today
-                else:
-                    return target_today
         return None
 
     def _update_state(self):
         now = dt_util.now()
         if not self._history_start_date:
             self._history_start_date = now
-
         days_since_start = (now - self._history_start_date).total_seconds() / 86400.0
         days_since_start = max(1.0, days_since_start)
-
         actual_window_days = min(days_since_start, float(self._window_days_target))
         cutoff = now - timedelta(days=actual_window_days)
-
         self._timestamps = [ts for ts in self._timestamps if ts >= cutoff]
-
         if actual_window_days > 0:
             avg = len(self._timestamps) / actual_window_days
             self._attr_native_value = round(avg, 1)
         else:
             self._attr_native_value = 0.0
-
         self._attr_extra_state_attributes = {
             "timestamps": [ts.isoformat() for ts in self._timestamps],
             "history_start_date": self._history_start_date.isoformat() if self._history_start_date else None
         }
-
         if self._tracking_type in ("Time of Day", "Regular Interval"):
             next_dose = self._get_next_dose_time()
             if next_dose:
@@ -504,7 +463,6 @@ class PillAvgDosesSensor(RestoreSensor):
 
     @callback
     def _on_next_dose_timeout(self, now):
-        """Callback 1 hour after next dose time has passed."""
         self._update_state()
         self.async_write_ha_state()
         self._next_dose_timeout_unsub = None
@@ -522,18 +480,13 @@ class PillConcentrationSensor(RestoreSensor):
         self._attr_unique_id = f"{entry.entry_id}_concentration"
         self._attr_icon = "mdi:water-drop"
         self._entry_id = entry.entry_id
-        
-        # Config values
         self._strength = entry.data.get("strength", 0)
         self._half_life = entry.data.get("half_life", 0)
-        self._absorption_delay = entry.data.get("absorption_delay", 0.0)
-        
-        # State variables
-        self._current_mass = 0.0 # This will represent body_mass (active bloodstream)
-        self._gut_mass = 0.0      # Unabsorbed medication in the gut
-        self._last_updated = None # datetime object
-        
-        # Attributes for HA
+        self._hours_to_peak = entry.data.get("hours_to_peak", 0.0)
+        self._current_mass = 0.0
+        self._gut_mass = 0.0
+        self._last_updated = None
+        self._ka = 0.0
         self._attr_state_class = "measurement"
         self._attr_native_unit_of_measurement = "mg"
         self._attr_native_value = 0.0
@@ -541,50 +494,43 @@ class PillConcentrationSensor(RestoreSensor):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        # Connect to pill_taken signal
         self.async_on_remove(
             async_dispatcher_connect(self.hass, f"pill_taken_{self._entry_id}", self.handle_pill_taken)
         )
-        
-        # Time-series decay loop (every 20 minutes)
         self.async_on_remove(
             async_track_time_interval(
                 self.hass, self.update_decay, timedelta(minutes=20)
             )
         )
-
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
-            old_mass = last_state.native_value if last_state.native_value is not None else 0.0
+            try:
+                old_mass = float(last_state.state)
+            except (ValueError, TypeError):
+                old_mass = 0.0
             last_ts_str = last_state.attributes.get("last_updated")
             gut_mass = last_state.attributes.get("gut_mass", 0.0)
-            
             if last_ts_str:
                 try:
                     last_ts = dt_util.parse_datetime(last_ts_str)
                     now = dt_util.now()
                     elapsed_hours = (now - last_ts).total_seconds() / 3600.0
-                    
                     if self._half_life > 0:
                         self._current_mass = old_mass * (0.5 ** (elapsed_hours / self._half_life))
                     else:
                         self._current_mass = old_mass
                     self._last_updated = last_ts
                 except (ValueError, TypeError):
-                    # Fallback if timestamp is malformed
                     self._current_mass = old_mass
                     self._last_updated = dt_util.now()
             else:
-                # If we have a value but no timestamp, assume it was updated now
                 self._current_mass = old_mass
                 self._gut_mass = gut_mass
                 self._last_updated = dt_util.now()
         else:
-            # No previous state found or unrecoverable
             self._current_mass = 0.0
             self._gut_mass = 0.0
             self._last_updated = dt_util.now()
-
         self.update_state()
 
     @callback
@@ -592,16 +538,18 @@ class PillConcentrationSensor(RestoreSensor):
         now = dt_util.now()
         if self._last_updated:
             elapsed_hours = (now - self._last_updated).total_seconds() / 3600.0
-            # Decay the existing mass first
             if self._half_life > 0:
                 self._current_mass *= (0.5 ** (elapsed_hours / self._half_life))
-        
-        # Add new strength
-        if self._absorption_delay > 0:
+        k_e = math.log(2) / self._half_life if self._half_life > 0 else 0
+        if self._hours_to_peak > 0:
+            self._ka = self._solve_ka(self._hours_to_peak, k_e)
+        else:
+            abs_delay = 1.0 # Default
+            self._ka = 1 / abs_delay
+        if self._hours_to_peak > 0:
             self._gut_mass += float(self._strength)
         else:
             self._current_mass += float(self._strength)
-            
         self._last_updated = now
         self.update_state()
 
@@ -609,14 +557,12 @@ class PillConcentrationSensor(RestoreSensor):
         now = dt_util.now()
         if self._last_updated and self._half_life > 0:
             elapsed_hours = (now - self._last_updated).total_seconds() / 3600.0
-            # Decay the existing mass first
             self._current_mass *= (0.5 ** (elapsed_hours / self._half_life))
-        
         self._attr_native_value = self._current_mass
-        # Update extra attributes for persistence
         self._attr_extra_state_attributes = {
             "last_updated": self._last_updated.isoformat() if self._last_updated else None,
-            "gut_mass": self._gut_mass
+            "gut_mass": self._gut_mass,
+            "ka": self._ka
         }
         self.async_write_ha_state()
 
@@ -624,46 +570,39 @@ class PillConcentrationSensor(RestoreSensor):
     def update_decay(self, now):
         if not self._last_updated or self._half_life <= 0:
             return
-
         now = dt_util.now()
         elapsed_hours = (now - self._last_updated).total_seconds() / 3600.0
-        
         k_e = math.log(2) / self._half_life
-        k_a = 1 / self._absorption_delay if self._absorption_delay > 0 else 0
-        
+        k_a = getattr(self, '_ka', 0)
+        if k_a == 0 and self._hours_to_peak > 0:
+            k_a = 1 / self._hours_to_peak
         if k_a == k_e and k_a != 0:
             k_a *= 1.0001
-
-        if self._absorption_delay <= 0:
-            # 1-compartment IV bolus logic
+        if self._hours_to_peak <= 0:
             self._gut_mass = 0
             self._current_mass *= math.exp(-k_e * elapsed_hours)
         else:
-            # Two-compartment iterative decay equations
             new_gut = self._gut_mass * math.exp(-k_a * elapsed_hours)
-            
             new_body = (self._current_mass * math.exp(-k_e * elapsed_hours) + 
                         (self._gut_mass * k_a / (k_a - k_e)) * 
                         (math.exp(-k_e * elapsed_hours) - math.exp(-k_a * elapsed_hours)))
-            
             self._gut_mass = new_gut
             self._current_mass = new_body
-
         self._last_updated = now
         self.update_state()
 
-class PillSteadyStateSensor(RestoreSensor):
-    def __init__(self, entry):
-        med_name = entry.data["medication_name"]
-        self._med_name = med_name
-        self._attr_name = f"{med_name} Days to Steady State"
-        self._attr_unique_id = f"{entry.entry_id}_steady_state"
-        self._attr_icon = "mdi:timer-outline"
-        self._entry_id = entry.entry_id
-        
-        # Store half_life for use in async_added_to_hass
-        self._half_life = entry.data.get("half_life", 0)
-        self._attr_native_value = 0.0
+    def _solve_ka(self, t_max, k_e):
+        low, high = 0.0001, 20.0
+        for _ in range(50):
+            mid_ka = (low + high) / 2
+            if mid_ka == k_e: mid_ka += 0.0001
+            try:
+                calc_t_max = (math.log(mid_ka) - math.log(k_e)) / (mid_ka - k_e)
+                if calc_t_max < t_max: low = mid_ka
+                else: high = mid_ka
+            except (ValueError, ZeroDivisionError):
+                low = mid_ka
+        return low
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -673,22 +612,67 @@ class PillSteadyStateSensor(RestoreSensor):
             manufacturer="Pill Logger",
         )
 
+class PillSteadyStateSensor(RestoreSensor):
+    def __init__(self, entry):
+        med_name = entry.data["medication_name"]
+        self._med_name = med_name
+        self._attr_name = f"{med_name} Days to Steady State"
+        self._attr_unique_id = f"{entry.entry_id}_steady_state"
+        self._attr_icon = "mdi:chart-bell-curve"
+        self._entry_id = entry.entry_id
+        self._last_dose_timestamp = None
+        self._attr_extra_state_attributes = {}
+
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        
-        if self._half_life > 0:
-            k_e = math.log(2) / self._half_life
-            # hours_to_ss = -math.log(0.10) / k_e
-            hours_to_ss = -math.log(0.10) / k_e
-            days_to_ss = hours_to_ss / 24
-            self._attr_native_value = round(days_to_ss, 1)
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, f"pill_taken_{self._entry_id}", self._handle_pill_taken)
+        )
+        last_state = await self.async_get_last_state()
+        if last_state and "last_dose_timestamp" in last_state.attributes:
+            try:
+                self._last_dose_timestamp = dt_util.parse_datetime(last_state.attributes["last_dose_timestamp"])
+            except (ValueError, TypeError):
+                pass
+        self.update_state()
+
+    @callback
+    def _handle_pill_taken(self, *args, **kwargs):
+        self._last_dose_timestamp = dt_util.now()
+        self.update_state()
+
+    def update_state(self):
+        now = dt_util.now()
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        hours_to_peak = entry.data.get("hours_to_peak", 0.0)
+        if not self._last_dose_timestamp:
+            self._attr_native_value = "N/A"
+            return
+        elapsed_time = now - self._last_dose_timestamp
+        missed_dose = elapsed_time > timedelta(hours=24)
+        if missed_dose:
+            half_life = entry.data.get("half_life", 0)
+            if half_life > 0:
+                self._attr_native_value = 3.0 * (half_life / 24)
+            else:
+                self._attr_native_value = elapsed_time.total_seconds() / 86400.0
+        elif hours_to_peak > 0 and elapsed_time < timedelta(hours=hours_to_peak):
+            self._attr_native_value = 0.0
         else:
             self._attr_native_value = 0.0
+        self._attr_extra_state_attributes = {
+            "last_dose_timestamp": self._last_dose_timestamp.isoformat() if self._last_dose_timestamp else None
+        }
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=self._med_name,
+            manufacturer="Pill Logger",
+        )  
 
     @property
     def native_value(self):
         return self._attr_native_value
-
-    @property
-    def native_unit_of_measurement(self):
-        return "days"

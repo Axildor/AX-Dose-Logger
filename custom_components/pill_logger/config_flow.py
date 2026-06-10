@@ -24,7 +24,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("medication_name", default="My Medication"): str,
                 vol.Required("tracking_type", default="Regular Interval"): vol.In(["Regular Interval", "Time of Day", "As Needed"]),
-                vol.Optional("absorption_delay", default=0.0): vol.Coerce(float)
+                vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float)
             })
         )
 
@@ -41,7 +41,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                  vol.Required("safe_doses", default=1): int,
                   vol.Optional("strength", default=0): vol.Coerce(float),
                   vol.Optional("half_life", default=0): vol.Coerce(float),
-                  vol.Optional("absorption_delay", default=0.0): vol.Coerce(float),
+                  vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
               })
         )
 
@@ -58,7 +58,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                  vol.Required("safe_doses", default=1): int,
                   vol.Optional("strength", default=0): vol.Coerce(float),
                   vol.Optional("half_life", default=0): vol.Coerce(float),
-                  vol.Optional("absorption_delay", default=0.0): vol.Coerce(float),
+                  vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
               })
         )
 
@@ -75,7 +75,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                  vol.Required("time_window_hours", default=8): int,
                   vol.Optional("strength", default=0): vol.Coerce(float),
                   vol.Optional("half_life", default=0): vol.Coerce(float),
-                  vol.Optional("absorption_delay", default=0.0): vol.Coerce(float),
+                  vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
               })
         )
 
@@ -107,7 +107,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         schema_dict[vol.Required("safe_doses", default=options.get("safe_doses", data.get("safe_doses", 1)))] = int
         schema_dict[vol.Optional("strength", default=options.get("strength", data.get("strength", 0)))] = vol.Coerce(float)
         schema_dict[vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0)))] = vol.Coerce(float)
-        schema_dict[vol.Optional("absorption_delay", default=options.get("absorption_delay", data.get("absorption_delay", 0.0)))] = vol.Coerce(float)
+        schema_dict[vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0.0)))] = vol.Coerce(float)
 
         return self.async_show_form(
             step_id="init",
