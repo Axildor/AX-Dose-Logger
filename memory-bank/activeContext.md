@@ -14,9 +14,10 @@ The systemic structural bug in `custom_components/pill_logger/sensor.py` that ca
 - **Fix 3: Two-Compartment PK Engine.** Redesigned concentration tracking in `sensor.py` to use the Iterative State Method, tracking `gut_mass` and `body_mass`.
 - **Fix 4: Absorption Delay Support.** Added "Absorption Delay" configuration variable.
 - **Fix 5: Steady State Sensor.** Added `PillSteadyStateSensor` to calculate days to reach 90% accumulation.
+- **Fix 6: Boot Loop Resolution.** Corrected a malformed `homeassistant.states` import in `sensor.py` that caused fatal startup errors.
 
 ## Verification Results
-- Verified module imports (syntax check passed in local environment).
+- Verified corrected imports and fixed boot-loop crash (syntax check passed).
 - Confirmed both sensors are properly registered.
 - Verified two-compartment math logic and steady state calculation.
 

@@ -4,7 +4,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval, async_track_time_change, async_call_later
-from homeassistant.states import STATE_UNKNOWN, STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE
 import homeassistant.util.dt as dt_util
 import math
 from .const import DOMAIN  
