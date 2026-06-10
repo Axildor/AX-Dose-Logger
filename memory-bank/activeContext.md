@@ -32,3 +32,4 @@ The pharmacokinetics engine has been upgraded to support dynamic $k_a$ solving b
 ## Next Steps
 - Finalize documentation synchronization.
 - Completed pharmacokinetic math stabilization in `sensor.py` (Fixed Concentration Decay Overlap and Steady State Boot Race Condition).
+- Modularized `sensor.py` into a package structure under `sensors/` for better maintainability.
