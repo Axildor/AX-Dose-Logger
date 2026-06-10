@@ -33,12 +33,6 @@ class PillSteadyStateSensor(RestoreSensor):
             async_dispatcher_connect(self.hass, f"concentration_updated_{self._entry_id}", self._update_from_concentration)
         )
         
-        # Trigger update when options are updated in the config flow
-        self.async_on_remove(
-            self.hass.config_entries.async_runtime_dispatcher_connect(
-                f"updated_options_{self._entry_id}", self._handle_options_updated
-            )
-        )
 
         last_state = await self.async_get_last_state()
         if last_state and "last_dose_timestamp" in last_state.attributes:
@@ -58,9 +52,6 @@ class PillSteadyStateSensor(RestoreSensor):
         self._last_dose_timestamp = None
         self.update_state()
 
-    @callback
-    def _handle_options_updated(self, *args, **kwargs):
-        self.update_state()
 
     @callback
     def _update_from_concentration(self, current_mass):
@@ -98,16 +89,21 @@ class PillSteadyStateSensor(RestoreSensor):
             self._attr_native_value = 0.0
         else:
             # Case: Climbing up to steady state
-            # P is the fraction of steady state currently achieved
-            p = max(0.0001, self._current_mass / c_max_ss)
-            if p >= 0.90:
-                 self._attr_native_value = 0.0
+            if self._current_mass <= 0:
+                # Pre-dose calculation: time to reach 90% from zero
+                t_90 = -math.log(0.1) / k_e
+                self._attr_native_value = round(t_90 / 24.0, 1)
             else:
-                 # Continuous time equivalent math
-                 t_current = -math.log(1.0 - p) / k_e
-                 t_90 = -math.log(0.1) / k_e
-                 remaining_hours = max(0.0, t_90 - t_current)
-                 self._attr_native_value = round(remaining_hours / 24.0, 1)
+                # P is the fraction of steady state currently achieved
+                p = self._current_mass / c_max_ss
+                if p >= 0.90:
+                     self._attr_native_value = 0.0
+                else:
+                     # Continuous time equivalent math
+                     t_current = -math.log(1.0 - p) / k_e
+                     t_90 = -math.log(0.1) / k_e
+                     remaining_hours = max(0.0, t_90 - t_current)
+                     self._attr_native_value = round(remaining_hours / 24.0, 1)
 
         self._attr_extra_state_attributes = {
             "theoretical_max_mg": round(c_max_ss, 1),
