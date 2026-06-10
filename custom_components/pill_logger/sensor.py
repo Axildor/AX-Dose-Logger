@@ -4,7 +4,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval, async_track_time_change, async_call_later
+from homeassistant.states import STATE_UNKNOWN, STATE_UNAVAILABLE
 import homeassistant.util.dt as dt_util
+import math
 from .const import DOMAIN  
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
@@ -17,6 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entities.append(PillAvgDosesSensor(entry, 7, "Avg Daily Doses (7 Days)"))
     entities.append(PillAvgDosesSensor(entry, 30, "Avg Daily Doses (30 Days)"))
     entities.append(PillAvgDosesSensor(entry, 365, "Avg Daily Doses (Yearly)"))
+    entities.append(PillSteadyStateSensor(entry))
     async_add_entities(entities)  
 
 class PillTotalSensor(RestoreSensor):
@@ -454,6 +457,7 @@ class PillAvgDosesSensor(RestoreSensor):
                 target_today = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
                 if self._timestamps:
                     last_ts = self._timestamps[-1]
+                    # Check if the last_ts is on the same calendar day in local time
                     if last_ts.date() == now.date():
                         return target_today + timedelta(days=1)
                     else:
@@ -522,9 +526,11 @@ class PillConcentrationSensor(RestoreSensor):
         # Config values
         self._strength = entry.data.get("strength", 0)
         self._half_life = entry.data.get("half_life", 0)
+        self._absorption_delay = entry.data.get("absorption_delay", 0.0)
         
         # State variables
-        self._current_mass = 0.0
+        self._current_mass = 0.0 # This will represent body_mass (active bloodstream)
+        self._gut_mass = 0.0      # Unabsorbed medication in the gut
         self._last_updated = None # datetime object
         
         # Attributes for HA
@@ -548,9 +554,10 @@ class PillConcentrationSensor(RestoreSensor):
         )
 
         last_state = await self.async_get_last_state()
-        if last_state:
-            old_mass = last_state.native_value
+        if last_state is not None and last_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            old_mass = last_state.native_value if last_state.native_value is not None else 0.0
             last_ts_str = last_state.attributes.get("last_updated")
+            gut_mass = last_state.attributes.get("gut_mass", 0.0)
             
             if last_ts_str:
                 try:
@@ -570,10 +577,12 @@ class PillConcentrationSensor(RestoreSensor):
             else:
                 # If we have a value but no timestamp, assume it was updated now
                 self._current_mass = old_mass
+                self._gut_mass = gut_mass
                 self._last_updated = dt_util.now()
         else:
-            # No previous state found
+            # No previous state found or unrecoverable
             self._current_mass = 0.0
+            self._gut_mass = 0.0
             self._last_updated = dt_util.now()
 
         self.update_state()
@@ -588,7 +597,11 @@ class PillConcentrationSensor(RestoreSensor):
                 self._current_mass *= (0.5 ** (elapsed_hours / self._half_life))
         
         # Add new strength
-        self._current_mass += float(self._strength)
+        if self._absorption_delay > 0:
+            self._gut_mass += float(self._strength)
+        else:
+            self._current_mass += float(self._strength)
+            
         self._last_updated = now
         self.update_state()
 
@@ -596,15 +609,86 @@ class PillConcentrationSensor(RestoreSensor):
         now = dt_util.now()
         if self._last_updated and self._half_life > 0:
             elapsed_hours = (now - self._last_updated).total_seconds() / 3600.0
+            # Decay the existing mass first
             self._current_mass *= (0.5 ** (elapsed_hours / self._half_life))
         
         self._attr_native_value = self._current_mass
         # Update extra attributes for persistence
         self._attr_extra_state_attributes = {
-            "last_updated": self._last_updated.isoformat() if self._last_updated else None
+            "last_updated": self._last_updated.isoformat() if self._last_updated else None,
+            "gut_mass": self._gut_mass
         }
         self.async_write_ha_state()
 
     @callback
     def update_decay(self, now):
+        if not self._last_updated or self._half_life <= 0:
+            return
+
+        now = dt_util.now()
+        elapsed_hours = (now - self._last_updated).total_seconds() / 3600.0
+        
+        k_e = math.log(2) / self._half_life
+        k_a = 1 / self._absorption_delay if self._absorption_delay > 0 else 0
+        
+        if k_a == k_e and k_a != 0:
+            k_a *= 1.0001
+
+        if self._absorption_delay <= 0:
+            # 1-compartment IV bolus logic
+            self._gut_mass = 0
+            self._current_mass *= math.exp(-k_e * elapsed_hours)
+        else:
+            # Two-compartment iterative decay equations
+            new_gut = self._gut_mass * math.exp(-k_a * elapsed_hours)
+            
+            new_body = (self._current_mass * math.exp(-k_e * elapsed_hours) + 
+                        (self._gut_mass * k_a / (k_a - k_e)) * 
+                        (math.exp(-k_e * elapsed_hours) - math.exp(-k_a * elapsed_hours)))
+            
+            self._gut_mass = new_gut
+            self._current_mass = new_body
+
+        self._last_updated = now
         self.update_state()
+
+class PillSteadyStateSensor(RestoreSensor):
+    def __init__(self, entry):
+        med_name = entry.data["medication_name"]
+        self._med_name = med_name
+        self._attr_name = f"{med_name} Days to Steady State"
+        self._attr_unique_id = f"{entry.entry_id}_steady_state"
+        self._attr_icon = "mdi:timer-outline"
+        self._entry_id = entry.entry_id
+        
+        # Store half_life for use in async_added_to_hass
+        self._half_life = entry.data.get("half_life", 0)
+        self._attr_native_value = 0.0
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=self._med_name,
+            manufacturer="Pill Logger",
+        )
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        
+        if self._half_life > 0:
+            k_e = math.log(2) / self._half_life
+            # hours_to_ss = -math.log(0.10) / k_e
+            hours_to_ss = -math.log(0.10) / k_e
+            days_to_ss = hours_to_ss / 24
+            self._attr_native_value = round(days_to_ss, 1)
+        else:
+            self._attr_native_value = 0.0
+
+    @property
+    def native_value(self):
+        return self._attr_native_value
+
+    @property
+    def native_unit_of_measurement(self):
+        return "days"

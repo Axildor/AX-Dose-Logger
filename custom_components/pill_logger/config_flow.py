@@ -23,7 +23,8 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required("medication_name", default="My Medication"): str,
-                vol.Required("tracking_type", default="Regular Interval"): vol.In(["Regular Interval", "Time of Day", "As Needed"])
+                vol.Required("tracking_type", default="Regular Interval"): vol.In(["Regular Interval", "Time of Day", "As Needed"]),
+                vol.Optional("absorption_delay", default=0.0): vol.Coerce(float)
             })
         )
 
@@ -40,7 +41,8 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                  vol.Required("safe_doses", default=1): int,
                   vol.Optional("strength", default=0): vol.Coerce(float),
                   vol.Optional("half_life", default=0): vol.Coerce(float),
-             })
+                  vol.Optional("absorption_delay", default=0.0): vol.Coerce(float),
+              })
         )
 
     async def async_step_time_of_day(self, user_input=None):
@@ -56,7 +58,8 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                  vol.Required("safe_doses", default=1): int,
                   vol.Optional("strength", default=0): vol.Coerce(float),
                   vol.Optional("half_life", default=0): vol.Coerce(float),
-             })
+                  vol.Optional("absorption_delay", default=0.0): vol.Coerce(float),
+              })
         )
 
     async def async_step_as_needed(self, user_input=None):
@@ -72,14 +75,14 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                  vol.Required("time_window_hours", default=8): int,
                   vol.Optional("strength", default=0): vol.Coerce(float),
                   vol.Optional("half_life", default=0): vol.Coerce(float),
-             })
+                  vol.Optional("absorption_delay", default=0.0): vol.Coerce(float),
+              })
         )
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
         return PillLoggerOptionsFlowHandler(config_entry)
-
 
 class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry):
@@ -104,6 +107,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         schema_dict[vol.Required("safe_doses", default=options.get("safe_doses", data.get("safe_doses", 1)))] = int
         schema_dict[vol.Optional("strength", default=options.get("strength", data.get("strength", 0)))] = vol.Coerce(float)
         schema_dict[vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0)))] = vol.Coerce(float)
+        schema_dict[vol.Optional("absorption_delay", default=options.get("absorption_delay", data.get("absorption_delay", 0.0)))] = vol.Coerce(float)
 
         return self.async_show_form(
             step_id="init",
