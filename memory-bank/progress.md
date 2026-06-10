@@ -32,3 +32,9 @@
 - [x] Step 3: Correct import path (homeassistant.const vs homeassistant.states)
 - [x] Step 4: Verify syntax via py_compile
 - [x] Step 5: Update memory bank logs
+
+## Cosmetic and Localization Alignment
+- [x] Step 1: Asset Discovery (Read sensor.py, config_flow.py, and en.json)
+- [x] Step 2: Sensor Presentation Adjustments (Added mdi:chart-bell-curve icon and 1-decimal precision)
+- [x] Step 3: Localization Alignment (Updated Strength, Half-Life, and Hours to Peak labels with units in en.json)
+- [x] Step 4: Syntax Verification (py_compile check passed)

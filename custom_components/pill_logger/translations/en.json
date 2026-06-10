@@ -13,7 +13,10 @@
         "data": {
           "initial_stock": "Current Inventory (Pills left)",
           "hours_between_doses": "Hours between each dose",
-          "safe_doses": "Safe doses per interval"
+          "safe_doses": "Safe doses per interval",
+          "strength": "Strength (mg)",
+          "half_life": "Half-Life (h)",
+          "hours_to_peak": "Hours to Peak (h)"
         }
       },
       "time_of_day": {
@@ -21,7 +24,10 @@
         "data": {
           "initial_stock": "Current Inventory (Pills left)",
           "time_of_day": "Time of day to take (HH:MM format, 24-hour)",
-          "safe_doses": "Safe doses per 24 hours"
+          "safe_doses": "Safe doses per 24 hours",
+          "strength": "Strength (mg)",
+          "half_life": "Half-Life (h)",
+          "hours_to_peak": "Hours to Peak (h)"
         }
       },
       "as_needed": {
@@ -29,7 +35,10 @@
         "data": {
           "initial_stock": "Current Inventory (Pills left)",
           "safe_doses": "Safe doses",
-          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)"
+          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
+          "strength": "Strength (mg)",
+          "half_life": "Half-Life (h)",
+          "hours_to_peak": "Hours to Peak (h)"
         }
       }
     }
