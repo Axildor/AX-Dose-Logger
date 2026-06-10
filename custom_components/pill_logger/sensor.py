@@ -12,6 +12,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entities = [PillTotalSensor(med_name, entry.entry_id)]
     entities.append(PillLastDoseSensor(med_name, entry.entry_id))
     entities.append(PillSafeDosesSensor(entry))
+    entities.append(PillConcentrationSensor(entry))
     entities.append(PillNextDoseSensor(entry))
     entities.append(PillAvgDosesSensor(entry, 7, "Avg Daily Doses (7 Days)"))
     entities.append(PillAvgDosesSensor(entry, 30, "Avg Daily Doses (30 Days)"))
@@ -125,6 +126,12 @@ class PillSafeDosesSensor(RestoreSensor):
             name=self._med_name,
             manufacturer="Pill Logger",
         )  
+
+    @callback
+    def _on_midnight(self, now):
+        """Callback to execute update at midnight."""
+        self._update_state()
+        self.async_write_ha_state()
 
     def _update_state(self):
         now = dt_util.now()

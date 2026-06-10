@@ -12,3 +12,10 @@
 - [x] Step 2: Implement State Restoration Logic (Modify sensor.py)
 - [x] Step 3: Run Functional Verification (Run python check)
 - [x] Step 4: Documentation Sync (Update memory-bank files)
+
+## Pill Safe Dose Sensor Fixes
+- [x] Step 1: Context Grounding & Audit (Review activeContext.md and sensor.py)
+- [x] Step 2: Identify Structural Bug (Missing _on_midnight and missing registration)
+- [x] Step 3: Apply Fixes (Modify sensor.py)
+- [x] Step 4: Verification & Documentation Sync
+- [ ] Step 5: Stage and Commit Changes
