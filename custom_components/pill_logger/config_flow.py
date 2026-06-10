@@ -24,7 +24,6 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("medication_name", default="My Medication"): str,
                 vol.Required("tracking_type", default="Regular Interval"): vol.In(["Regular Interval", "Time of Day", "As Needed"]),
-                vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float)
             })
         )
 

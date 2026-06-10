@@ -9,6 +9,8 @@ import homeassistant.util.dt as dt_util
 import math
 from .const import DOMAIN  
 
+SCAN_INTERVAL = timedelta(minutes=2)
+
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     med_name = entry.data["medication_name"]
     entities = [PillTotalSensor(med_name, entry.entry_id)]
@@ -489,6 +491,7 @@ class PillConcentrationSensor(RestoreSensor):
         self._ka = 0.0
         self._attr_state_class = "measurement"
         self._attr_native_unit_of_measurement = "mg"
+        self._attr_suggested_display_precision = 1
         self._attr_native_value = 0.0
         self._attr_extra_state_attributes = {"last_updated": None}
 
@@ -546,12 +549,10 @@ class PillConcentrationSensor(RestoreSensor):
         else:
             abs_delay = 1.0 # Default
             self._ka = 1 / abs_delay
-        if self._hours_to_peak > 0:
-            self._gut_mass += float(self._strength)
-        else:
-            self._current_mass += float(self._strength)
+        self._gut_mass += float(self._strength)
         self._last_updated = now
         self.update_state()
+        self.async_write_ha_state()
 
     def update_state(self):
         now = dt_util.now()
@@ -650,16 +651,21 @@ class PillSteadyStateSensor(RestoreSensor):
             return
         elapsed_time = now - self._last_dose_timestamp
         missed_dose = elapsed_time > timedelta(hours=24)
+        half_life = entry.data.get("half_life", 0)
         if missed_dose:
-            half_life = entry.data.get("half_life", 0)
             if half_life > 0:
+                # Degradation flag: recover from missed dose
                 self._attr_native_value = 3.0 * (half_life / 24)
             else:
                 self._attr_native_value = elapsed_time.total_seconds() / 86400.0
-        elif hours_to_peak > 0 and elapsed_time < timedelta(hours=hours_to_peak):
-            self._attr_native_value = 0.0
         else:
-            self._attr_native_value = 0.0
+            if half_life > 0:
+                # Standard window to hit accumulation equilibrium (~5 half-lives)
+                total_ss_hours = 5 * half_life
+                remaining_hours = max(0, total_ss_hours - elapsed_time.total_seconds() / 3600.0)
+                self._attr_native_value = remaining_hours / 24.0
+            else:
+                self._attr_native_value = 0.0
         self._attr_extra_state_attributes = {
             "last_dose_timestamp": self._last_dose_timestamp.isoformat() if self._last_dose_timestamp else None
         }
