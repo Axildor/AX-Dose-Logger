@@ -29,9 +29,7 @@ class PillSteadyStateSensor(RestoreSensor):
             async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self._reset_data)
         )
         self.async_on_remove(
-            async_track_time_interval(
-                self.hass, self._interval_update, timedelta(minutes=20)
-            )
+            async_dispatcher_connect(self.hass, f"concentration_updated_{self._entry_id}", self._update_from_concentration)
         )
         last_state = await self.async_get_last_state()
         if last_state and "last_dose_timestamp" in last_state.attributes:
@@ -52,45 +50,46 @@ class PillSteadyStateSensor(RestoreSensor):
         self.update_state()
 
     @callback
-    def _interval_update(self, now):
+    def _update_from_concentration(self, current_mass):
+        self._current_mass = current_mass
         self.update_state()
 
     def update_state(self):
-        now = dt_util.now()
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
 
-        half_life = entry.data.get("half_life", 0.0)
+        half_life = float(entry.options.get("half_life", entry.data.get("half_life", 0.0)))
         strength = float(entry.options.get("strength", entry.data.get("strength", 0.0)))
         tau = float(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24.0)))
 
-        if half_life <= 0 or strength <= 0 or tau <= 0 or not self._last_dose_timestamp:
-            self._attr_native_value = "N/A"
+        # Must return None instead of "N/A" to satisfy MEASUREMENT state class requirements
+        if half_life <= 0 or strength <= 0 or tau <= 0 or not hasattr(self, '_current_mass'):
+            self._attr_native_value = None
             self.async_write_ha_state()
             return
 
-        elapsed_time = now - self._last_dose_timestamp
-        missed_dose = elapsed_time > timedelta(hours=24)
-        
-        if missed_dose:
-             self._attr_native_value = 3.0 * (half_life / 24)
+        import math
+        k_e = math.log(2) / half_life
+        accumulation_factor = 1.0 / (1.0 - math.exp(-k_e * tau))
+        c_max_ss = strength * accumulation_factor
+        target_ss = c_max_ss * 0.90
+
+        if self._current_mass >= target_ss:
+            self._attr_native_value = 0.0
         else:
-             time_to_ss_hours = 3.32 * half_life
-             history_start = entry.data.get("history_start_date")
-             if history_start:
-                  try:
-                      start_dt = dt_util.parse_datetime(history_start)
-                      total_treatment_time = (now - start_dt).total_seconds() / 3600.0
-                      if total_treatment_time >= time_to_ss_hours:
-                          self._attr_native_value = 0.0
-                      else:
-                          remaining_hours = time_to_ss_hours - total_treatment_time
-                          self._attr_native_value = round(max(0.0, remaining_hours) / 24.0, 1)
-                  except (ValueError, TypeError):
-                      self._attr_native_value = round(time_to_ss_hours / 24.0, 1)
-             else:
-                  self._attr_native_value = round(time_to_ss_hours / 24.0, 1)
+            # P is the fraction of steady state currently achieved
+            p = max(0.0001, self._current_mass / c_max_ss)
+            if p >= 0.90:
+                 self._attr_native_value = 0.0
+            else:
+                 # Continuous time equivalent math
+                 t_current = -math.log(1.0 - p) / k_e
+                 t_90 = -math.log(0.1) / k_e
+                 remaining_hours = max(0.0, t_90 - t_current)
+                 self._attr_native_value = round(remaining_hours / 24.0, 1)
 
         self._attr_extra_state_attributes = {
+            "theoretical_max_mg": round(c_max_ss, 1),
+            "current_percentage": f"{round((self._current_mass / c_max_ss) * 100, 1)}%",
             "last_dose_timestamp": self._last_dose_timestamp.isoformat() if self._last_dose_timestamp else None
         }
         self.async_write_ha_state()

@@ -22,6 +22,7 @@ The pharmacokinetics engine has been upgraded to support dynamic $k_a$ solving b
 - **Fix 8: Config Flow De-duplication.** Removed `hours_to_peak` from `STEP_USER_SCHEMA` in `config_flow.py`.
 - **Fix 9: Precision & Polling.** Added `SCAN_INTERVAL = timedelta(minutes=2)` and set `_attr_suggested_display_precision = 1` and `_attr_native_unit_of_measurement = "mg"` in `PillConcentrationSensor`.
 - **Fix 10: Execution Gate Routing.** Modified `handle_pill_taken` to always inject strength into `_gut_mass` and added immediate `async_write_ha_state()` trigger.
+- **Fix 11: PK Engine & Event Sync.** Fixed instant-absorption bug in `PillConcentrationSensor` (direct bloodstream injection if $T_{max}=0$), implemented a dispatcher to broadcast concentration updates, and refactored `PillSteadyStateSensor` to use a real-time pharmacokinetic accumulation formula and event-driven updates, resolving the `ValueError` crash by replacing `"N/A"` with `None`.
 
 ## Verification Results
 - Verified corrected imports and fixed boot-loop crash (syntax check passed).

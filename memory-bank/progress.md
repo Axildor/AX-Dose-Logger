@@ -41,3 +41,4 @@
 - [x] Step 5: State Class Enforcement & New Entity Implementation (Added SensorStateClass.MEASUREMENT and PillStrengthSensor)
 - [x] Step 6: Finalize pharmacokinetic math stabilization (Fixed Concentration Decay and Steady State logic in sensor.py)
 - [x] Step 7: Modularize `sensor.py` into a `sensors/` package to improve maintainability for LLMs.
+- [x] Step 8: Finalize PK math and resolve `ValueError` crash via event-driven dispatcher and accumulation formula.

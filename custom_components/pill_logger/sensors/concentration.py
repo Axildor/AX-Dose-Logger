@@ -85,10 +85,10 @@ class PillConcentrationSensor(RestoreSensor):
         k_e = math.log(2) / self._half_life if self._half_life > 0 else 0
         if self._hours_to_peak > 0:
             self._ka = self._solve_ka(self._hours_to_peak, k_e)
+            self._gut_mass += float(self._strength)
         else:
-            abs_delay = 1.0 # Default
-            self._ka = 1 / abs_delay
-        self._gut_mass += float(self._strength)
+            self._ka = 0.0
+            self._current_mass += float(self._strength)
         self._last_updated = now
         self.update_state()
         self.async_write_ha_state()
@@ -102,13 +102,16 @@ class PillConcentrationSensor(RestoreSensor):
 
     @callback
     def update_state(self):
-        self._attr_native_value = self._current_mass
+        self._attr_native_value = round(self._current_mass, 1)
         self._attr_extra_state_attributes = {
             "last_updated": self._last_updated.isoformat() if self._last_updated else None,
-            "gut_mass": self._gut_mass,
+            "gut_mass": round(self._gut_mass, 1),
             "ka": self._ka
         }
         self.async_write_ha_state()
+        # Broadcast the live concentration so Steady State can instantly recalculate
+        from homeassistant.helpers.dispatcher import async_dispatcher_send
+        async_dispatcher_send(self.hass, f"concentration_updated_{self._entry_id}", self._current_mass)
 
     @callback
     def update_decay(self, now):
