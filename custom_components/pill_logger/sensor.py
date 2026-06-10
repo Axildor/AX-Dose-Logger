@@ -626,7 +626,7 @@ class PillStrengthSensor(RestoreSensor):
         self._attr_native_unit_of_measurement = "mg"
         self._attr_device_class = SensorDeviceClass.WEIGHT
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_value = float(entry.data.get("strength", 0))
+        self._attr_native_value = float(entry.options.get("strength", entry.data.get("strength", 0)))
 
     @property
     def device_info(self) -> DeviceInfo:
