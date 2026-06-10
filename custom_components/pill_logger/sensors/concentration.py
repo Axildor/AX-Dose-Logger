@@ -81,17 +81,51 @@ class PillConcentrationSensor(RestoreSensor):
     @callback
     def handle_pill_taken(self, *args, **kwargs):
         now = dt_util.now()
+        
+        # Calculate elapsed time and decay current masses
         if self._last_updated:
             elapsed_hours = (now - self._last_updated).total_seconds() / 3600.0
-            if self._half_life > 0:
-                self._current_mass *= (0.5 ** (elapsed_hours / self._half_life))
+            if elapsed_hours > 0:
+                # Decay both gut and body compartments before adding new dose
+                k_e = math.log(2) / self._half_life if self._half_life > 0 else 0
+                k_a = getattr(self, '_ka', 0)
+                if k_a == 0 and self._hours_to_peak > 0:
+                    # Calculate ka from hours_to_peak if not already set
+                    k_a = self._solve_ka(self._hours_to_peak, k_e)
+                
+                if k_a > 0 and k_a != k_e:
+                    # Two-compartment decay: G and C both decay
+                    old_gut = self._gut_mass
+                    old_body = self._current_mass
+                    self._gut_mass = old_gut * math.exp(-k_a * elapsed_hours)
+                    self._current_mass = (old_body * math.exp(-k_e * elapsed_hours) +
+                                          (old_gut * k_a / (k_a - k_e)) *
+                                          (math.exp(-k_e * elapsed_hours) - math.exp(-k_a * elapsed_hours)))
+                elif k_a > 0 and abs(k_a - k_e) < 0.0001:
+                    # Limiting case when ka ≈ ke
+                    old_gut = self._gut_mass
+                    old_body = self._current_mass
+                    self._gut_mass = old_gut * math.exp(-k_a * elapsed_hours)
+                    self._current_mass = old_body * math.exp(-k_e * elapsed_hours) + old_gut * k_a * elapsed_hours * math.exp(-k_a * elapsed_hours)
+                else:
+                    # No absorption (ka = 0): just eliminate from body
+                    self._gut_mass = 0
+                    if self._half_life > 0:
+                        self._current_mass *= math.exp(-k_e * elapsed_hours)
+        
+        # Calculate elimination rate constant
         k_e = math.log(2) / self._half_life if self._half_life > 0 else 0
+        
+        # Calculate absorption rate constant if needed
         if self._hours_to_peak > 0:
             self._ka = self._solve_ka(self._hours_to_peak, k_e)
+            # Add dose to gut compartment (absorption phase)
             self._gut_mass += float(self._strength)
         else:
+            # No absorption: add dose directly to body (immediate release)
             self._ka = 0.0
             self._current_mass += float(self._strength)
+        
         self._last_updated = now
         self.update_state()
         self.async_write_ha_state()
@@ -125,7 +159,7 @@ class PillConcentrationSensor(RestoreSensor):
         k_e = math.log(2) / self._half_life
         k_a = getattr(self, '_ka', 0)
         if k_a == 0 and self._hours_to_peak > 0:
-            k_a = 1 / self._hours_to_peak
+            k_a = self._solve_ka(self._hours_to_peak, k_e)
         if k_a == k_e and k_a != 0:
             k_a *= 1.0001
         if self._hours_to_peak <= 0:
@@ -133,8 +167,8 @@ class PillConcentrationSensor(RestoreSensor):
             self._current_mass *= math.exp(-k_e * elapsed_hours)
         else:
             new_gut = self._gut_mass * math.exp(-k_a * elapsed_hours)
-            new_body = (self._current_mass * math.exp(-k_e * elapsed_hours) + 
-                        (self._gut_mass * k_a / (k_a - k_e)) * 
+            new_body = (self._current_mass * math.exp(-k_e * elapsed_hours) +
+                        (self._gut_mass * k_a / (k_a - k_e)) *
                         (math.exp(-k_e * elapsed_hours) - math.exp(-k_a * elapsed_hours)))
             self._gut_mass = new_gut
             self._current_mass = new_body
