@@ -38,3 +38,4 @@
 - [x] Step 2: Sensor Presentation Adjustments (Added mdi:chart-bell-curve icon and 1-decimal precision)
 - [x] Step 3: Localization Alignment (Updated Strength, Half-Life, and Hours to Peak labels with units in en.json)
 - [x] Step 4: Syntax Verification (py_compile check passed)
+- [x] Step 5: State Class Enforcement & New Entity Implementation (Added SensorStateClass.MEASUREMENT and PillStrengthSensor)

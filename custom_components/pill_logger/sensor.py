@@ -1,5 +1,5 @@
 from datetime import timedelta
-from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
+from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass, SensorStateClass
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -22,6 +22,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entities.append(PillAvgDosesSensor(entry, 30, "Avg Daily Doses (30 Days)"))
     entities.append(PillAvgDosesSensor(entry, 365, "Avg Daily Doses (Yearly)"))
     entities.append(PillSteadyStateSensor(entry))
+    entities.append(PillStrengthSensor(entry))
     async_add_entities(entities)  
 
 class PillTotalSensor(RestoreSensor):
@@ -493,6 +494,7 @@ class PillConcentrationSensor(RestoreSensor):
         self._attr_native_unit_of_measurement = "mg"
         self._attr_suggested_display_precision = 1
         self._attr_native_value = 0.0
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_extra_state_attributes = {"last_updated": None}
 
     async def async_added_to_hass(self):
@@ -613,6 +615,27 @@ class PillConcentrationSensor(RestoreSensor):
             manufacturer="Pill Logger",
         )
 
+class PillStrengthSensor(RestoreSensor):
+    def __init__(self, entry):
+        med_name = entry.data["medication_name"]
+        self._med_name = med_name
+        self._attr_name = f"{med_name} Strength"
+        self._attr_unique_id = f"{entry.entry_id}_strength"
+        self._attr_icon = "mdi:pill"
+        self._entry_id = entry.entry_id
+        self._attr_native_unit_of_measurement = "mg"
+        self._attr_device_class = SensorDeviceClass.WEIGHT
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_value = float(entry.data.get("strength", 0))
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=self._med_name,
+            manufacturer="Pill Logger",
+        )
+
 class PillSteadyStateSensor(RestoreSensor):
     def __init__(self, entry):
         med_name = entry.data["medication_name"]
@@ -622,6 +645,7 @@ class PillSteadyStateSensor(RestoreSensor):
         self._attr_icon = "mdi:chart-bell-curve"
         self._entry_id = entry.entry_id
         self._attr_suggested_display_precision = 1
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._last_dose_timestamp = None
         self._attr_extra_state_attributes = {}
 

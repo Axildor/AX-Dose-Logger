@@ -40,6 +40,17 @@
           "half_life": "Half-Life (h)",
           "hours_to_peak": "Hours to Peak (h)"
         }
+      },
+      "options": {
+        "step": {
+          "init": {
+            "data": {
+              "strength": "Strength (mg)",
+              "half_life": "Half-Life (h)",
+              "hours_to_peak": "Hours to Peak (h)"
+            }
+          }
+        }
       }
     }
   }
