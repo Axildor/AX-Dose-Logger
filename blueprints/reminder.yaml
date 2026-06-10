@@ -1,6 +1,6 @@
 blueprint:
   name: Pill Logger Reminder
-  description: "Advanced reminder loop for the Pill Logger integration. Features Snooze, Skip, custom actions, and auto-logging."
+  description: "Advanced reminder loop for the Pill Logger integration. Features Dashboard tracking, Snooze, Skip, and auto-logging."
   domain: automation
   input:
     notify_device:
@@ -48,7 +48,6 @@ blueprint:
           unit_of_measurement: min
 
 variables:
-  # Create unique action IDs so multiple pill alarms don't cross-talk
   next_dose_sensor: !input next_dose_sensor
   btn_entity: !input take_button
   action_take: "TAKE_{{ btn_entity }}"
@@ -61,30 +60,30 @@ trigger:
   - platform: time
     at: !input next_dose_sensor
 
+# Protective Gate: Instantly aborts restarts if the dose is not genuinely due/overdue
+condition:
+  - condition: template
+    value_template: "{{ states(next_dose_sensor) != 'unknown' and now() >= states(next_dose_sensor) | as_datetime }}"
+
 mode: restart
 
 action:
   - alias: "Reminder Loop"
     repeat:
       while:
-        # Loop while the sensor is in the past (meaning they haven't taken it yet)
         - condition: template
           value_template: "{{ states(next_dose_sensor) != 'unknown' and now() >= states(next_dose_sensor) | as_datetime }}"
       sequence:
-        # 1. Run the Optional Action (e.g., TTS to Smart Speaker)
         - choose:
             - conditions: "{{ true }}"
               sequence: !input optional_action
 
-        # 1.5 Clear the old notification so the new one triggers a sound
-        - device_id: !input notify_device
-          domain: mobile_app
-          type: notify
-          message: "clear_notification"
+        - service: notify.mobile_app_{{ device_attr(notify_device, 'name') }}
           data:
-            tag: "{{ tag_id }}"
+            message: "clear_notification"
+            data:
+              tag: "{{ tag_id }}"
 
-        # 2. Send the Mobile Notification
         - device_id: !input notify_device
           domain: mobile_app
           type: notify
@@ -102,7 +101,7 @@ action:
               - action: "{{ action_skip }}"
                 title: "Skip Dose"
         
-        # 3. Wait for the user to tap a button
+        # Listens to both mobile events AND dashboard button clicks
         - wait_for_trigger:
             - platform: event
               event_type: mobile_app_notification_action
@@ -116,23 +115,27 @@ action:
               event_type: mobile_app_notification_action
               event_data:
                 action: "{{ action_skip }}"
+            - platform: state
+              entity_id: !input take_button
           timeout:
             minutes: !input snooze_time
 
-        # 4. Handle the response
         - choose:
-            - conditions: "{{ wait.trigger.event.data.action == action_take }}"
+            # Tapped "Taken" on phone notification
+            - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.data.action == action_take }}"
               sequence:
                 - service: button.press
                   target:
                     entity_id: !input take_button
             
-            - conditions: "{{ wait.trigger.event.data.action == action_snooze }}"
+            # Tapped "Snooze" on phone notification
+            - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.data.action == action_snooze }}"
               sequence:
                 - delay:
                     minutes: !input snooze_time
             
-            - conditions: "{{ wait.trigger.event.data.action == action_skip }}"
+            # Tapped "Skip" on phone notification
+            - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.data.action == action_skip }}"
               sequence:
                 - device_id: !input notify_device
                   domain: mobile_app
@@ -141,6 +144,14 @@ action:
                   data:
                     tag: "{{ tag_id }}"
                 - stop: "User skipped."
-          
-          # If no response, wait the snooze time and loop again
+
+            # Pressed button directly on Home Assistant dashboard
+            - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'state' }}"
+              sequence:
+                - device_id: !input notify_device
+                  domain: mobile_app
+                  type: notify
+                  message: "clear_notification"
+                  data:
+                    tag: "{{ tag_id }}"
           default: []
