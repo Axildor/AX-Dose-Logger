@@ -18,6 +18,7 @@ class PillSteadyStateSensor(RestoreSensor):
         self._attr_suggested_display_precision = 1
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._last_dose_timestamp = None
+        self._current_mass = 0.0
         self._attr_extra_state_attributes = {}
 
     async def async_added_to_hass(self):
@@ -31,6 +32,14 @@ class PillSteadyStateSensor(RestoreSensor):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, f"concentration_updated_{self._entry_id}", self._update_from_concentration)
         )
+        
+        # Trigger update when options are updated in the config flow
+        self.async_on_remove(
+            self.hass.config_entries.async_runtime_dispatcher_connect(
+                f"updated_options_{self._entry_id}", self._handle_options_updated
+            )
+        )
+
         last_state = await self.async_get_last_state()
         if last_state and "last_dose_timestamp" in last_state.attributes:
             try:
@@ -50,6 +59,10 @@ class PillSteadyStateSensor(RestoreSensor):
         self.update_state()
 
     @callback
+    def _handle_options_updated(self, *args, **kwargs):
+        self.update_state()
+
+    @callback
     def _update_from_concentration(self, current_mass):
         self._current_mass = current_mass
         self.update_state()
@@ -62,7 +75,7 @@ class PillSteadyStateSensor(RestoreSensor):
         tau = float(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24.0)))
 
         # Must return None instead of "N/A" to satisfy MEASUREMENT state class requirements
-        if half_life <= 0 or strength <= 0 or tau <= 0 or not hasattr(self, '_current_mass'):
+        if half_life <= 0 or strength <= 0 or tau <= 0:
             self._attr_native_value = None
             self.async_write_ha_state()
             return
@@ -73,9 +86,18 @@ class PillSteadyStateSensor(RestoreSensor):
         c_max_ss = strength * accumulation_factor
         target_ss = c_max_ss * 0.90
 
-        if self._current_mass >= target_ss:
+        if self._current_mass > c_max_ss * 1.1:
+            # Case: Current mass is significantly above the new stable max (dosage reduction)
+            # Calculate time to decay down to 90% of the new Cmax_ss
+            # C(t) = C_current * exp(-k_e * t) = 0.9 * Cmax_ss
+            # t = ln(C_current / (0.9 * Cmax_ss)) / k_e
+            t_decay = math.log(self._current_mass / (0.9 * c_max_ss)) / k_e
+            self._attr_native_value = round(t_decay / 24.0, 1)
+        elif self._current_mass >= target_ss:
+            # Within the 90%-110% window of the new steady state
             self._attr_native_value = 0.0
         else:
+            # Case: Climbing up to steady state
             # P is the fraction of steady state currently achieved
             p = max(0.0001, self._current_mass / c_max_ss)
             if p >= 0.90:

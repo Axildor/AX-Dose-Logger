@@ -74,6 +74,9 @@ class PillConcentrationSensor(RestoreSensor):
             self._gut_mass = 0.0
             self._last_updated = dt_util.now()
         self.update_state()
+        # Ensure the steady state sensor gets the initial value immediately
+        from homeassistant.helpers.dispatcher import async_dispatcher_send
+        async_dispatcher_send(self.hass, f"concentration_updated_{self._entry_id}", self._current_mass)
 
     @callback
     def handle_pill_taken(self, *args, **kwargs):
