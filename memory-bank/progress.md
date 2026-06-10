@@ -39,3 +39,4 @@
 - [x] Step 3: Localization Alignment (Updated Strength, Half-Life, and Hours to Peak labels with units in en.json)
 - [x] Step 4: Syntax Verification (py_compile check passed)
 - [x] Step 5: State Class Enforcement & New Entity Implementation (Added SensorStateClass.MEASUREMENT and PillStrengthSensor)
+- [x] Step 6: Finalize pharmacokinetic math stabilization (Fixed Concentration Decay and Steady State logic in sensor.py)

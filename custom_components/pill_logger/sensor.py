@@ -503,6 +503,9 @@ class PillConcentrationSensor(RestoreSensor):
             async_dispatcher_connect(self.hass, f"pill_taken_{self._entry_id}", self.handle_pill_taken)
         )
         self.async_on_remove(
+            async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self.reset_data)
+        )
+        self.async_on_remove(
             async_track_time_interval(
                 self.hass, self.update_decay, timedelta(minutes=20)
             )
@@ -556,11 +559,15 @@ class PillConcentrationSensor(RestoreSensor):
         self.update_state()
         self.async_write_ha_state()
 
+    @callback
+    def reset_data(self, *args, **kwargs):
+        self._current_mass = 0.0
+        self._gut_mass = 0.0
+        self._last_updated = None
+        self.update_state()
+
+    @callback
     def update_state(self):
-        now = dt_util.now()
-        if self._last_updated and self._half_life > 0:
-            elapsed_hours = (now - self._last_updated).total_seconds() / 3600.0
-            self._current_mass *= (0.5 ** (elapsed_hours / self._half_life))
         self._attr_native_value = self._current_mass
         self._attr_extra_state_attributes = {
             "last_updated": self._last_updated.isoformat() if self._last_updated else None,
@@ -654,6 +661,14 @@ class PillSteadyStateSensor(RestoreSensor):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, f"pill_taken_{self._entry_id}", self._handle_pill_taken)
         )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self._reset_data)
+        )
+        self.async_on_remove(
+            async_track_time_interval(
+                self.hass, self._interval_update, timedelta(minutes=20)
+            )
+        )
         last_state = await self.async_get_last_state()
         if last_state and "last_dose_timestamp" in last_state.attributes:
             try:
@@ -667,30 +682,50 @@ class PillSteadyStateSensor(RestoreSensor):
         self._last_dose_timestamp = dt_util.now()
         self.update_state()
 
+    @callback
+    def _reset_data(self, *args, **kwargs):
+        self._last_dose_timestamp = None
+        self.update_state()
+
+    @callback
+    def _interval_update(self, now):
+        self.update_state()
+
     def update_state(self):
         now = dt_util.now()
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        hours_to_peak = entry.data.get("hours_to_peak", 0.0)
-        if not self._last_dose_timestamp:
+
+        half_life = entry.data.get("half_life", 0.0)
+        strength = float(entry.options.get("strength", entry.data.get("strength", 0.0)))
+        tau = float(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24.0)))
+
+        if half_life <= 0 or strength <= 0 or tau <= 0 or not self._last_dose_timestamp:
             self._attr_native_value = "N/A"
+            self.async_write_ha_state()
             return
+
         elapsed_time = now - self._last_dose_timestamp
         missed_dose = elapsed_time > timedelta(hours=24)
-        half_life = entry.data.get("half_life", 0)
+        
         if missed_dose:
-            if half_life > 0:
-                # Degradation flag: recover from missed dose
-                self._attr_native_value = 3.0 * (half_life / 24)
-            else:
-                self._attr_native_value = elapsed_time.total_seconds() / 86400.0
+             self._attr_native_value = 3.0 * (half_life / 24)
         else:
-            if half_life > 0:
-                # Standard window to hit accumulation equilibrium (~5 half-lives)
-                total_ss_hours = 5 * half_life
-                remaining_hours = max(0, total_ss_hours - elapsed_time.total_seconds() / 3600.0)
-                self._attr_native_value = remaining_hours / 24.0
-            else:
-                self._attr_native_value = 0.0
+             time_to_ss_hours = 3.32 * half_life
+             history_start = entry.data.get("history_start_date")
+             if history_start:
+                  try:
+                      start_dt = dt_util.parse_datetime(history_start)
+                      total_treatment_time = (now - start_dt).total_seconds() / 3600.0
+                      if total_treatment_time >= time_to_ss_hours:
+                          self._attr_native_value = 0.0
+                      else:
+                          remaining_hours = time_to_ss_hours - total_treatment_time
+                          self._attr_native_value = round(max(0.0, remaining_hours) / 24.0, 1)
+                  except (ValueError, TypeError):
+                      self._attr_native_value = round(time_to_ss_hours / 24.0, 1)
+             else:
+                  self._attr_native_value = round(time_to_ss_hours / 24.0, 1)
+
         self._attr_extra_state_attributes = {
             "last_dose_timestamp": self._last_dose_timestamp.isoformat() if self._last_dose_timestamp else None
         }
