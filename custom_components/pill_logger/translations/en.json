@@ -18,16 +18,7 @@
           "safe_doses": "Safe doses per interval",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)",
-          "metric_pain": "Pain Level",
-          "metric_mood": "Mood",
-          "metric_nausea": "Nausea Level",
-          "metric_fatigue": "Fatigue Level",
-          "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
-        },
-        "data_description": {
-          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
-          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
+          "hours_to_peak": "Hours to Peak (h)"
         }
       },
       "time_of_day": {
@@ -39,16 +30,7 @@
           "safe_doses": "Safe doses per 24 hours",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)",
-          "metric_pain": "Pain Level",
-          "metric_mood": "Mood",
-          "metric_nausea": "Nausea Level",
-          "metric_fatigue": "Fatigue Level",
-          "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
-        },
-        "data_description": {
-          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
-          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
+          "hours_to_peak": "Hours to Peak (h)"
         }
       },
       "as_needed": {
@@ -60,16 +42,7 @@
           "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)",
-          "metric_pain": "Pain Level",
-          "metric_mood": "Mood",
-          "metric_nausea": "Nausea Level",
-          "metric_fatigue": "Fatigue Level",
-          "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
-        },
-        "data_description": {
-          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
-          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
+          "hours_to_peak": "Hours to Peak (h)"
         }
       },
       "cyclic": {
@@ -84,7 +57,13 @@
           "safe_doses": "Safe doses per on-day",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)",
+          "hours_to_peak": "Hours to Peak (h)"
+        }
+      },
+      "effectiveness": {
+        "title": "Metrics Tracker",
+        "description": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "data": {
           "metric_pain": "Pain Level",
           "metric_mood": "Mood",
           "metric_nausea": "Nausea Level",
@@ -92,8 +71,7 @@
           "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
         },
         "data_description": {
-          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
-          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
+          "custom_metrics": "A 1–10 slider will be created for each one added."
         }
       }
     }
@@ -121,7 +99,7 @@
         },
         "data_description": {
           "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
-          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
+          "custom_metrics": "A 1–10 slider will be created for each one added."
         }
       }
     }

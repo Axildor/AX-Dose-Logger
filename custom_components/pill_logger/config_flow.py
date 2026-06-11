@@ -31,20 +31,10 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             })
         )
 
-    def _effectiveness_schema_fields(self, defaults=None):
-        """Return a list of effectiveness metric vol fields with given defaults."""
-        if defaults is None:
-            defaults = {}
-        fields = {}
-        for key in STANDARD_EFFECTIVENESS_METRICS:
-            fields[vol.Optional(f"metric_{key}", default=defaults.get(f"metric_{key}", False))] = bool
-        fields[vol.Optional("custom_metrics", default=defaults.get("custom_metrics", ""))] = str
-        return fields
-
     async def async_step_regular_interval(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
-            return self.async_create_entry(title=self._data["medication_name"], data=self._data)
+            return await self.async_step_effectiveness()
 
         schema_dict = {
              vol.Required("initial_stock", default=30): int,
@@ -54,7 +44,6 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
               vol.Optional("half_life", default=0): vol.Coerce(float),
               vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
         }
-        schema_dict.update(self._effectiveness_schema_fields())
 
         return self.async_show_form(
             step_id="regular_interval",
@@ -64,7 +53,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_time_of_day(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
-            return self.async_create_entry(title=self._data["medication_name"], data=self._data)
+            return await self.async_step_effectiveness()
 
         schema_dict = {
              vol.Required("initial_stock", default=30): int,
@@ -74,7 +63,6 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
               vol.Optional("half_life", default=0): vol.Coerce(float),
               vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
         }
-        schema_dict.update(self._effectiveness_schema_fields())
 
         return self.async_show_form(
             step_id="time_of_day",
@@ -84,7 +72,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_as_needed(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
-            return self.async_create_entry(title=self._data["medication_name"], data=self._data)
+            return await self.async_step_effectiveness()
 
         schema_dict = {
              vol.Required("initial_stock", default=30): int,
@@ -94,7 +82,6 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
               vol.Optional("half_life", default=0): vol.Coerce(float),
               vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
         }
-        schema_dict.update(self._effectiveness_schema_fields())
 
         return self.async_show_form(
             step_id="as_needed",
@@ -104,7 +91,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_cyclic(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
-            return self.async_create_entry(title=self._data["medication_name"], data=self._data)
+            return await self.async_step_effectiveness()
 
         schema_dict = {
              vol.Required("initial_stock", default=30): int,
@@ -117,11 +104,26 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
               vol.Optional("half_life", default=0): vol.Coerce(float),
               vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
         }
-        schema_dict.update(self._effectiveness_schema_fields())
 
         return self.async_show_form(
             step_id="cyclic",
             data_schema=vol.Schema(schema_dict)
+        )
+
+    async def async_step_effectiveness(self, user_input=None):
+        """Step 3: Choose which effectiveness metrics to track."""
+        if user_input is not None:
+            self._data.update(user_input)
+            return self.async_create_entry(title=self._data["medication_name"], data=self._data)
+
+        fields = {}
+        for key in STANDARD_EFFECTIVENESS_METRICS:
+            fields[vol.Optional(f"metric_{key}", default=False)] = bool
+        fields[vol.Optional("custom_metrics", default="")] = str
+
+        return self.async_show_form(
+            step_id="effectiveness",
+            data_schema=vol.Schema(fields)
         )
 
     @staticmethod
