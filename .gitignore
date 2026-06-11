@@ -18,3 +18,9 @@ coverage.xml
 # Home Assistant configuration
 config/*
 !config/configuration.yaml
+
+# AI / local dev tools — not for distribution
+memory-bank/
+plans/
+.roo/
+UNIVERSAL_PROMPT.md
