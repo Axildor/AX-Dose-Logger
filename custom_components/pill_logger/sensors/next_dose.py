@@ -72,6 +72,58 @@ class PillNextDoseSensor(RestoreSensor):
             manufacturer="Pill Logger",
         )
 
+    def _get_time_window(self, entry):
+        """Get time_window_hours with mode-specific fallbacks."""
+        if self._tracking_type == "Regular Interval":
+            return entry.options.get(
+                "time_window_hours",
+                entry.data.get(
+                    "time_window_hours",
+                    entry.options.get(
+                        "hours_between_doses",
+                        entry.data.get("hours_between_doses", 8)
+                    )
+                )
+            )
+        elif self._tracking_type == "As Needed":
+            return entry.options.get(
+                "time_window_hours",
+                entry.data.get("time_window_hours", 8)
+            )
+        else:
+            # Time of Day and Cyclic default to 24h
+            return entry.options.get(
+                "time_window_hours",
+                entry.data.get("time_window_hours", 24)
+            )
+
+    def _compute_safe_to_take(self, entry, now):
+        """Compute remaining safe doses using the unified sliding window."""
+        max_pills = entry.options.get("safe_doses", entry.data.get("safe_doses", entry.data.get("max_pills_allowed", 1)))
+        time_window = self._get_time_window(entry)
+        cutoff = now - timedelta(hours=time_window)
+        valid_timestamps = [ts for ts in self._timestamps if ts >= cutoff]
+        safe_to_take = max(0, max_pills - len(valid_timestamps))
+
+        # Cyclic OFF days: force safe_to_take to 0
+        if self._tracking_type == "Cyclic/Calendar Pattern":
+            days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
+            days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
+            anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
+            try:
+                anchor_date = date.fromisoformat(anchor_str)
+            except (ValueError, TypeError):
+                anchor_date = now.date()
+            cycle_length = days_on + days_off
+            if cycle_length <= 0:
+                cycle_length = 1
+            days_since_anchor = (now.date() - anchor_date).days
+            position_in_cycle = days_since_anchor % cycle_length
+            if position_in_cycle >= days_on:
+                safe_to_take = 0
+
+        return safe_to_take
+
     def _update_state(self):
         now = dt_util.now()
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
@@ -164,12 +216,11 @@ class PillNextDoseSensor(RestoreSensor):
                 self._attr_native_value = self._timestamps[-1]
             else:
                 self._attr_native_value = None
-            self._attr_extra_state_attributes = {
-                "timestamps": [ts.isoformat() for ts in self._timestamps],
-                "safe_doses_calculated": safe_doses
-            }
 
-        if self._tracking_type != "As Needed":
-            self._attr_extra_state_attributes = {
-                "timestamps": [ts.isoformat() for ts in self._timestamps]
-            }
+        # Compute safe_to_take for ALL modes using unified sliding window
+        safe_to_take = self._compute_safe_to_take(entry, now)
+
+        self._attr_extra_state_attributes = {
+            "timestamps": [ts.isoformat() for ts in self._timestamps],
+            "safe_to_take": safe_to_take,
+        }

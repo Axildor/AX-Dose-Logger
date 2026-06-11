@@ -12,7 +12,8 @@ Pill Logger goes far beyond simple counters — it models drug concentration wit
 * **Cyclic/Calendar Pattern** — Define on/off cycles (e.g. 5 days on, 2 days off) anchored to a start date, with a per-day dose time.
 
 ### 🛡️ Safety
-* **Safe Dose Tracking** — Set limits per interval. The integration calculates your rolling window and tells you exactly how many safe doses remain.
+* **Safe Dose Tracking** — All tracking modes use a unified sliding-window algorithm: set how many doses are safe within a configurable time window. Each pill expires individually, so safe doses recover one at a time as each pill's window passes. On Cyclic OFF days, safe doses are forced to 0.
+* **Next Dose `safe_to_take` Attribute** — The Next Dose sensor shows the next scheduled dose time and includes a `safe_to_take` attribute (number) showing how many safe doses remain right now based on the sliding window.
 * **Smart Overdose Warning** — Dashboard UI dynamically swaps to a red warning button when safe doses reach 0, prompting an "Are you sure?" dialog before allowing an override.
 
 ### 🧪 Pharmacokinetics
@@ -50,9 +51,9 @@ Each medication creates a **Device** with the following entities:
 |----------|-------------------|-------------|
 | `sensor` | `{name}_total` | Cumulative lifetime dose count |
 | `sensor` | `{name}_last_dose` | Timestamp of most recent dose |
-| `sensor` | `{name}_safe_doses` | Remaining safe doses in the current window |
+| `sensor` | `{name}_safe_doses` | Remaining safe doses in the current time window |
 | `sensor` | `{name}_concentration` | Current drug concentration (mg) — requires PK fields |
-| `sensor` | `{name}_next_dose` | Timestamp of next available dose |
+| `sensor` | `{name}_next_dose` | Timestamp of next scheduled dose; `safe_to_take` attribute shows remaining safe doses |
 | `sensor` | `{name}_avg_daily_doses_7_days` | 7-day rolling average of daily doses |
 | `sensor` | `{name}_avg_daily_doses_30_days` | 30-day rolling average of daily doses |
 | `sensor` | `{name}_avg_daily_doses_yearly` | 365-day rolling average of daily doses |
@@ -86,6 +87,7 @@ Setup is a 3-step process: **Step 1** — choose a medication name and tracking 
 | Initial Stock | Pills currently in inventory | 30 |
 | Hours Between Doses | Minimum interval between doses | 8 |
 | Safe Doses | Max doses allowed per interval | 1 |
+| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 3 pills in 24 hours) | 8 |
 | Strength (mg) | Per-dose strength for PK calculations | 0 |
 | Half-Life (h) | Elimination half-life for PK calculations | 0 |
 | Hours to Peak (h) | Time to peak concentration for absorption modeling | 0 |
@@ -96,6 +98,7 @@ Setup is a 3-step process: **Step 1** — choose a medication name and tracking 
 | Initial Stock | Pills currently in inventory | 30 |
 | Time of Day | Daily dose time (time picker) | 08:00 |
 | Safe Doses | Max doses per 24 hours | 1 |
+| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 2 pills in 24 hours) | 24 |
 | Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
 
 #### As Needed (PRN)
@@ -115,6 +118,7 @@ Setup is a 3-step process: **Step 1** — choose a medication name and tracking 
 | Cycle Anchor Date | Start date of the cycle (calendar picker) | Today |
 | Dose Time | Time of day to take on active days (time picker) | 08:00 |
 | Safe Doses | Max doses per on-day | 1 |
+| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 1 pill in 24 hours) | 24 |
 | Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
 
 ### Step 3: Metrics Tracker
@@ -130,14 +134,26 @@ Setup is a 3-step process: **Step 1** — choose a medication name and tracking 
 
 ## 🔧 Reconfiguring After Setup
 
-Click **Configure** on the integration entry to change any of the following without recreating the medication:
+Click **Configure** on the integration entry to change settings without recreating the medication. Reconfiguration is a 2-step process:
+
+### Step 1: Schedule & Dosing
 
 | Tracking Type | Editable Fields |
 |---------------|-----------------|
-| Regular Interval | Hours Between Doses, Safe Doses, Strength, Half-Life, Hours to Peak, Effectiveness Metrics |
-| Time of Day | Time of Day, Safe Doses, Strength, Half-Life, Hours to Peak, Effectiveness Metrics |
-| As Needed | Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak, Effectiveness Metrics |
-| Cyclic/Calendar Pattern | Days On, Days Off, Cycle Anchor Date, Dose Time, Safe Doses, Strength, Half-Life, Hours to Peak, Effectiveness Metrics |
+| Regular Interval | Hours Between Doses, Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak |
+| Time of Day | Time of Day, Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak |
+| As Needed | Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak |
+| Cyclic/Calendar Pattern | Days On, Days Off, Cycle Anchor Date, Dose Time, Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak |
+
+### Step 2: Metrics Tracker
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| Pain Level | Enable a 1–10 slider for pain | Off |
+| Mood | Enable a 1–10 slider for mood | Off |
+| Nausea Level | Enable a 1–10 slider for nausea | Off |
+| Fatigue Level | Enable a 1–10 slider for fatigue | Off |
+| Custom Metrics | Add your own — separate multiple with commas, e.g. brain fog, joint stiffness | — |
 
 > **Note:** The medication name and tracking type cannot be changed after creation. To switch, remove the entry and create a new one.
 

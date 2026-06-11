@@ -72,45 +72,40 @@ class PillSafeDosesSensor(RestoreSensor):
         self._update_state()
         self.async_write_ha_state()
 
+    def _get_time_window(self, entry):
+        """Get time_window_hours with mode-specific fallbacks."""
+        if self._tracking_type == "Regular Interval":
+            # Fall back to hours_between_doses if time_window_hours not explicitly set
+            return entry.options.get(
+                "time_window_hours",
+                entry.data.get(
+                    "time_window_hours",
+                    entry.options.get(
+                        "hours_between_doses",
+                        entry.data.get("hours_between_doses", 8)
+                    )
+                )
+            )
+        elif self._tracking_type == "As Needed":
+            return entry.options.get(
+                "time_window_hours",
+                entry.data.get("time_window_hours", 8)
+            )
+        else:
+            # Time of Day and Cyclic default to 24h
+            return entry.options.get(
+                "time_window_hours",
+                entry.data.get("time_window_hours", 24)
+            )
+
     def _update_state(self):
         now = dt_util.now()
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         max_pills = entry.options.get("safe_doses", entry.data.get("safe_doses", entry.data.get("max_pills_allowed", 1)))
+        time_window = self._get_time_window(entry)
 
-        if self._tracking_type == "As Needed":
-            time_window = entry.options.get("time_window_hours", entry.data.get("time_window_hours", 0))
-            cutoff = now - timedelta(hours=time_window)
-            self._timestamps = [ts for ts in self._timestamps if ts >= cutoff]
-            self._attr_native_value = max(0, max_pills - len(self._timestamps))
-        elif self._tracking_type == "Regular Interval":
-            hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
-            if self._timestamps:
-                last_ts = self._timestamps[-1]
-                if now - last_ts < timedelta(hours=hours_between):
-                    self._attr_native_value = 0
-                else:
-                    self._attr_native_value = max_pills
-            else:
-                self._attr_native_value = max_pills
-        elif self._tracking_type == "Time of Day":
-            time_of_day = entry.options.get("time_of_day", entry.data.get("time_of_day"))
-            if time_of_day:
-                try:
-                    target_hour, target_minute = map(int, time_of_day.split(":"))
-                except (ValueError, AttributeError):
-                    target_hour, target_minute = 8, 0
-                if self._timestamps:
-                    last_ts = self._timestamps[-1]
-                    release_time = last_ts.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0) + timedelta(days=1)
-                    if now >= release_time:
-                        self._attr_native_value = max_pills
-                    else:
-                        self._attr_native_value = 0
-                else:
-                    self._attr_native_value = max_pills
-            else:
-                self._attr_native_value = max_pills
-        elif self._tracking_type == "Cyclic/Calendar Pattern":
+        # Cyclic OFF days: force safe_doses to 0 regardless of window
+        if self._tracking_type == "Cyclic/Calendar Pattern":
             days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
             days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
             anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
@@ -123,11 +118,22 @@ class PillSafeDosesSensor(RestoreSensor):
                 cycle_length = 1
             days_since_anchor = (now.date() - anchor_date).days
             position_in_cycle = days_since_anchor % cycle_length
-            if position_in_cycle < days_on:
-                self._attr_native_value = max_pills
-            else:
+            if position_in_cycle >= days_on:
+                # Currently in an OFF window — no doses allowed
                 self._attr_native_value = 0
+                self._attr_extra_state_attributes = {
+                    "timestamps": [ts.isoformat() for ts in self._timestamps],
+                    "time_window_hours": time_window,
+                    "in_on_window": False,
+                }
+                return
+
+        # Unified sliding window for ALL modes
+        cutoff = now - timedelta(hours=time_window)
+        self._timestamps = [ts for ts in self._timestamps if ts >= cutoff]
+        self._attr_native_value = max(0, max_pills - len(self._timestamps))
 
         self._attr_extra_state_attributes = {
-            "timestamps": [ts.isoformat() for ts in self._timestamps]
+            "timestamps": [ts.isoformat() for ts in self._timestamps],
+            "time_window_hours": time_window,
         }

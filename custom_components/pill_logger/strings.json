@@ -16,6 +16,7 @@
           "initial_stock": "Current Inventory (Pills left)",
           "hours_between_doses": "Hours between each dose",
           "safe_doses": "Safe doses per interval",
+          "time_window_hours": "In how many hours are safe doses counted? (e.g. Max 3 pills in 24 hours)",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
           "hours_to_peak": "Hours to Peak (h)"
@@ -28,6 +29,7 @@
           "initial_stock": "Current Inventory (Pills left)",
           "time_of_day": "Time of day to take",
           "safe_doses": "Safe doses per 24 hours",
+          "time_window_hours": "In how many hours are safe doses counted? (e.g. Max 2 pills in 24 hours)",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
           "hours_to_peak": "Hours to Peak (h)"
@@ -55,6 +57,7 @@
           "cycle_anchor_date": "Cycle start date",
           "dose_time": "Dose time",
           "safe_doses": "Safe doses per on-day",
+          "time_window_hours": "In how many hours are safe doses counted? (e.g. Max 1 pill in 24 hours)",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
           "hours_to_peak": "Hours to Peak (h)"
@@ -79,10 +82,12 @@
   "options": {
     "step": {
       "init": {
+        "title": "Schedule & Dosing",
+        "description": "Adjust the schedule, safety limits, and pharmacokinetic parameters. Effectiveness metrics can be changed on the next page.",
         "data": {
           "hours_between_doses": "Hours between each dose",
           "time_of_day": "Time of day to take",
-          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
+          "time_window_hours": "In how many hours are safe doses counted?",
           "days_on": "Days on (active window)",
           "days_off": "Days off (rest window)",
           "cycle_anchor_date": "Cycle start date",
@@ -90,7 +95,13 @@
           "safe_doses": "Safe doses",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)",
+          "hours_to_peak": "Hours to Peak (h)"
+        }
+      },
+      "effectiveness": {
+        "title": "Metrics Tracker",
+        "description": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "data": {
           "metric_pain": "Pain Level",
           "metric_mood": "Mood",
           "metric_nausea": "Nausea Level",
@@ -98,7 +109,6 @@
           "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
         },
         "data_description": {
-          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
           "custom_metrics": "A 1–10 slider will be created for each one added."
         }
       }
