@@ -24,6 +24,10 @@
           "metric_nausea": "Nausea Level",
           "metric_fatigue": "Fatigue Level",
           "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
+        },
+        "data_description": {
+          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
         }
       },
       "time_of_day": {
@@ -41,6 +45,10 @@
           "metric_nausea": "Nausea Level",
           "metric_fatigue": "Fatigue Level",
           "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
+        },
+        "data_description": {
+          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
         }
       },
       "as_needed": {
@@ -58,6 +66,10 @@
           "metric_nausea": "Nausea Level",
           "metric_fatigue": "Fatigue Level",
           "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
+        },
+        "data_description": {
+          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
         }
       },
       "cyclic": {
@@ -78,6 +90,10 @@
           "metric_nausea": "Nausea Level",
           "metric_fatigue": "Fatigue Level",
           "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
+        },
+        "data_description": {
+          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
         }
       }
     }
@@ -102,6 +118,10 @@
           "metric_nausea": "Nausea Level",
           "metric_fatigue": "Fatigue Level",
           "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
+        },
+        "data_description": {
+          "metric_pain": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+          "custom_metrics": "Type additional symptom names separated by commas. A 1–10 slider will be created for each one."
         }
       }
     }

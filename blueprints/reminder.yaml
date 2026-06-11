@@ -68,7 +68,6 @@ mode: restart
 action:
   - alias: "Reminder Loop"
     repeat:
-      count: 10
       while:
         # Loop while the sensor is in the past (meaning they haven't taken it yet)
         - condition: template

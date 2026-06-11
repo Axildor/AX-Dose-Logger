@@ -21,8 +21,8 @@ Pill Logger goes far beyond simple counters — it models drug concentration wit
 * **Strength Sensor** — Displays the configured per-dose strength (mg) for quick reference.
 
 ### 📊 Effectiveness Tracking
-* **Standard Metrics** — Optionally enable 1–10 sliders for Pain, Mood, Nausea, and Fatigue to log how well the medication is working for each dose.
-* **Custom Metrics** — Add your own comma-separated metrics (e.g. "brain fog, joint stiffness") and get a slider for each.
+* **Standard Metrics** — Optionally enable 1–10 sliders for Pain Level, Mood, Nausea Level, and Fatigue Level to log how well the medication is working for each dose.
+* **Custom Metrics** — Add your own tracking metrics separated by commas (e.g. "brain fog, joint stiffness") and get a slider for each.
 
 ### 📈 Insights
 * **Rolling Averages** — Automatically tracks consumption patterns with rolling averages for 7 days, 30 days, and yearly (365 days). Sensors scale calculations from the moment the medication is added or reset.
@@ -87,7 +87,7 @@ Each medication creates a **Device** with the following entities:
 |-------|-------------|---------|
 | Medication Name | Display name for the device | My Medication |
 | Initial Stock | Pills currently in inventory | 30 |
-| Time of Day | Daily dose time (HH:MM, 24-hour) | 08:00 |
+| Time of Day | Daily dose time (time picker) | 08:00 |
 | Safe Doses | Max doses per 24 hours | 1 |
 | Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
 | Effectiveness Metrics | Same as above | — |
@@ -109,8 +109,8 @@ Each medication creates a **Device** with the following entities:
 | Initial Stock | Pills currently in inventory | 30 |
 | Days On | Number of active days in the cycle | 5 |
 | Days Off | Number of rest days in the cycle | 2 |
-| Cycle Anchor Date | Start date of the cycle (YYYY-MM-DD) | Today |
-| Dose Time | Time of day to take on active days (HH:MM) | 08:00 |
+| Cycle Anchor Date | Start date of the cycle (calendar picker) | Today |
+| Dose Time | Time of day to take on active days (time picker) | 08:00 |
 | Safe Doses | Max doses per on-day | 1 |
 | Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
 | Effectiveness Metrics | Same as above | — |
