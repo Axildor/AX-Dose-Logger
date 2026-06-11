@@ -1,6 +1,7 @@
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.helpers import selector as sel
 from datetime import date
 from .const import DOMAIN, STANDARD_EFFECTIVENESS_METRICS
 
@@ -67,7 +68,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema_dict = {
              vol.Required("initial_stock", default=30): int,
-             vol.Required("time_of_day", default="08:00"): str,
+             vol.Required("time_of_day", default="08:00"): sel.TimeSelector(),
              vol.Required("safe_doses", default=1): int,
               vol.Optional("strength", default=0): vol.Coerce(float),
               vol.Optional("half_life", default=0): vol.Coerce(float),
@@ -109,8 +110,8 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
              vol.Required("initial_stock", default=30): int,
              vol.Required("days_on", default=5): int,
              vol.Required("days_off", default=2): int,
-             vol.Required("cycle_anchor_date", default=date.today().isoformat()): str,
-             vol.Required("dose_time", default="08:00"): str,
+             vol.Required("cycle_anchor_date", default=date.today().isoformat()): sel.DateSelector(sel.DateSelectorConfig()),
+             vol.Required("dose_time", default="08:00"): sel.TimeSelector(),
              vol.Required("safe_doses", default=1): int,
               vol.Optional("strength", default=0): vol.Coerce(float),
               vol.Optional("half_life", default=0): vol.Coerce(float),
@@ -144,14 +145,14 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         if tracking_type == "Regular Interval":
             schema_dict[vol.Required("hours_between_doses", default=options.get("hours_between_doses", data.get("hours_between_doses", 8)))] = int
         elif tracking_type == "Time of Day":
-            schema_dict[vol.Required("time_of_day", default=options.get("time_of_day", data.get("time_of_day", "08:00")))] = str
+            schema_dict[vol.Required("time_of_day", default=options.get("time_of_day", data.get("time_of_day", "08:00")))] = sel.TimeSelector()
         elif tracking_type == "As Needed":
             schema_dict[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 8)))] = int
         elif tracking_type == "Cyclic/Calendar Pattern":
             schema_dict[vol.Required("days_on", default=options.get("days_on", data.get("days_on", 5)))] = int
             schema_dict[vol.Required("days_off", default=options.get("days_off", data.get("days_off", 2)))] = int
-            schema_dict[vol.Required("cycle_anchor_date", default=options.get("cycle_anchor_date", data.get("cycle_anchor_date", date.today().isoformat())))] = str
-            schema_dict[vol.Required("dose_time", default=options.get("dose_time", data.get("dose_time", "08:00")))] = str
+            schema_dict[vol.Required("cycle_anchor_date", default=options.get("cycle_anchor_date", data.get("cycle_anchor_date", date.today().isoformat())))] = sel.DateSelector(sel.DateSelectorConfig())
+            schema_dict[vol.Required("dose_time", default=options.get("dose_time", data.get("dose_time", "08:00")))] = sel.TimeSelector()
 
         schema_dict[vol.Required("safe_doses", default=options.get("safe_doses", data.get("safe_doses", 1)))] = int
         schema_dict[vol.Optional("strength", default=options.get("strength", data.get("strength", 0)))] = vol.Coerce(float)
