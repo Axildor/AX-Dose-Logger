@@ -48,6 +48,8 @@ blueprint:
           unit_of_measurement: min
 
 variables:
+  # Expose notify_device so device-action templates can resolve it
+  notify_device: !input notify_device
   # Create unique action IDs so multiple pill alarms don't cross-talk
   next_dose_sensor: !input next_dose_sensor
   btn_entity: !input take_button
@@ -66,10 +68,11 @@ mode: restart
 action:
   - alias: "Reminder Loop"
     repeat:
+      count: 10
       while:
         # Loop while the sensor is in the past (meaning they haven't taken it yet)
         - condition: template
-          value_template: "{{ states(next_dose_sensor) != 'unknown' and now() >= states(next_dose_sensor) | as_datetime }}"
+          value_template: "{{ states(next_dose_sensor) not in ['unknown', 'unavailable', 'none', ''] and now() >= states(next_dose_sensor) | as_datetime }}"
       sequence:
         # 1. Run the Optional Action (e.g., TTS to Smart Speaker)
         - choose:
@@ -102,7 +105,7 @@ action:
               - action: "{{ action_skip }}"
                 title: "Skip Dose"
         
-        # 3. Wait for the user to tap a button
+        # 3. Wait for the user to tap a button (notification action or HA button press)
         - wait_for_trigger:
             - platform: event
               event_type: mobile_app_notification_action
@@ -116,23 +119,28 @@ action:
               event_type: mobile_app_notification_action
               event_data:
                 action: "{{ action_skip }}"
+            - platform: event
+              event_type: pill_logger_pill_taken
+              event_data:
+                entity_id: "{{ btn_entity }}"
           timeout:
             minutes: !input snooze_time
+          continue_on_timeout: true
 
         # 4. Handle the response
         - choose:
-            - conditions: "{{ wait.trigger.event.data.action == action_take }}"
+            - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.data.action == action_take }}"
               sequence:
-                - service: button.press
+                - action: button.press
                   target:
                     entity_id: !input take_button
             
-            - conditions: "{{ wait.trigger.event.data.action == action_snooze }}"
+            - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.data.action == action_snooze }}"
               sequence:
                 - delay:
                     minutes: !input snooze_time
             
-            - conditions: "{{ wait.trigger.event.data.action == action_skip }}"
+            - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.data.action == action_skip }}"
               sequence:
                 - device_id: !input notify_device
                   domain: mobile_app
@@ -141,6 +149,15 @@ action:
                   data:
                     tag: "{{ tag_id }}"
                 - stop: "User skipped."
+
+            - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.data.event_type == 'pill_logger_pill_taken' }}"
+              sequence:
+                - device_id: !input notify_device
+                  domain: mobile_app
+                  type: notify
+                  message: "clear_notification"
+                  data:
+                    tag: "{{ tag_id }}"
           
-          # If no response, wait the snooze time and loop again
+          # If no response (timeout), loop again
           default: []

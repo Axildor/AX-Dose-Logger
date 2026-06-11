@@ -3,6 +3,8 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from ..const import DOMAIN
 
 class PillStrengthSensor(RestoreSensor):
+    should_poll = False
+
     def __init__(self, entry):
         med_name = entry.data["medication_name"]
         self._med_name = med_name

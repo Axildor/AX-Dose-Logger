@@ -1,4 +1,3 @@
-from datetime import timedelta
 from homeassistant.core import HomeAssistant
 from .sensors.total import PillTotalSensor
 from .sensors.last_dose import PillLastDoseSensor
@@ -8,8 +7,6 @@ from .sensors.next_dose import PillNextDoseSensor
 from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.steady_state import PillSteadyStateSensor
 from .sensors.strength import PillStrengthSensor
-
-SCAN_INTERVAL = timedelta(minutes=2)
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     med_name = entry.data["medication_name"]

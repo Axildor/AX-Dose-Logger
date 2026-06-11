@@ -42,3 +42,23 @@
 - [x] Step 6: Finalize pharmacokinetic math stabilization (Fixed Concentration Decay and Steady State logic in sensor.py)
 - [x] Step 7: Modularize `sensor.py` into a `sensors/` package to improve maintainability for LLMs.
 - [x] Step 8: Finalize PK math and resolve `ValueError` crash via event-driven dispatcher and accumulation formula.
+
+## Effectiveness Mapping Feature
+- [x] Step 1: Context Grounding (Read all relevant source files)
+- [x] Step 2: Design implementation plan (saved to plans/effectiveness-mapping.md)
+- [x] Step 3: Update const.py (added STANDARD_EFFECTIVENESS_METRICS, EFFECTIVENESS_METRIC_ICONS, DEFAULT_METRIC_ICON, sanitize_key)
+- [x] Step 4: Update config_flow.py (added effectiveness fields to all 3 initial setup steps + options flow)
+- [x] Step 5: Update number.py (added PillEffectivenessSlider class + dynamic entity creation)
+- [x] Step 6: Update translations/en.json (added labels for all 5 new fields across all 4 step sections)
+- [x] Step 7: Syntax verification (py_compile passed on const.py, config_flow.py, number.py)
+- [x] Step 8: Update memory-bank files
+
+## Cyclic/Calendar Pattern Feature
+- [x] Step 1: Context Grounding (Read all relevant source files)
+- [x] Step 2: Design implementation plan (saved to plans/cyclic-calendar-pattern.md)
+- [x] Step 3: Update config_flow.py (added Cyclic/Calendar Pattern to dropdown, async_step_cyclic, and options flow branch)
+- [x] Step 4: Update sensors/safe_doses.py (added cyclic branch in _update_state)
+- [x] Step 5: Update sensors/next_dose.py (added cyclic branch in _update_state)
+- [x] Step 6: Update translations/en.json (added cyclic step labels and options labels)
+- [x] Step 7: Syntax verification (py_compile passed on config_flow.py, safe_doses.py, next_dose.py)
+- [x] Step 8: Update memory-bank files

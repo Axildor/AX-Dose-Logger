@@ -8,6 +8,8 @@ import homeassistant.util.dt as dt_util
 from ..const import DOMAIN
 
 class PillAvgDosesSensor(RestoreSensor):
+    should_poll = False
+
     def __init__(self, entry, window_days, sensor_name):
         med_name = entry.data["medication_name"]
         self._med_name = med_name
@@ -50,6 +52,12 @@ class PillAvgDosesSensor(RestoreSensor):
         if self._history_start_date is None:
             self._history_start_date = dt_util.now()
         self._update_state()
+        self.async_write_ha_state()
+
+    async def async_will_remove_from_hass(self):
+        if self._next_dose_timeout_unsub:
+            self._next_dose_timeout_unsub()
+            self._next_dose_timeout_unsub = None
 
     @callback
     def _on_midnight(self, now):
@@ -59,9 +67,8 @@ class PillAvgDosesSensor(RestoreSensor):
     @callback
     def pill_taken(self, *args, **kwargs):
         self._timestamps.append(dt_util.now())
-        if self._tracking_type in ("Time of Day", "Regular Interval"):
-            self._update_state()
-            self.async_write_ha_state()
+        self._update_state()
+        self.async_write_ha_state()
 
     @callback
     def reset_data(self, *args, **kwargs):
@@ -138,7 +145,3 @@ class PillAvgDosesSensor(RestoreSensor):
         self._update_state()
         self.async_write_ha_state()
         self._next_dose_timeout_unsub = None
-
-    @property
-    def native_value(self):
-        return self._attr_native_value

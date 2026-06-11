@@ -1,13 +1,15 @@
-from datetime import timedelta
+from datetime import timedelta, date
 from homeassistant.components.sensor import RestoreSensor
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
 from ..const import DOMAIN
 
 class PillSafeDosesSensor(RestoreSensor):
+    should_poll = False
+
     def __init__(self, entry):
         med_name = entry.data["medication_name"]
         self._med_name = med_name
@@ -30,8 +32,8 @@ class PillSafeDosesSensor(RestoreSensor):
         )
 
         self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._on_midnight, hour=0, minute=0, second=0
+            async_track_time_interval(
+                self.hass, self._on_interval, timedelta(minutes=1)
             )
         )
 
@@ -42,7 +44,8 @@ class PillSafeDosesSensor(RestoreSensor):
                 dt = dt_util.parse_datetime(ts_str)
                 if dt:
                     self._timestamps.append(dt)
-            self._update_state()  
+            self._update_state()
+            self.async_write_ha_state()
 
     @callback
     def pill_taken(self, *args, **kwargs):
@@ -54,7 +57,7 @@ class PillSafeDosesSensor(RestoreSensor):
     def reset_data(self, *args, **kwargs):
         self._timestamps = []
         self._update_state()
-        self.async_write_ha_state()  
+        self.async_write_ha_state()
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -62,10 +65,10 @@ class PillSafeDosesSensor(RestoreSensor):
             identifiers={(DOMAIN, self._entry_id)},
             name=self._med_name,
             manufacturer="Pill Logger",
-        )  
+        )
 
     @callback
-    def _on_midnight(self, now):
+    def _on_interval(self, now):
         self._update_state()
         self.async_write_ha_state()
 
@@ -107,11 +110,24 @@ class PillSafeDosesSensor(RestoreSensor):
                     self._attr_native_value = max_pills
             else:
                 self._attr_native_value = max_pills
-            
+        elif self._tracking_type == "Cyclic/Calendar Pattern":
+            days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
+            days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
+            anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
+            try:
+                anchor_date = date.fromisoformat(anchor_str)
+            except (ValueError, TypeError):
+                anchor_date = now.date()
+            cycle_length = days_on + days_off
+            if cycle_length <= 0:
+                cycle_length = 1
+            days_since_anchor = (now.date() - anchor_date).days
+            position_in_cycle = days_since_anchor % cycle_length
+            if position_in_cycle < days_on:
+                self._attr_native_value = max_pills
+            else:
+                self._attr_native_value = 0
+
         self._attr_extra_state_attributes = {
             "timestamps": [ts.isoformat() for ts in self._timestamps]
-        }  
-
-    @property
-    def native_value(self):
-        return self._attr_native_value  
+        }

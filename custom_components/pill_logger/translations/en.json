@@ -16,7 +16,12 @@
           "safe_doses": "Safe doses per interval",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "hours_to_peak": "Hours to Peak (h)",
+          "metric_pain": "Track Pain effectiveness",
+          "metric_mood": "Track Mood effectiveness",
+          "metric_nausea": "Track Nausea effectiveness",
+          "metric_fatigue": "Track Fatigue effectiveness",
+          "custom_metrics": "Custom metrics (comma-separated, e.g. brain fog, joint stiffness)"
         }
       },
       "time_of_day": {
@@ -27,7 +32,12 @@
           "safe_doses": "Safe doses per 24 hours",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "hours_to_peak": "Hours to Peak (h)",
+          "metric_pain": "Track Pain effectiveness",
+          "metric_mood": "Track Mood effectiveness",
+          "metric_nausea": "Track Nausea effectiveness",
+          "metric_fatigue": "Track Fatigue effectiveness",
+          "custom_metrics": "Custom metrics (comma-separated, e.g. brain fog, joint stiffness)"
         }
       },
       "as_needed": {
@@ -38,7 +48,31 @@
           "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "hours_to_peak": "Hours to Peak (h)",
+          "metric_pain": "Track Pain effectiveness",
+          "metric_mood": "Track Mood effectiveness",
+          "metric_nausea": "Track Nausea effectiveness",
+          "metric_fatigue": "Track Fatigue effectiveness",
+          "custom_metrics": "Custom metrics (comma-separated, e.g. brain fog, joint stiffness)"
+        }
+      },
+      "cyclic": {
+        "title": "Cyclic/Calendar Pattern Setup",
+        "data": {
+          "initial_stock": "Current Inventory (Pills left)",
+          "days_on": "Days on (active window)",
+          "days_off": "Days off (rest window)",
+          "cycle_anchor_date": "Cycle start date (YYYY-MM-DD)",
+          "dose_time": "Time of day to take (HH:MM format, 24-hour)",
+          "safe_doses": "Safe doses per on-day",
+          "strength": "Strength (mg)",
+          "half_life": "Half-Life (h)",
+          "hours_to_peak": "Hours to Peak (h)",
+          "metric_pain": "Track Pain effectiveness",
+          "metric_mood": "Track Mood effectiveness",
+          "metric_nausea": "Track Nausea effectiveness",
+          "metric_fatigue": "Track Fatigue effectiveness",
+          "custom_metrics": "Custom metrics (comma-separated, e.g. brain fog, joint stiffness)"
         }
       }
     }
@@ -47,9 +81,22 @@
     "step": {
       "init": {
         "data": {
+          "hours_between_doses": "Hours between each dose",
+          "time_of_day": "Time of day to take (HH:MM format, 24-hour)",
+          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
+          "days_on": "Days on (active window)",
+          "days_off": "Days off (rest window)",
+          "cycle_anchor_date": "Cycle start date (YYYY-MM-DD)",
+          "dose_time": "Time of day to take (HH:MM format, 24-hour)",
+          "safe_doses": "Safe doses",
           "strength": "Strength (mg)",
           "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "hours_to_peak": "Hours to Peak (h)",
+          "metric_pain": "Track Pain effectiveness",
+          "metric_mood": "Track Mood effectiveness",
+          "metric_nausea": "Track Nausea effectiveness",
+          "metric_fatigue": "Track Fatigue effectiveness",
+          "custom_metrics": "Custom metrics (comma-separated, e.g. brain fog, joint stiffness)"
         }
       }
     }

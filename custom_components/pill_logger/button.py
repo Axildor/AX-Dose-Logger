@@ -32,6 +32,10 @@ class PillTakeButton(ButtonEntity):
     async def async_press(self):
         """When pressed, send a signal to update the sensor and number entities."""
         async_dispatcher_send(self.hass, f"pill_taken_{self._entry_id}")
+        self.hass.bus.async_fire(
+            "pill_logger_pill_taken",
+            {"entity_id": self.entity_id},
+        )
 
 class PillResetButton(ButtonEntity):
     def __init__(self, name, entry_id):

@@ -5,9 +5,12 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
+import math
 from ..const import DOMAIN
 
 class PillSteadyStateSensor(RestoreSensor):
+    should_poll = False
+
     def __init__(self, entry):
         med_name = entry.data["medication_name"]
         self._med_name = med_name
@@ -32,7 +35,6 @@ class PillSteadyStateSensor(RestoreSensor):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, f"concentration_updated_{self._entry_id}", self._update_from_concentration)
         )
-        
 
         last_state = await self.async_get_last_state()
         if last_state and "last_dose_timestamp" in last_state.attributes:
@@ -52,7 +54,6 @@ class PillSteadyStateSensor(RestoreSensor):
         self._last_dose_timestamp = None
         self.update_state()
 
-
     @callback
     def _update_from_concentration(self, current_mass):
         self._current_mass = current_mass
@@ -71,7 +72,6 @@ class PillSteadyStateSensor(RestoreSensor):
             self.async_write_ha_state()
             return
 
-        import math
         k_e = math.log(2) / half_life
         accumulation_factor = 1.0 / (1.0 - math.exp(-k_e * tau))
         c_max_ss = strength * accumulation_factor
@@ -118,8 +118,4 @@ class PillSteadyStateSensor(RestoreSensor):
             identifiers={(DOMAIN, self._entry_id)},
             name=self._med_name,
             manufacturer="Pill Logger",
-        )  
-
-    @property
-    def native_value(self):
-        return self._attr_native_value
+        )

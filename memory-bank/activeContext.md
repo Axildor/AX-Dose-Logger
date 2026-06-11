@@ -1,36 +1,45 @@
-# Active Context: Pill Logger Sensor Fixes & PK Engine Upgrade
+# Active Context: Pill Logger — Cyclic/Calendar Pattern Feature
 
 ## Current Status
-The pharmacokinetics engine has been upgraded to support dynamic $k_a$ solving based on "Hours to Peak", and a state-aware Steady State sensor has been implemented. Startup crashes related to state restoration have been resolved. A targeted refactor has been applied to align configuration flow, presentation precision, and state execution gates.
+The Cyclic/Calendar Pattern tracking type has been implemented. This feature allows users to define a medication routine that runs on a fixed cycle: X days on, Y days off, repeated continuously, starting from a specific anchor date.
 
-## Problem Description
-- **Issue 1: Setup Loop Interruption.** `PillConcentrationSensor` was missing from registration. (Fixed)
-- **Issue 2: Missing Callback.** `PillSafeDosesSensor` was missing `_on_midnight`. (Fixed)
-- **Issue 3: Single Compartment Limitation.** The previous model didn't account for absorption delay. (Resolved by upgrade)
-- **Issue 4: Config Flow Duplication.** `hours_to_peak` appeared in both initial and detailed setup steps. (Fixed)
-- **Issue 5: Presentation/Polling misalignment.** Sensors lacked explicit scan intervals and precision metadata. (Fixed)
-- **Issue 6: State Gate Bypass.** Pill strength was sometimes bypassing the gut compartment. (Fixed)
+## Feature: Cyclic/Calendar Pattern
 
-## Fixes Applied
-- **Fix 1:** Added `PillConcentrationSensor(entry)` to the entities list in `async_setup_entry`.
-- **Fix 2:** Implemented `_on_midnight` callback in `PillSafeDosesSensor`.
-- **Fix 3: Two-Compartment PK Engine.** Redesigned concentration tracking in `sensor.py` to use the Iterative State Method, tracking `gut_mass` and `body_mass`.
-- **Fix 4: Numerical $k_a$ Solver.** Replaced "Absorption Delay" with "Hours to Peak" ($T_{max}$) and implemented a binary search solver (`_solve_ka`) to dynamically calculate the absorption rate.
-- **Fix 5: State Restoration Fix.** Resolved `AttributeError` in `async_added_to_hass` by correctly using `last_state.state` and casting numerical strings to floats.
-- **Fix 6: Dynamic Steady State Tracking.** Refactored `PillSteadyStateSensor` to detect missed doses (>24h) and dynamically recalculate recovery time, ensuring 0.0 is not a flat baseline during active dosing.
-- **Fix 7: Boot Loop Resolution.** Corrected a malformed `homeassistant.states` import in `sensor.py` that caused fatal startup errors.
-- **Fix 8: Config Flow De-duplication.** Removed `hours_to_peak` from `STEP_USER_SCHEMA` in `config_flow.py`.
-- **Fix 9: Precision & Polling.** Added `SCAN_INTERVAL = timedelta(minutes=2)` and set `_attr_suggested_display_precision = 1` and `_attr_native_unit_of_measurement = "mg"` in `PillConcentrationSensor`.
-- **Fix 10: Execution Gate Routing.** Modified `handle_pill_taken` to always inject strength into `_gut_mass` and added immediate `async_write_ha_state()` trigger.
-- **Fix 11: PK Engine & Event Sync.** Fixed instant-absorption bug in `PillConcentrationSensor` (direct bloodstream injection if $T_{max}=0$), implemented a dispatcher to broadcast concentration updates, and refactored `PillSteadyStateSensor` to use a real-time pharmacokinetic accumulation formula and event-driven updates, resolving the `ValueError` crash by replacing `"N/A"` with `None`.
+### What Was Added
+- **New tracking type** `"Cyclic/Calendar Pattern"` added as a 4th option alongside Regular Interval, Time of Day, and As Needed
+- **Config flow step** `async_step_cyclic` with fields: `days_on`, `days_off`, `cycle_anchor_date`, `dose_time`, plus standard fields
+- **Options flow** support for editing cyclic-specific parameters (`days_on`, `days_off`, `cycle_anchor_date`, `dose_time`)
+- **Safe Doses sensor** evaluates cycle position: returns `max_pills` during ON days, `0` during OFF days
+- **Next Dose sensor** calculates next dose timestamp based on cycle position and dose_time
+- **Localized strings** for all cyclic fields in `translations/en.json`
 
-## Verification Results
-- Verified corrected imports and fixed boot-loop crash (syntax check passed).
-- Confirmed both sensors are properly registered.
-- Verified two-compartment math logic and steady state calculation.
-- Confirmed `sensor.py` compiles successfully after refactor.
+### Files Modified
+1. **`config_flow.py`** — Added `"Cyclic/Calendar Pattern"` to dropdown, `async_step_cyclic` method, and cyclic branch in options flow; imported `date` from `datetime`
+2. **`sensors/safe_doses.py`** — Added `elif self._tracking_type == "Cyclic/Calendar Pattern":` branch in `_update_state()`; imported `date` from `datetime`
+3. **`sensors/next_dose.py`** — Added `elif self._tracking_type == "Cyclic/Calendar Pattern":` branch in `_update_state()`; imported `date` and `datetime` from `datetime`
+4. **`translations/en.json`** — Added `cyclic` step section with labels for all cyclic-specific fields; added cyclic field labels to `options.step.init.data`
 
-## Next Steps
-- Finalize documentation synchronization.
-- Completed pharmacokinetic math stabilization in `sensor.py` (Fixed Concentration Decay Overlap and Steady State Boot Race Condition).
-- Modularized `sensor.py` into a package structure under `sensors/` for better maintainability.
+### Cycle Calculation Logic
+- `position_in_cycle = (today - anchor_date).days % (days_on + days_off)`
+- If `position_in_cycle < days_on` → ON window (safe_doses = max_pills)
+- If `position_in_cycle >= days_on` → OFF window (safe_doses = 0)
+
+### Next Dose Logic (Cyclic)
+- **OFF window**: next dose = start of next ON period at `dose_time`
+- **ON window, before dose_time**: next dose = today at `dose_time`
+- **ON window, after dose_time, dose already taken**: next dose = next ON day at `dose_time`
+- **ON window, after dose_time, no dose taken**: next dose = today at `dose_time` (still available)
+
+### Key Design Decisions
+- `dose_time` field (HH:MM) gives users control over when during ON days the dose is scheduled
+- `cycle_anchor_date` stored as ISO date string, parsed with `date.fromisoformat()`, fallback to today
+- No timestamp filtering for cyclic safe_doses — cycle position alone determines availability
+- All changes are additive `elif` branches; existing tracking types are completely undisturbed
+- Config flow VERSION remains at 2 (no breaking changes to existing entries)
+
+## Previous Context (Archived)
+- Effectiveness Mapping feature implemented (4 standard metrics + custom metrics)
+- PK engine upgraded to two-compartment model with dynamic $k_a$ solving
+- Steady state sensor implemented with event-driven updates
+- Sensor package modularized into `sensors/` directory
+- Various runtime bug fixes
