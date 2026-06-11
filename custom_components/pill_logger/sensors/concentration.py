@@ -19,9 +19,9 @@ class PillConcentrationSensor(RestoreSensor):
         self._attr_unique_id = f"{entry.entry_id}_concentration"
         self._attr_icon = "mdi:chart-bell-curve"
         self._entry_id = entry.entry_id
-        self._strength = entry.data.get("strength", 0)
-        self._half_life = entry.data.get("half_life", 0)
-        self._hours_to_peak = entry.data.get("hours_to_peak", 0.0)
+        self._strength = entry.options.get("strength", entry.data.get("strength", 0))
+        self._half_life = entry.options.get("half_life", entry.data.get("half_life", 0))
+        self._hours_to_peak = entry.options.get("hours_to_peak", entry.data.get("hours_to_peak", 0.0))
         self._current_mass = 0.0
         self._gut_mass = 0.0
         self._last_updated = None
