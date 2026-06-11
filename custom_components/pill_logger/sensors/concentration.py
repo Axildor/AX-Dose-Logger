@@ -42,7 +42,7 @@ class PillConcentrationSensor(RestoreSensor):
         )
         self.async_on_remove(
             async_track_time_interval(
-                self.hass, self.update_decay, timedelta(minutes=20)
+                self.hass, self.update_decay, timedelta(minutes=2)
             )
         )
         last_state = await self.async_get_last_state()

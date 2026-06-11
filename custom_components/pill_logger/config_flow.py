@@ -121,8 +121,8 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         fields = {}
         for key in STANDARD_EFFECTIVENESS_METRICS:
-            fields[vol.Optional(f"metric_{key}", default=False)] = bool
-        fields[vol.Optional("custom_metrics", default="")] = str
+            fields[vol.Optional(f"metric_{key}", default=False)] = sel.BooleanSelector()
+        fields[vol.Optional("custom_metrics", default="")] = sel.TextSelector()
 
         return self.async_show_form(
             step_id="effectiveness",
@@ -189,8 +189,8 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         fields = {}
         for key in STANDARD_EFFECTIVENESS_METRICS:
             opt_key = f"metric_{key}"
-            fields[vol.Optional(opt_key, default=options.get(opt_key, data.get(opt_key, False)))] = bool
-        fields[vol.Optional("custom_metrics", default=options.get("custom_metrics", data.get("custom_metrics", "")))] = str
+            fields[vol.Optional(opt_key, default=options.get(opt_key, data.get(opt_key, False)))] = sel.BooleanSelector()
+        fields[vol.Optional("custom_metrics", default=options.get("custom_metrics", data.get("custom_metrics", "")))] = sel.TextSelector()
 
         return self.async_show_form(
             step_id="effectiveness",
