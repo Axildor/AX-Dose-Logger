@@ -10,12 +10,13 @@ import math
 from ..const import DOMAIN
 
 class PillConcentrationSensor(RestoreSensor):
+    _attr_has_entity_name = True
     should_poll = False
 
     def __init__(self, entry):
         med_name = entry.data["medication_name"]
         self._med_name = med_name
-        self._attr_name = f"{med_name} Amount in body"
+        self._attr_name = "Amount in body"
         self._attr_unique_id = f"{entry.entry_id}_concentration"
         self._attr_icon = "mdi:chart-bell-curve"
         self._entry_id = entry.entry_id

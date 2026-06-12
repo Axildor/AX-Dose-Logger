@@ -5,11 +5,12 @@ from homeassistant.core import callback
 from ..const import DOMAIN
 
 class PillTotalSensor(RestoreSensor):
+    _attr_has_entity_name = True
     should_poll = False
 
     def __init__(self, name, entry_id):
         self._med_name = name
-        self._attr_name = f"{name} Total Doses"
+        self._attr_name = "Total Doses"
         self._attr_unique_id = f"{entry_id}_total"
         self._attr_icon = "mdi:chart-line"
         self._entry_id = entry_id

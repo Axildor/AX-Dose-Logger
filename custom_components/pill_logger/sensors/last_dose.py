@@ -6,11 +6,12 @@ import homeassistant.util.dt as dt_util
 from ..const import DOMAIN
 
 class PillLastDoseSensor(RestoreSensor):
+    _attr_has_entity_name = True
     should_poll = False
 
     def __init__(self, name, entry_id):
         self._med_name = name
-        self._attr_name = f"{name} Last Dose"
+        self._attr_name = "Last Dose"
         self._attr_unique_id = f"{entry_id}_last_dose"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._entry_id = entry_id

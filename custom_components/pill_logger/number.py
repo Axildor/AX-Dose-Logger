@@ -36,11 +36,12 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     async_add_entities(entities)
 
 class PillStockNumber(RestoreNumber):
+    _attr_has_entity_name = True
     should_poll = False
 
     def __init__(self, name, entry_id, initial_stock):
         self._med_name = name
-        self._attr_name = f"{name} Pills Left"
+        self._attr_name = "Pills Left"
         self._attr_unique_id = f"{entry_id}_stock"
         self._attr_icon = "mdi:medical-bag"
         self._entry_id = entry_id
@@ -95,11 +96,12 @@ class PillStockNumber(RestoreNumber):
         self.async_write_ha_state()
 
 class PillAddStockNumber(NumberEntity):
+    _attr_has_entity_name = True
     should_poll = False
 
     def __init__(self, name, entry_id):
         self._med_name = name
-        self._attr_name = f"Add {name} Refill"
+        self._attr_name = "Add Refill"
         self._attr_unique_id = f"{entry_id}_add_stock"
         self._attr_icon = "mdi:plus-box"
         self._entry_id = entry_id
@@ -142,12 +144,13 @@ class PillAddStockNumber(NumberEntity):
 class PillEffectivenessSlider(RestoreNumber):
     """Number entity representing a 1-10 subjective effectiveness metric for a medication."""
 
+    _attr_has_entity_name = True
     should_poll = False
 
     def __init__(self, med_name: str, entry_id: str, metric_key: str, metric_label: str, icon: str):
         self._med_name = med_name
         self._metric_key = metric_key
-        self._attr_name = f"{med_name} {metric_label} Effectiveness"
+        self._attr_name = f"{metric_label} Effectiveness"
         self._attr_unique_id = f"{entry_id}_eff_{metric_key}"
         self._attr_icon = icon
         self._entry_id = entry_id

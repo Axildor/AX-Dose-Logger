@@ -8,12 +8,13 @@ import homeassistant.util.dt as dt_util
 from ..const import DOMAIN
 
 class PillSafeDosesSensor(RestoreSensor):
+    _attr_has_entity_name = True
     should_poll = False
 
     def __init__(self, entry):
         med_name = entry.data["medication_name"]
         self._med_name = med_name
-        self._attr_name = f"{med_name} Safe Doses"
+        self._attr_name = "Safe Doses"
         self._attr_unique_id = f"{entry.entry_id}_safe_doses"
         self._attr_icon = "mdi:pill"
         self._entry_id = entry.entry_id

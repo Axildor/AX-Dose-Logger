@@ -87,7 +87,7 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug concentration and steady state over time. Leave all values at 0 if not needed.",
+        "description": "Optional: configure to track drug concentration over time. Steady state tracking is only available for scheduled medications (Regular Interval, Time of Day, Cyclic). Leave all values at 0 if not needed.",
         "data": {
           "strength": "Dose Strength",
           "half_life": "Elimination Half-Life",
@@ -159,7 +159,7 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug concentration and steady state over time. Leave all values at 0 if not needed.",
+        "description": "Optional: configure to track drug concentration over time. Steady state tracking is only available for scheduled medications (Regular Interval, Time of Day, Cyclic). Leave all values at 0 if not needed.",
         "data": {
           "strength": "Dose Strength",
           "half_life": "Elimination Half-Life",

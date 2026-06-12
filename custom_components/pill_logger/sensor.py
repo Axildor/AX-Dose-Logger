@@ -21,7 +21,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entities.append(PillAvgDosesSensor(entry, 14, "Avg Daily Doses (14 Days)"))
     entities.append(PillAvgDosesSensor(entry, 30, "Avg Daily Doses (30 Days)"))
     entities.append(PillAvgDosesSensor(entry, 365, "Avg Daily Doses (Yearly)"))
-    entities.append(PillSteadyStateSensor(entry))
+    # Steady state is only meaningful for scheduled medications (requires a fixed dosing interval τ)
+    if tracking_type != "As Needed":
+        entities.append(PillSteadyStateSensor(entry))
     entities.append(PillStrengthSensor(entry))
     enable_adherence = entry.options.get(
         "enable_adherence", entry.data.get("enable_adherence", tracking_type != "As Needed")

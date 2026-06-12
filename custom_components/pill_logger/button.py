@@ -15,10 +15,11 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     ])
 
 class PillTakeButton(ButtonEntity):
+    _attr_has_entity_name = True
+
     def __init__(self, name, entry_id):
-        self._name = name
         self._med_name = name
-        self._attr_name = f"Take {name}"
+        self._attr_name = "Take"
         self._attr_unique_id = f"{entry_id}_take"
         self._attr_icon = "mdi:pill"
         self._entry_id = entry_id
@@ -41,10 +42,11 @@ class PillTakeButton(ButtonEntity):
         )
 
 class PillResetButton(ButtonEntity):
+    _attr_has_entity_name = True
+
     def __init__(self, name, entry_id):
-        self._name = name
         self._med_name = name
-        self._attr_name = f"Reset {name} History"
+        self._attr_name = "Reset History"
         self._attr_unique_id = f"{entry_id}_reset"
         self._attr_icon = "mdi:history"
         self._entry_id = entry_id
@@ -65,9 +67,11 @@ class PillResetButton(ButtonEntity):
 class PillUndoButton(ButtonEntity):
     """Button entity that reverts the most recently logged dose."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, name, entry_id):
         self._med_name = name
-        self._attr_name = f"Undo {name} Dose"
+        self._attr_name = "Undo Dose"
         self._attr_unique_id = f"{entry_id}_undo"
         self._attr_icon = "mdi:undo"
         self._entry_id = entry_id
