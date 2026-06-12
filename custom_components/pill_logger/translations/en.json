@@ -19,29 +19,19 @@
           "initial_stock": "Inventory",
           "hours_between_doses": "Dose Interval",
           "safe_doses": "Safe Doses",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "strength": "Strength",
+          "half_life": "Half-Life",
+          "hours_to_peak": "Hours to Peak"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "hours_between_doses": "Minimum hours between consecutive doses.",
           "safe_doses": "Maximum doses allowed within the time window.",
-          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours."
-        },
-        "sections": {
-          "pk_params": {
-            "name": "Pharmacokinetic Parameters",
-            "description": "Optional: Configure these to track drug amount in the body over time.",
-            "data": {
-              "strength": "Strength",
-              "half_life": "Half-Life",
-              "hours_to_peak": "Hours to Peak"
-            },
-            "data_description": {
-              "strength": "Per-dose strength in mg. Required for PK tracking.",
-              "half_life": "Elimination half-life. Required for PK tracking.",
-              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
-            }
-          }
+          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours.",
+          "strength": "Per-dose strength in mg. Required for PK tracking.",
+          "half_life": "Elimination half-life. Required for PK tracking.",
+          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
         }
       },
       "time_of_day": {
@@ -51,29 +41,19 @@
           "initial_stock": "Inventory",
           "time_of_day": "Dose Time",
           "safe_doses": "Safe Doses",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "strength": "Strength",
+          "half_life": "Half-Life",
+          "hours_to_peak": "Hours to Peak"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "time_of_day": "Time of day to take the medication.",
           "safe_doses": "Maximum doses allowed within the time window.",
-          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 24 hours."
-        },
-        "sections": {
-          "pk_params": {
-            "name": "Pharmacokinetic Parameters",
-            "description": "Optional: Configure these to track drug amount in the body over time.",
-            "data": {
-              "strength": "Strength",
-              "half_life": "Half-Life",
-              "hours_to_peak": "Hours to Peak"
-            },
-            "data_description": {
-              "strength": "Per-dose strength in mg. Required for PK tracking.",
-              "half_life": "Elimination half-life. Required for PK tracking.",
-              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
-            }
-          }
+          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 24 hours.",
+          "strength": "Per-dose strength in mg. Required for PK tracking.",
+          "half_life": "Elimination half-life. Required for PK tracking.",
+          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
         }
       },
       "as_needed": {
@@ -82,28 +62,18 @@
         "data": {
           "initial_stock": "Inventory",
           "safe_doses": "Safe Doses",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "strength": "Strength",
+          "half_life": "Half-Life",
+          "hours_to_peak": "Hours to Peak"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "safe_doses": "Maximum doses allowed within the time window.",
-          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours."
-        },
-        "sections": {
-          "pk_params": {
-            "name": "Pharmacokinetic Parameters",
-            "description": "Optional: Configure these to track drug amount in the body over time.",
-            "data": {
-              "strength": "Strength",
-              "half_life": "Half-Life",
-              "hours_to_peak": "Hours to Peak"
-            },
-            "data_description": {
-              "strength": "Per-dose strength in mg. Required for PK tracking.",
-              "half_life": "Elimination half-life. Required for PK tracking.",
-              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
-            }
-          }
+          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours.",
+          "strength": "Per-dose strength in mg. Required for PK tracking.",
+          "half_life": "Elimination half-life. Required for PK tracking.",
+          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
         }
       },
       "cyclic": {
@@ -116,7 +86,10 @@
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
           "safe_doses": "Safe Doses",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "strength": "Strength",
+          "half_life": "Half-Life",
+          "hours_to_peak": "Hours to Peak"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
@@ -125,23 +98,10 @@
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
           "safe_doses": "Maximum doses allowed within the time window.",
-          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 1 pill in 24 hours."
-        },
-        "sections": {
-          "pk_params": {
-            "name": "Pharmacokinetic Parameters",
-            "description": "Optional: Configure these to track drug amount in the body over time.",
-            "data": {
-              "strength": "Strength",
-              "half_life": "Half-Life",
-              "hours_to_peak": "Hours to Peak"
-            },
-            "data_description": {
-              "strength": "Per-dose strength in mg. Required for PK tracking.",
-              "half_life": "Elimination half-life. Required for PK tracking.",
-              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
-            }
-          }
+          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 1 pill in 24 hours.",
+          "strength": "Per-dose strength in mg. Required for PK tracking.",
+          "half_life": "Elimination half-life. Required for PK tracking.",
+          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
         }
       },
       "effectiveness": {
@@ -173,7 +133,10 @@
           "days_off": "Days Off",
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
-          "safe_doses": "Safe Doses"
+          "safe_doses": "Safe Doses",
+          "strength": "Strength",
+          "half_life": "Half-Life",
+          "hours_to_peak": "Hours to Peak"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
@@ -183,23 +146,10 @@
           "days_off": "Number of rest days in the cycle.",
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
-          "safe_doses": "Maximum doses allowed within the time window."
-        },
-        "sections": {
-          "pk_params": {
-            "name": "Pharmacokinetic Parameters",
-            "description": "Optional: Configure these to track drug amount in the body over time.",
-            "data": {
-              "strength": "Strength",
-              "half_life": "Half-Life",
-              "hours_to_peak": "Hours to Peak"
-            },
-            "data_description": {
-              "strength": "Per-dose strength in mg. Required for PK tracking.",
-              "half_life": "Elimination half-life. Required for PK tracking.",
-              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
-            }
-          }
+          "safe_doses": "Maximum doses allowed within the time window.",
+          "strength": "Per-dose strength in mg. Required for PK tracking.",
+          "half_life": "Elimination half-life. Required for PK tracking.",
+          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
         }
       },
       "effectiveness": {

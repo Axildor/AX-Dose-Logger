@@ -90,6 +90,9 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Dose Interval | 1–48 h | Minimum hours between consecutive doses | 8 |
 | Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 3 pills in 24 hours | 8 |
+| Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
+| Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
+| Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |
 
 #### Time of Day
 | Field | Range | Description | Default |
@@ -98,6 +101,9 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Dose Time | Time picker | Time of day to take the medication | 08:00 |
 | Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 2 pills in 24 hours | 24 |
+| Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
+| Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
+| Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |
 
 #### As Needed (PRN)
 | Field | Range | Description | Default |
@@ -105,6 +111,9 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 2 |
 | Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours | 8 |
+| Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
+| Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
+| Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |
 
 #### Cyclic/Calendar Pattern
 | Field | Range | Description | Default |
@@ -116,12 +125,6 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Dose Time | Time picker | Time of day to take on active days | 08:00 |
 | Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 1 pill in 24 hours | 24 |
-
-#### Pharmacokinetic Parameters (Collapsible Section)
-All tracking modes include an optional collapsible section for PK parameters. These are required for the Amount in Body and Steady State sensors.
-
-| Field | Range | Description | Default |
-|-------|-------|-------------|---------|
 | Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
 | Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
 | Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |

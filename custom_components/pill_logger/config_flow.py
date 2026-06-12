@@ -31,17 +31,12 @@ _DAYS_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=1, max=30, step=1, unit_of_measurement="days", mode=sel.NumberSelectorMode.BOX
 ))
 
-# PK section definition — shared across all steps that have pharmacokinetic fields
-PK_SECTION = sel.ConfigFlowSection(
-    slug="pk_params",
-    name="Pharmacokinetic Parameters",
-    description="Optional: Configure these to track drug amount in the body over time.",
-    schema=vol.Schema({
-        vol.Optional("strength", default=0): _STRENGTH_SELECTOR,
-        vol.Optional("half_life", default=0): _HALF_LIFE_SELECTOR,
-        vol.Optional("hours_to_peak", default=0): _HOURS_TO_PEAK_SELECTOR,
-    }),
-)
+# PK fields — included in all initial config step schemas
+_PK_FIELDS = {
+    vol.Optional("strength", default=0): _STRENGTH_SELECTOR,
+    vol.Optional("half_life", default=0): _HALF_LIFE_SELECTOR,
+    vol.Optional("hours_to_peak", default=0): _HOURS_TO_PEAK_SELECTOR,
+}
 
 
 class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -85,11 +80,11 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("safe_doses", default=1): _SAFE_DOSES_SELECTOR,
             vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
         }
+        main_schema.update(_PK_FIELDS)
 
         return self.async_show_form(
             step_id="regular_interval",
             data_schema=vol.Schema(main_schema),
-            sections=[PK_SECTION],
         )
 
     async def async_step_time_of_day(self, user_input=None):
@@ -103,11 +98,11 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("safe_doses", default=1): _SAFE_DOSES_SELECTOR,
             vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
         }
+        main_schema.update(_PK_FIELDS)
 
         return self.async_show_form(
             step_id="time_of_day",
             data_schema=vol.Schema(main_schema),
-            sections=[PK_SECTION],
         )
 
     async def async_step_as_needed(self, user_input=None):
@@ -120,11 +115,11 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("safe_doses", default=2): _SAFE_DOSES_SELECTOR,
             vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
         }
+        main_schema.update(_PK_FIELDS)
 
         return self.async_show_form(
             step_id="as_needed",
             data_schema=vol.Schema(main_schema),
-            sections=[PK_SECTION],
         )
 
     async def async_step_cyclic(self, user_input=None):
@@ -141,11 +136,11 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("safe_doses", default=1): _SAFE_DOSES_SELECTOR,
             vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
         }
+        main_schema.update(_PK_FIELDS)
 
         return self.async_show_form(
             step_id="cyclic",
             data_schema=vol.Schema(main_schema),
-            sections=[PK_SECTION],
         )
 
     async def async_step_effectiveness(self, user_input=None):
@@ -205,23 +200,14 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
 
         main_schema[vol.Required("safe_doses", default=options.get("safe_doses", data.get("safe_doses", 1)))] = _SAFE_DOSES_SELECTOR
 
-        # PK section with loaded defaults
-        pk_schema = vol.Schema({
-            vol.Optional("strength", default=options.get("strength", data.get("strength", 0))): _STRENGTH_SELECTOR,
-            vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0))): _HALF_LIFE_SELECTOR,
-            vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0))): _HOURS_TO_PEAK_SELECTOR,
-        })
-        pk_section = sel.ConfigFlowSection(
-            slug="pk_params",
-            name="Pharmacokinetic Parameters",
-            description="Optional: Configure these to track drug amount in the body over time.",
-            schema=pk_schema,
-        )
+        # PK fields with loaded defaults
+        main_schema[vol.Optional("strength", default=options.get("strength", data.get("strength", 0)))] = _STRENGTH_SELECTOR
+        main_schema[vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0)))] = _HALF_LIFE_SELECTOR
+        main_schema[vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0)))] = _HOURS_TO_PEAK_SELECTOR
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(main_schema),
-            sections=[pk_section],
         )
 
     async def async_step_effectiveness(self, user_input=None):
