@@ -35,6 +35,9 @@ class PillAvgDosesSensor(RestoreSensor):
             async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self.reset_data)
         )
         self.async_on_remove(
+            async_dispatcher_connect(self.hass, f"pill_undone_{self._entry_id}", self.pill_undone)
+        )
+        self.async_on_remove(
             async_track_time_change(
                 self.hass, self._on_midnight, hour=0, minute=0, second=0
             )
@@ -65,8 +68,17 @@ class PillAvgDosesSensor(RestoreSensor):
         self.async_write_ha_state()
 
     @callback
-    def pill_taken(self, *args, **kwargs):
-        self._timestamps.append(dt_util.now())
+    def pill_taken(self, timestamp, *args, **kwargs):
+        """Handle pill_taken signal with synchronized timestamp payload."""
+        self._timestamps.append(timestamp)
+        self._update_state()
+        self.async_write_ha_state()
+
+    @callback
+    def pill_undone(self, *args, **kwargs):
+        """Handle pill_undone signal: remove the most recent timestamp."""
+        if self._timestamps:
+            self._timestamps.pop()
         self._update_state()
         self.async_write_ha_state()
 

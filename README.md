@@ -35,6 +35,7 @@ Pill Logger goes far beyond simple counters — it models drug amount in the bod
 
 ### 💊 Inventory
 * **Smart Inventory** — Tracks remaining pills. To refill, double-tap the inventory card, type the new box amount, and it automatically adds to your total and resets the input to 0.
+* **Undo Last Dose** — Accidentally pressed Take? The Undo button reverts the most recent dose across all sensors, counters, and the PK model — restoring inventory, removing the timestamp, and recalculating the concentration curve from dose history.
 * **Native Countdowns** — Outputs the exact `datetime` of your next available dose, allowing Home Assistant to show live-ticking countdowns like "Wait: 2 hours" or "Available now".
 
 ### ⚙️ Configuration
@@ -64,6 +65,7 @@ Each medication creates a **Device** with the following entities:
 | `sensor` | `{name}_strength` | Configured per-dose strength (mg) |
 | `button` | `take_{name}` | Log a dose |
 | `button` | `reset_{name}_history` | Wipe dose history (keeps inventory) |
+| `button` | `undo_{name}_dose` | Revert the most recent dose across all sensors and PK model |
 | `number` | `{name}_pills_left` | Current inventory count |
 | `number` | `add_{name}_refill` | Refill input (auto-resets to 0 after adding) |
 | `number` | `{name}_{metric}_effectiveness` | 1–10 slider per enabled effectiveness metric |

@@ -1,3 +1,4 @@
+import homeassistant.util.dt as dt_util
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -9,7 +10,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     med_name = entry.data["medication_name"]
     async_add_entities([
         PillTakeButton(med_name, entry.entry_id),
-        PillResetButton(med_name, entry.entry_id)
+        PillResetButton(med_name, entry.entry_id),
+        PillUndoButton(med_name, entry.entry_id),
     ])
 
 class PillTakeButton(ButtonEntity):
@@ -30,11 +32,12 @@ class PillTakeButton(ButtonEntity):
         )
 
     async def async_press(self):
-        """When pressed, send a signal to update the sensor and number entities."""
-        async_dispatcher_send(self.hass, f"pill_taken_{self._entry_id}")
+        """When pressed, send a signal with synchronized timestamp to update all sensor and number entities."""
+        now = dt_util.now()
+        async_dispatcher_send(self.hass, f"pill_taken_{self._entry_id}", now)
         self.hass.bus.async_fire(
             "pill_logger_pill_taken",
-            {"entity_id": self.entity_id},
+            {"entity_id": self.entity_id, "timestamp": now.isoformat()},
         )
 
 class PillResetButton(ButtonEntity):
@@ -58,3 +61,29 @@ class PillResetButton(ButtonEntity):
     async def async_press(self):
         """When pressed, send a signal to clear the test data."""
         async_dispatcher_send(self.hass, f"pill_reset_{self._entry_id}")
+
+class PillUndoButton(ButtonEntity):
+    """Button entity that reverts the most recently logged dose."""
+
+    def __init__(self, name, entry_id):
+        self._med_name = name
+        self._attr_name = f"Undo {name} Dose"
+        self._attr_unique_id = f"{entry_id}_undo"
+        self._attr_icon = "mdi:undo"
+        self._entry_id = entry_id
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=self._med_name,
+            manufacturer="Pill Logger",
+        )
+
+    async def async_press(self):
+        """When pressed, send a signal to revert the last dose across all sensors."""
+        async_dispatcher_send(self.hass, f"pill_undone_{self._entry_id}")
+        self.hass.bus.async_fire(
+            "pill_logger_pill_undone",
+            {"entity_id": self.entity_id},
+        )

@@ -33,6 +33,9 @@ class PillSteadyStateSensor(RestoreSensor):
             async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self._reset_data)
         )
         self.async_on_remove(
+            async_dispatcher_connect(self.hass, f"pill_undone_{self._entry_id}", self._handle_pill_undone)
+        )
+        self.async_on_remove(
             async_dispatcher_connect(self.hass, f"concentration_updated_{self._entry_id}", self._update_from_concentration)
         )
 
@@ -45,8 +48,21 @@ class PillSteadyStateSensor(RestoreSensor):
         self.update_state()
 
     @callback
-    def _handle_pill_taken(self, *args, **kwargs):
-        self._last_dose_timestamp = dt_util.now()
+    def _handle_pill_taken(self, timestamp, *args, **kwargs):
+        """Handle pill_taken signal with synchronized timestamp payload."""
+        self._last_dose_timestamp = timestamp
+        self.update_state()
+
+    @callback
+    def _handle_pill_undone(self, *args, **kwargs):
+        """Handle pill_undone signal: clear last_dose_timestamp.
+
+        The concentration sensor will broadcast a concentration_updated signal
+        after recalculating, which will trigger _update_from_concentration.
+        We set last_dose_timestamp to None since we don't know the previous
+        dose time — the concentration sensor handles the actual PK state.
+        """
+        self._last_dose_timestamp = None
         self.update_state()
 
     @callback

@@ -66,6 +66,9 @@ class PillStockNumber(RestoreNumber):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, f"pill_add_stock_{self._entry_id}", self.add_stock)
         )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, f"pill_undone_{self._entry_id}", self.increment_undo)
+        )
         last_state = await self.async_get_last_number_data()
         if last_state and last_state.native_value is not None:
             self._attr_native_value = last_state.native_value
@@ -83,6 +86,12 @@ class PillStockNumber(RestoreNumber):
     @callback
     def add_stock(self, amount: float, *args, **kwargs):
         self._attr_native_value += amount
+        self.async_write_ha_state()
+
+    @callback
+    def increment_undo(self, *args, **kwargs):
+        """Increment inventory by 1 when a dose is undone."""
+        self._attr_native_value += 1
         self.async_write_ha_state()
 
 class PillAddStockNumber(NumberEntity):

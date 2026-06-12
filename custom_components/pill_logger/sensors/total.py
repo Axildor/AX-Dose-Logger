@@ -31,6 +31,9 @@ class PillTotalSensor(RestoreSensor):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self.reset_data)
         )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, f"pill_undone_{self._entry_id}", self.decrement)
+        )
         last_state = await self.async_get_last_sensor_data()
         if last_state and last_state.native_value is not None:
             self._state = int(last_state.native_value)
@@ -42,6 +45,13 @@ class PillTotalSensor(RestoreSensor):
     @callback
     def increment(self, *args, **kwargs):
         self._state += 1
+        self.async_write_ha_state()
+
+    @callback
+    def decrement(self, *args, **kwargs):
+        """Decrement total by 1 when a dose is undone (minimum 0)."""
+        if self._state > 0:
+            self._state -= 1
         self.async_write_ha_state()
 
     @callback
