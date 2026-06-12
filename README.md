@@ -71,64 +71,69 @@ Each medication creates a **Device** with the following entities:
 
 ## ⚙️ Configuration Flows
 
-Setup is a 3-step process: **Step 1** — choose a medication name and tracking type; **Step 2** — configure the schedule and dosing; **Step 3** — choose which effectiveness metrics to track.
+Setup is a 3-step process: **Step 1** — choose a medication name and tracking type; **Step 2** — configure the schedule, dosing, and optional PK parameters; **Step 3** — choose which effectiveness metrics to track.
+
+All numeric fields use **NumberSelector (box mode)** with unit labels, min/max validation, and increment/decrement buttons for precise input.
 
 ### Step 1: Add a Medication
-| Field | Description | Default |
-|-------|-------------|---------|
-| Medication Name | Display name for the device | My Medication |
-| Tracking Type | How to track dosing | Regular Interval |
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| Medication Name | Text | Display name for the device | My Medication |
+| Tracking Type | Dropdown | How to track dosing | Regular Interval |
 
 ### Step 2: Schedule & Dosing
 
 #### Regular Interval
-| Field | Description | Default |
-|-------|-------------|---------|
-| Initial Stock | Pills currently in inventory | 30 |
-| Hours Between Doses | Minimum interval between doses | 8 |
-| Safe Doses | Max doses allowed per interval | 1 |
-| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 3 pills in 24 hours). Number selector: 0.5–168 h, step 0.5 | 8 |
-| Strength (mg) | Per-dose strength for PK calculations | 0 |
-| Half-Life (h) | Elimination half-life for PK calculations. Number selector: 0–168 h, step 0.5 | 0 |
-| Hours to Peak (h) | Time to peak concentration for absorption modeling. Number selector: 0–72 h, step 0.1 | 0 |
+| Field | Range | Description | Default |
+|-------|-------|-------------|---------|
+| Inventory | 0–9999 pills | Number of pills currently available | 30 |
+| Dose Interval | 1–48 h | Minimum hours between consecutive doses | 8 |
+| Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
+| Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 3 pills in 24 hours | 8 |
 
 #### Time of Day
-| Field | Description | Default |
-|-------|-------------|---------|
-| Initial Stock | Pills currently in inventory | 30 |
-| Time of Day | Daily dose time (time picker) | 08:00 |
-| Safe Doses | Max doses per 24 hours | 1 |
-| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 2 pills in 24 hours). Number selector: 0.5–168 h, step 0.5 | 24 |
-| Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
+| Field | Range | Description | Default |
+|-------|-------|-------------|---------|
+| Inventory | 0–9999 pills | Number of pills currently available | 30 |
+| Dose Time | Time picker | Time of day to take the medication | 08:00 |
+| Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
+| Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 2 pills in 24 hours | 24 |
 
 #### As Needed (PRN)
-| Field | Description | Default |
-|-------|-------------|---------|
-| Initial Stock | Pills currently in inventory | 30 |
-| Safe Doses | Max doses in the time window | 2 |
-| Time Window (hours) | Rolling window for safe dose calculation. Number selector: 0.5–168 h, step 0.5 | 8 |
-| Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
+| Field | Range | Description | Default |
+|-------|-------|-------------|---------|
+| Inventory | 0–9999 pills | Number of pills currently available | 30 |
+| Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 2 |
+| Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours | 8 |
 
 #### Cyclic/Calendar Pattern
-| Field | Description | Default |
-|-------|-------------|---------|
-| Initial Stock | Pills currently in inventory | 30 |
-| Days On | Number of active days in the cycle | 5 |
-| Days Off | Number of rest days in the cycle | 2 |
-| Cycle Anchor Date | Start date of the cycle (calendar picker) | Today |
-| Dose Time | Time of day to take on active days (time picker) | 08:00 |
-| Safe Doses | Max doses per on-day | 1 |
-| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 1 pill in 24 hours). Number selector: 0.5–168 h, step 0.5 | 24 |
-| Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
+| Field | Range | Description | Default |
+|-------|-------|-------------|---------|
+| Inventory | 0–9999 pills | Number of pills currently available | 30 |
+| Days On | 1–30 days | Number of active days in the cycle | 5 |
+| Days Off | 1–30 days | Number of rest days in the cycle | 2 |
+| Cycle Start Date | Date picker | Start date of the on/off cycle | Today |
+| Dose Time | Time picker | Time of day to take on active days | 08:00 |
+| Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
+| Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 1 pill in 24 hours | 24 |
+
+#### Pharmacokinetic Parameters (Collapsible Section)
+All tracking modes include an optional collapsible section for PK parameters. These are required for the Amount in Body and Steady State sensors.
+
+| Field | Range | Description | Default |
+|-------|-------|-------------|---------|
+| Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
+| Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
+| Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |
 
 ### Step 3: Metrics Tracker
-| Field | Description | Default |
-|-------|-------------|---------|
-| Pain Level | Enable a 1–10 slider for pain | Off |
-| Mood | Enable a 1–10 slider for mood | Off |
-| Nausea Level | Enable a 1–10 slider for nausea | Off |
-| Fatigue Level | Enable a 1–10 slider for fatigue | Off |
-| Custom Metrics | Add your own — separate multiple with commas, e.g. brain fog, joint stiffness | — |
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| Pain | Toggle | Enable a 1–10 slider for pain | Off |
+| Mood | Toggle | Enable a 1–10 slider for mood | Off |
+| Nausea | Toggle | Enable a 1–10 slider for nausea | Off |
+| Fatigue | Toggle | Enable a 1–10 slider for fatigue | Off |
+| Custom Metrics | Text | Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each. | — |
 
 ---
 
@@ -140,20 +145,20 @@ Click **Configure** on the integration entry to change settings without recreati
 
 | Tracking Type | Editable Fields |
 |---------------|-----------------|
-| Regular Interval | Hours Between Doses, Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak |
-| Time of Day | Time of Day, Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak |
-| As Needed | Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak |
-| Cyclic/Calendar Pattern | Days On, Days Off, Cycle Anchor Date, Dose Time, Time Window (hours), Safe Doses, Strength, Half-Life, Hours to Peak |
+| Regular Interval | Dose Interval, Time Window, Safe Doses, PK Parameters |
+| Time of Day | Dose Time, Time Window, Safe Doses, PK Parameters |
+| As Needed | Time Window, Safe Doses, PK Parameters |
+| Cyclic/Calendar Pattern | Days On, Days Off, Cycle Start Date, Dose Time, Time Window, Safe Doses, PK Parameters |
 
 ### Step 2: Metrics Tracker
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| Pain Level | Enable a 1–10 slider for pain | Off |
-| Mood | Enable a 1–10 slider for mood | Off |
-| Nausea Level | Enable a 1–10 slider for nausea | Off |
-| Fatigue Level | Enable a 1–10 slider for fatigue | Off |
-| Custom Metrics | Add your own — separate multiple with commas, e.g. brain fog, joint stiffness | — |
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| Pain | Toggle | Enable a 1–10 slider for pain | Off |
+| Mood | Toggle | Enable a 1–10 slider for mood | Off |
+| Nausea | Toggle | Enable a 1–10 slider for nausea | Off |
+| Fatigue | Toggle | Enable a 1–10 slider for fatigue | Off |
+| Custom Metrics | Text | Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each. | — |
 
 > **Note:** The medication name and tracking type cannot be changed after creation. To switch, remove the entry and create a new one.
 

@@ -6,61 +6,142 @@
         "description": "Choose a medication name and how you want to track it.",
         "data": {
           "medication_name": "Medication Name",
-          "tracking_type": "How should this be tracked?"
+          "tracking_type": "Tracking Type"
+        },
+        "data_description": {
+          "tracking_type": "Choose how you want to track this medication."
         }
       },
       "regular_interval": {
-        "title": "Regular Interval Setup",
+        "title": "Regular Interval",
         "description": "Set up dosing at fixed intervals — e.g. every 8 hours.",
         "data": {
-          "initial_stock": "Current Inventory (Pills left)",
-          "hours_between_doses": "Hours between each dose",
-          "safe_doses": "Safe doses",
-          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
-          "strength": "Strength (mg)",
-          "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "initial_stock": "Inventory",
+          "hours_between_doses": "Dose Interval",
+          "safe_doses": "Safe Doses",
+          "time_window_hours": "Time Window"
+        },
+        "data_description": {
+          "initial_stock": "Number of pills currently available.",
+          "hours_between_doses": "Minimum hours between consecutive doses.",
+          "safe_doses": "Maximum doses allowed within the time window.",
+          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours."
+        },
+        "sections": {
+          "pk_params": {
+            "name": "Pharmacokinetic Parameters",
+            "description": "Optional: Configure these to track drug amount in the body over time.",
+            "data": {
+              "strength": "Strength",
+              "half_life": "Half-Life",
+              "hours_to_peak": "Hours to Peak"
+            },
+            "data_description": {
+              "strength": "Per-dose strength in mg. Required for PK tracking.",
+              "half_life": "Elimination half-life. Required for PK tracking.",
+              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+            }
+          }
         }
       },
       "time_of_day": {
-        "title": "Time of Day Setup",
+        "title": "Time of Day",
         "description": "Set up dosing at a specific time each day.",
         "data": {
-          "initial_stock": "Current Inventory (Pills left)",
-          "time_of_day": "Time of day to take",
-          "safe_doses": "Safe doses",
-          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
-          "strength": "Strength (mg)",
-          "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "initial_stock": "Inventory",
+          "time_of_day": "Dose Time",
+          "safe_doses": "Safe Doses",
+          "time_window_hours": "Time Window"
+        },
+        "data_description": {
+          "initial_stock": "Number of pills currently available.",
+          "time_of_day": "Time of day to take the medication.",
+          "safe_doses": "Maximum doses allowed within the time window.",
+          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 24 hours."
+        },
+        "sections": {
+          "pk_params": {
+            "name": "Pharmacokinetic Parameters",
+            "description": "Optional: Configure these to track drug amount in the body over time.",
+            "data": {
+              "strength": "Strength",
+              "half_life": "Half-Life",
+              "hours_to_peak": "Hours to Peak"
+            },
+            "data_description": {
+              "strength": "Per-dose strength in mg. Required for PK tracking.",
+              "half_life": "Elimination half-life. Required for PK tracking.",
+              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+            }
+          }
         }
       },
       "as_needed": {
-        "title": "As Needed Setup",
+        "title": "As Needed",
         "description": "Set up on-demand dosing with a safety limit.",
         "data": {
-          "initial_stock": "Current Inventory (Pills left)",
-          "safe_doses": "Safe doses",
-          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
-          "strength": "Strength (mg)",
-          "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "initial_stock": "Inventory",
+          "safe_doses": "Safe Doses",
+          "time_window_hours": "Time Window"
+        },
+        "data_description": {
+          "initial_stock": "Number of pills currently available.",
+          "safe_doses": "Maximum doses allowed within the time window.",
+          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours."
+        },
+        "sections": {
+          "pk_params": {
+            "name": "Pharmacokinetic Parameters",
+            "description": "Optional: Configure these to track drug amount in the body over time.",
+            "data": {
+              "strength": "Strength",
+              "half_life": "Half-Life",
+              "hours_to_peak": "Hours to Peak"
+            },
+            "data_description": {
+              "strength": "Per-dose strength in mg. Required for PK tracking.",
+              "half_life": "Elimination half-life. Required for PK tracking.",
+              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+            }
+          }
         }
       },
       "cyclic": {
-        "title": "Cyclic/Calendar Pattern Setup",
+        "title": "Cyclic/Calendar Pattern",
         "description": "Set up a cycling schedule — e.g. 5 days on, 2 days off.",
         "data": {
-          "initial_stock": "Current Inventory (Pills left)",
-          "days_on": "Days on (active window)",
-          "days_off": "Days off (rest window)",
-          "cycle_anchor_date": "Cycle start date",
-          "dose_time": "Dose time",
-          "safe_doses": "Safe doses",
-          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
-          "strength": "Strength (mg)",
-          "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "initial_stock": "Inventory",
+          "days_on": "Days On",
+          "days_off": "Days Off",
+          "cycle_anchor_date": "Cycle Start Date",
+          "dose_time": "Dose Time",
+          "safe_doses": "Safe Doses",
+          "time_window_hours": "Time Window"
+        },
+        "data_description": {
+          "initial_stock": "Number of pills currently available.",
+          "days_on": "Number of active days in the cycle.",
+          "days_off": "Number of rest days in the cycle.",
+          "cycle_anchor_date": "Start date of the on/off cycle.",
+          "dose_time": "Time of day to take on active days.",
+          "safe_doses": "Maximum doses allowed within the time window.",
+          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 1 pill in 24 hours."
+        },
+        "sections": {
+          "pk_params": {
+            "name": "Pharmacokinetic Parameters",
+            "description": "Optional: Configure these to track drug amount in the body over time.",
+            "data": {
+              "strength": "Strength",
+              "half_life": "Half-Life",
+              "hours_to_peak": "Hours to Peak"
+            },
+            "data_description": {
+              "strength": "Per-dose strength in mg. Required for PK tracking.",
+              "half_life": "Elimination half-life. Required for PK tracking.",
+              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+            }
+          }
         }
       },
       "effectiveness": {
@@ -71,10 +152,10 @@
           "metric_mood": "Mood",
           "metric_nausea": "Nausea",
           "metric_fatigue": "Fatigue",
-          "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
+          "custom_metrics": "Custom Metrics"
         },
         "data_description": {
-          "custom_metrics": "A 1–10 slider will be created for each one added."
+          "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
         }
       }
     }
@@ -85,17 +166,40 @@
         "title": "Schedule & Dosing",
         "description": "Adjust the schedule, safety limits, and pharmacokinetic parameters. Effectiveness metrics can be changed on the next page.",
         "data": {
-          "hours_between_doses": "Hours between each dose",
-          "time_of_day": "Time of day to take",
-          "time_window_hours": "In how many hours? (e.g. Max 2 pills in 8 hours)",
-          "days_on": "Days on (active window)",
-          "days_off": "Days off (rest window)",
-          "cycle_anchor_date": "Cycle start date",
-          "dose_time": "Dose time",
-          "safe_doses": "Safe doses",
-          "strength": "Strength (mg)",
-          "half_life": "Half-Life (h)",
-          "hours_to_peak": "Hours to Peak (h)"
+          "hours_between_doses": "Dose Interval",
+          "time_of_day": "Dose Time",
+          "time_window_hours": "Time Window",
+          "days_on": "Days On",
+          "days_off": "Days Off",
+          "cycle_anchor_date": "Cycle Start Date",
+          "dose_time": "Dose Time",
+          "safe_doses": "Safe Doses"
+        },
+        "data_description": {
+          "hours_between_doses": "Minimum hours between consecutive doses.",
+          "time_of_day": "Time of day to take the medication.",
+          "time_window_hours": "Rolling window for safe dose calculation.",
+          "days_on": "Number of active days in the cycle.",
+          "days_off": "Number of rest days in the cycle.",
+          "cycle_anchor_date": "Start date of the on/off cycle.",
+          "dose_time": "Time of day to take on active days.",
+          "safe_doses": "Maximum doses allowed within the time window."
+        },
+        "sections": {
+          "pk_params": {
+            "name": "Pharmacokinetic Parameters",
+            "description": "Optional: Configure these to track drug amount in the body over time.",
+            "data": {
+              "strength": "Strength",
+              "half_life": "Half-Life",
+              "hours_to_peak": "Hours to Peak"
+            },
+            "data_description": {
+              "strength": "Per-dose strength in mg. Required for PK tracking.",
+              "half_life": "Elimination half-life. Required for PK tracking.",
+              "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+            }
+          }
         }
       },
       "effectiveness": {
@@ -106,10 +210,10 @@
           "metric_mood": "Mood",
           "metric_nausea": "Nausea",
           "metric_fatigue": "Fatigue",
-          "custom_metrics": "Add custom tracking metrics — separate multiple with commas, e.g. brain fog, joint stiffness"
+          "custom_metrics": "Custom Metrics"
         },
         "data_description": {
-          "custom_metrics": "A 1–10 slider will be created for each one added."
+          "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
         }
       }
     }
