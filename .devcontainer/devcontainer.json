@@ -9,7 +9,7 @@
   "mounts": [
     "source=${localWorkspaceFolder}/../lovelace-pill-logger-card,target=/workspaces/lovelace-pill-logger-card,type=bind"
   ],
-  "postCreateCommand": "apk update && apk add --no-cache nodejs npm yarn libc6-compat",
+  "postCreateCommand": "apk update && apk add --no-cache nodejs npm yarn libc6-compat github-cli",
   "customizations": {
     "vscode": {
       "extensions": [
