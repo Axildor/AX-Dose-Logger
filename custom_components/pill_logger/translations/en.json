@@ -6,10 +6,12 @@
         "description": "Choose a medication name and how you want to track it.",
         "data": {
           "medication_name": "Medication Name",
-          "tracking_type": "Tracking Type"
+          "tracking_type": "Tracking Type",
+          "enable_calendar": "Calendar Entity"
         },
         "data_description": {
-          "tracking_type": "Choose how you want to track this medication."
+          "tracking_type": "Choose how you want to track this medication.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
         }
       },
       "regular_interval": {
@@ -136,7 +138,8 @@
           "safe_doses": "Safe Doses",
           "strength": "Strength",
           "half_life": "Half-Life",
-          "hours_to_peak": "Hours to Peak"
+          "hours_to_peak": "Hours to Peak",
+          "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
@@ -149,7 +152,8 @@
           "safe_doses": "Maximum doses allowed within the time window.",
           "strength": "Per-dose strength in mg. Required for PK tracking.",
           "half_life": "Elimination half-life. Required for PK tracking.",
-          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+          "hours_to_peak": "Time to peak concentration. Required for absorption modeling.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity."
         }
       },
       "effectiveness": {

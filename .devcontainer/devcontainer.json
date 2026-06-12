@@ -1,0 +1,29 @@
+{
+  "name": "HA Pill Logger Full Stack",
+  "image": "ghcr.io/home-assistant/home-assistant:stable",
+  "remoteUser": "root",
+  "forwardPorts": [8123],
+  "runArgs": [
+    "-p", "0.0.0.0:8123:8123"
+  ],
+  "mounts": [
+    "source=${localWorkspaceFolder}/../lovelace-pill-logger-card,target=/workspaces/lovelace-pill-logger-card,type=bind"
+  ],
+  "postCreateCommand": "apk update && apk add --no-cache nodejs npm yarn libc6-compat",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "zoocodeorganization.zoo-code",
+        "redhat.vscode-yaml",
+        "charliermarsh.ruff",
+        "ms-python.vscode-python-envs",
+        "ms-python.debugpy",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "bierner.lit-html",
+        "runem.lit-plugin"
+      ]
+    }
+  }
+}

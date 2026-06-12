@@ -66,6 +66,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         options=["Regular Interval", "Time of Day", "As Needed", "Cyclic/Calendar Pattern"],
                     )
                 ),
+                vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
             })
         )
 
@@ -204,6 +205,9 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         main_schema[vol.Optional("strength", default=options.get("strength", data.get("strength", 0)))] = _STRENGTH_SELECTOR
         main_schema[vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0)))] = _HALF_LIFE_SELECTOR
         main_schema[vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0)))] = _HOURS_TO_PEAK_SELECTOR
+
+        # Calendar toggle
+        main_schema[vol.Optional("enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", True)))] = sel.BooleanSelector()
 
         return self.async_show_form(
             step_id="init",

@@ -11,6 +11,9 @@ Pill Logger goes far beyond simple counters — it models drug amount in the bod
 * **As Needed** — PRN tracking with a configurable rolling window (e.g. max 2 pills per 8 hours).
 * **Cyclic/Calendar Pattern** — Define on/off cycles (e.g. 5 days on, 2 days off) anchored to a start date, with a per-day dose time.
 
+### 📅 Calendar Entity
+* **Dose Calendar** — Each medication can optionally create a `calendar.<medication_name>` entity that plots expected dose times on the Home Assistant calendar. Event generation varies by tracking type: **Time of Day** shows a daily event at the configured time; **Regular Interval** shows events every N hours anchored to midnight; **Cyclic** shows events on ON days at the dose time; **As Needed** shows no future events (unpredictable). Toggle this on or off at any time via the integration options.
+
 ### 🛡️ Safety
 * **Safe Dose Tracking** — All tracking modes use a unified sliding-window algorithm: set how many doses are safe within a configurable time window. Each pill expires individually, so safe doses recover one at a time as each pill's window passes. On Cyclic OFF days, safe doses are forced to 0.
 * **Next Dose `safe_to_take` Attribute** — The Next Dose sensor shows the next scheduled dose time and includes a `safe_to_take` attribute (number) showing how many safe doses remain right now based on the sliding window.
@@ -64,6 +67,7 @@ Each medication creates a **Device** with the following entities:
 | `number` | `{name}_pills_left` | Current inventory count |
 | `number` | `add_{name}_refill` | Refill input (auto-resets to 0 after adding) |
 | `number` | `{name}_{metric}_effectiveness` | 1–10 slider per enabled effectiveness metric |
+| `calendar` | `{name}_calendar` | Expected dose times on the HA calendar (optional, enabled by default) |
 
 > **PK fields note:** The Amount in Body and Steady State sensors only produce meaningful values when **Strength** and **Half-Life** are configured (non-zero). If left at 0, they will report `0` / `None`.
 
@@ -80,6 +84,7 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 |-------|------|-------------|---------|
 | Medication Name | Text | Display name for the device | My Medication |
 | Tracking Type | Dropdown | How to track dosing | Regular Interval |
+| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 ### Step 2: Schedule & Dosing
 
@@ -148,10 +153,10 @@ Click **Configure** on the integration entry to change settings without recreati
 
 | Tracking Type | Editable Fields |
 |---------------|-----------------|
-| Regular Interval | Dose Interval, Time Window, Safe Doses, PK Parameters |
-| Time of Day | Dose Time, Time Window, Safe Doses, PK Parameters |
-| As Needed | Time Window, Safe Doses, PK Parameters |
-| Cyclic/Calendar Pattern | Days On, Days Off, Cycle Start Date, Dose Time, Time Window, Safe Doses, PK Parameters |
+| Regular Interval | Dose Interval, Time Window, Safe Doses, PK Parameters, Calendar Entity |
+| Time of Day | Dose Time, Time Window, Safe Doses, PK Parameters, Calendar Entity |
+| As Needed | Time Window, Safe Doses, PK Parameters, Calendar Entity |
+| Cyclic/Calendar Pattern | Days On, Days Off, Cycle Start Date, Dose Time, Time Window, Safe Doses, PK Parameters, Calendar Entity |
 
 ### Step 2: Metrics Tracker
 
