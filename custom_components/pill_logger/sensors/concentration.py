@@ -15,7 +15,7 @@ class PillConcentrationSensor(RestoreSensor):
     def __init__(self, entry):
         med_name = entry.data["medication_name"]
         self._med_name = med_name
-        self._attr_name = f"{med_name} Concentration"
+        self._attr_name = f"{med_name} Amount in body"
         self._attr_unique_id = f"{entry.entry_id}_concentration"
         self._attr_icon = "mdi:chart-bell-curve"
         self._entry_id = entry.entry_id
@@ -156,7 +156,7 @@ class PillConcentrationSensor(RestoreSensor):
             "ka": self._ka
         }
         self.async_write_ha_state()
-        # Broadcast the live concentration so Steady State can instantly recalculate
+        # Broadcast the live drug amount so Steady State can instantly recalculate
         async_dispatcher_send(self.hass, f"concentration_updated_{self._entry_id}", self._current_mass)
 
     @callback
@@ -185,17 +185,25 @@ class PillConcentrationSensor(RestoreSensor):
         self.update_state()
 
     def _solve_ka(self, t_max, k_e):
+        """Solve for absorption rate constant (ka) given desired time-to-peak (t_max)
+        and elimination rate constant (ke), using the standard pharmacokinetic formula:
+            t_max = ln(ka/ke) / (ka - ke)
+        Uses binary search since the equation has no closed-form solution for ka.
+        """
         low, high = 0.0001, 20.0
         for _ in range(50):
             mid_ka = (low + high) / 2
             if mid_ka == k_e: mid_ka += 0.0001
             try:
                 calc_t_max = (math.log(mid_ka) - math.log(k_e)) / (mid_ka - k_e)
-                if calc_t_max < t_max: low = mid_ka
-                else: high = mid_ka
+                # When calc_t_max < t_max, ka is too high (absorption too fast),
+                # so we must decrease ka (move high down). When calc_t_max > t_max,
+                # ka is too low (absorption too slow), so we must increase ka (move low up).
+                if calc_t_max < t_max: high = mid_ka
+                else: low = mid_ka
             except (ValueError, ZeroDivisionError):
                 low = mid_ka
-        return low
+        return (low + high) / 2
 
     @property
     def device_info(self) -> DeviceInfo:

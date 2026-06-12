@@ -1,7 +1,7 @@
 # 💊 Home Assistant Pill Logger
 
 A fully local, advanced medication tracking and pharmacokinetics integration for Home Assistant.  
-Pill Logger goes far beyond simple counters — it models drug concentration with a two-compartment PK engine, tracks rolling time windows, warns against accidental overdoses, calculates steady-state progress, lets you log subjective effectiveness, and powers actionable mobile reminders.
+Pill Logger goes far beyond simple counters — it models drug amount in the body with a two-compartment PK engine, tracks rolling time windows, warns against accidental overdoses, calculates steady-state progress, lets you log subjective effectiveness, and powers actionable mobile reminders.
 
 ## ✨ Features
 
@@ -17,8 +17,8 @@ Pill Logger goes far beyond simple counters — it models drug concentration wit
 * **Smart Overdose Warning** — Dashboard UI dynamically swaps to a red warning button when safe doses reach 0, prompting an "Are you sure?" dialog before allowing an override.
 
 ### 🧪 Pharmacokinetics
-* **Concentration Sensor** — Models drug concentration (mg) over time using a two-compartment model with configurable strength, half-life, and hours-to-peak. Absorption rate (kₐ) is solved dynamically from time-to-peak.
-* **Steady State Sensor** — Calculates days remaining until 90% steady state, with attributes showing theoretical max concentration and current percentage achieved.
+* **Amount in Body Sensor** — Models drug amount in the body (mg) over time using a two-compartment model with configurable strength, half-life, and hours-to-peak. Absorption rate (kₐ) is solved dynamically from time-to-peak.
+* **Steady State Sensor** — Calculates days remaining until 90% steady state, with attributes showing theoretical max amount and current percentage achieved.
 * **Strength Sensor** — Displays the configured per-dose strength (mg) for quick reference.
 
 ### 📊 Effectiveness Tracking
@@ -52,7 +52,7 @@ Each medication creates a **Device** with the following entities:
 | `sensor` | `{name}_total` | Cumulative lifetime dose count |
 | `sensor` | `{name}_last_dose` | Timestamp of most recent dose |
 | `sensor` | `{name}_safe_doses` | Remaining safe doses in the current time window |
-| `sensor` | `{name}_concentration` | Current drug concentration (mg) — requires PK fields |
+| `sensor` | `{name}_concentration` | Current drug amount in body (mg) — requires PK fields |
 | `sensor` | `{name}_next_dose` | Timestamp of next scheduled dose; `safe_to_take` attribute shows remaining safe doses |
 | `sensor` | `{name}_avg_daily_doses_7_days` | 7-day rolling average of daily doses |
 | `sensor` | `{name}_avg_daily_doses_30_days` | 30-day rolling average of daily doses |
@@ -65,7 +65,7 @@ Each medication creates a **Device** with the following entities:
 | `number` | `add_{name}_refill` | Refill input (auto-resets to 0 after adding) |
 | `number` | `{name}_{metric}_effectiveness` | 1–10 slider per enabled effectiveness metric |
 
-> **PK fields note:** The Concentration and Steady State sensors only produce meaningful values when **Strength** and **Half-Life** are configured (non-zero). If left at 0, they will report `0` / `None`.
+> **PK fields note:** The Amount in Body and Steady State sensors only produce meaningful values when **Strength** and **Half-Life** are configured (non-zero). If left at 0, they will report `0` / `None`.
 
 ---
 
@@ -87,10 +87,10 @@ Setup is a 3-step process: **Step 1** — choose a medication name and tracking 
 | Initial Stock | Pills currently in inventory | 30 |
 | Hours Between Doses | Minimum interval between doses | 8 |
 | Safe Doses | Max doses allowed per interval | 1 |
-| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 3 pills in 24 hours) | 8 |
+| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 3 pills in 24 hours). Number selector: 0.5–168 h, step 0.5 | 8 |
 | Strength (mg) | Per-dose strength for PK calculations | 0 |
-| Half-Life (h) | Elimination half-life for PK calculations | 0 |
-| Hours to Peak (h) | Time to peak concentration for absorption modeling | 0 |
+| Half-Life (h) | Elimination half-life for PK calculations. Number selector: 0–168 h, step 0.5 | 0 |
+| Hours to Peak (h) | Time to peak concentration for absorption modeling. Number selector: 0–72 h, step 0.1 | 0 |
 
 #### Time of Day
 | Field | Description | Default |
@@ -98,7 +98,7 @@ Setup is a 3-step process: **Step 1** — choose a medication name and tracking 
 | Initial Stock | Pills currently in inventory | 30 |
 | Time of Day | Daily dose time (time picker) | 08:00 |
 | Safe Doses | Max doses per 24 hours | 1 |
-| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 2 pills in 24 hours) | 24 |
+| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 2 pills in 24 hours). Number selector: 0.5–168 h, step 0.5 | 24 |
 | Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
 
 #### As Needed (PRN)
@@ -106,7 +106,7 @@ Setup is a 3-step process: **Step 1** — choose a medication name and tracking 
 |-------|-------------|---------|
 | Initial Stock | Pills currently in inventory | 30 |
 | Safe Doses | Max doses in the time window | 2 |
-| Time Window (hours) | Rolling window for safe dose calculation | 8 |
+| Time Window (hours) | Rolling window for safe dose calculation. Number selector: 0.5–168 h, step 0.5 | 8 |
 | Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
 
 #### Cyclic/Calendar Pattern
@@ -118,7 +118,7 @@ Setup is a 3-step process: **Step 1** — choose a medication name and tracking 
 | Cycle Anchor Date | Start date of the cycle (calendar picker) | Today |
 | Dose Time | Time of day to take on active days (time picker) | 08:00 |
 | Safe Doses | Max doses per on-day | 1 |
-| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 1 pill in 24 hours) | 24 |
+| Time Window (hours) | Rolling window for safe dose calculation (e.g. max 1 pill in 24 hours). Number selector: 0.5–168 h, step 0.5 | 24 |
 | Strength / Half-Life / Hours to Peak | PK fields (same as above) | 0 |
 
 ### Step 3: Metrics Tracker
@@ -410,7 +410,7 @@ cards:
     card:
       type: custom:mushroom-template-card
       entity: sensor.YOUR_MEDICATION_concentration
-      primary: Concentration
+      primary: Amount in body
       secondary: "{{ states('sensor.YOUR_MEDICATION_concentration') }} mg"
       icon: mdi:chart-bell-curve
       icon_color: purple

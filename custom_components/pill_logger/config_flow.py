@@ -40,10 +40,10 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
              vol.Required("initial_stock", default=30): int,
              vol.Required("hours_between_doses", default=8): int,
              vol.Required("safe_doses", default=1): int,
-             vol.Required("time_window_hours", default=8): int,
+             vol.Required("time_window_hours", default=8): sel.NumberSelector(sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h")),
               vol.Optional("strength", default=0): vol.Coerce(float),
-              vol.Optional("half_life", default=0): vol.Coerce(float),
-              vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
+              vol.Optional("half_life", default=0): sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=168, step=0.5, unit_of_measurement="h")),
+              vol.Optional("hours_to_peak", default=0): sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=72, step=0.1, unit_of_measurement="h")),
         }
 
         return self.async_show_form(
@@ -60,10 +60,10 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
              vol.Required("initial_stock", default=30): int,
              vol.Required("time_of_day", default="08:00"): sel.TimeSelector(),
              vol.Required("safe_doses", default=1): int,
-             vol.Required("time_window_hours", default=24): int,
+             vol.Required("time_window_hours", default=24): sel.NumberSelector(sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h")),
               vol.Optional("strength", default=0): vol.Coerce(float),
-              vol.Optional("half_life", default=0): vol.Coerce(float),
-              vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
+              vol.Optional("half_life", default=0): sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=168, step=0.5, unit_of_measurement="h")),
+              vol.Optional("hours_to_peak", default=0): sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=72, step=0.1, unit_of_measurement="h")),
         }
 
         return self.async_show_form(
@@ -79,10 +79,10 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema_dict = {
              vol.Required("initial_stock", default=30): int,
              vol.Required("safe_doses", default=2): int,
-             vol.Required("time_window_hours", default=8): int,
+             vol.Required("time_window_hours", default=8): sel.NumberSelector(sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h")),
               vol.Optional("strength", default=0): vol.Coerce(float),
-              vol.Optional("half_life", default=0): vol.Coerce(float),
-              vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
+              vol.Optional("half_life", default=0): sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=168, step=0.5, unit_of_measurement="h")),
+              vol.Optional("hours_to_peak", default=0): sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=72, step=0.1, unit_of_measurement="h")),
         }
 
         return self.async_show_form(
@@ -102,10 +102,10 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
              vol.Required("cycle_anchor_date", default=date.today().isoformat()): sel.DateSelector(sel.DateSelectorConfig()),
              vol.Required("dose_time", default="08:00"): sel.TimeSelector(),
              vol.Required("safe_doses", default=1): int,
-             vol.Required("time_window_hours", default=24): int,
+             vol.Required("time_window_hours", default=24): sel.NumberSelector(sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h")),
               vol.Optional("strength", default=0): vol.Coerce(float),
-              vol.Optional("half_life", default=0): vol.Coerce(float),
-              vol.Optional("hours_to_peak", default=0.0): vol.Coerce(float),
+              vol.Optional("half_life", default=0): sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=168, step=0.5, unit_of_measurement="h")),
+              vol.Optional("hours_to_peak", default=0): sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=72, step=0.1, unit_of_measurement="h")),
         }
 
         return self.async_show_form(
@@ -154,23 +154,23 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             schema_dict[vol.Required("hours_between_doses", default=options.get("hours_between_doses", data.get("hours_between_doses", 8)))] = int
             # Default time_window_hours to hours_between_doses if not explicitly set
             tw_default = options.get("time_window_hours", data.get("time_window_hours", data.get("hours_between_doses", 8)))
-            schema_dict[vol.Required("time_window_hours", default=tw_default)] = int
+            schema_dict[vol.Required("time_window_hours", default=tw_default)] = sel.NumberSelector(sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h"))
         elif tracking_type == "Time of Day":
             schema_dict[vol.Required("time_of_day", default=options.get("time_of_day", data.get("time_of_day", "08:00")))] = sel.TimeSelector()
-            schema_dict[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = int
+            schema_dict[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = sel.NumberSelector(sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h"))
         elif tracking_type == "As Needed":
-            schema_dict[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 8)))] = int
+            schema_dict[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 8)))] = sel.NumberSelector(sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h"))
         elif tracking_type == "Cyclic/Calendar Pattern":
             schema_dict[vol.Required("days_on", default=options.get("days_on", data.get("days_on", 5)))] = int
             schema_dict[vol.Required("days_off", default=options.get("days_off", data.get("days_off", 2)))] = int
             schema_dict[vol.Required("cycle_anchor_date", default=options.get("cycle_anchor_date", data.get("cycle_anchor_date", date.today().isoformat())))] = sel.DateSelector(sel.DateSelectorConfig())
             schema_dict[vol.Required("dose_time", default=options.get("dose_time", data.get("dose_time", "08:00")))] = sel.TimeSelector()
-            schema_dict[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = int
+            schema_dict[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = sel.NumberSelector(sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h"))
 
         schema_dict[vol.Required("safe_doses", default=options.get("safe_doses", data.get("safe_doses", 1)))] = int
         schema_dict[vol.Optional("strength", default=options.get("strength", data.get("strength", 0)))] = vol.Coerce(float)
-        schema_dict[vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0)))] = vol.Coerce(float)
-        schema_dict[vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0.0)))] = vol.Coerce(float)
+        schema_dict[vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0)))] = sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=168, step=0.5, unit_of_measurement="h"))
+        schema_dict[vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0)))] = sel.NumberSelector(sel.NumberSelectorConfig(min=0, max=72, step=0.1, unit_of_measurement="h"))
 
         return self.async_show_form(
             step_id="init",
