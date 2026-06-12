@@ -26,7 +26,7 @@ Pill Logger goes far beyond simple counters — it models drug amount in the bod
 * **Custom Metrics** — Add your own tracking metrics separated by commas (e.g. "brain fog, joint stiffness") and get a slider for each.
 
 ### 📈 Insights
-* **Rolling Averages** — Automatically tracks consumption patterns with rolling averages for 7 days, 30 days, and yearly (365 days). Sensors scale calculations from the moment the medication is added or reset.
+* **Rolling Averages** — Automatically tracks consumption patterns with rolling averages for 7 days, 30 days, and yearly (365 days). For scheduled modes (Regular Interval, Time of Day, Cyclic), averages use **schedule-aligned counting with a grace period** — doses taken within ±grace of the expected time count as on-schedule, eliminating the 0.9/1.1 oscillation caused by sliding-window edge effects. As Needed mode uses the traditional sliding window. Sensors scale calculations from the moment the medication is added or reset.
 * **Total Doses** — Cumulative lifetime dose counter.
 * **Last Dose** — Timestamp of the most recent dose.
 
@@ -54,9 +54,9 @@ Each medication creates a **Device** with the following entities:
 | `sensor` | `{name}_safe_doses` | Remaining safe doses in the current time window |
 | `sensor` | `{name}_concentration` | Current drug amount in body (mg) — requires PK fields |
 | `sensor` | `{name}_next_dose` | Timestamp of next scheduled dose; `safe_to_take` attribute shows remaining safe doses |
-| `sensor` | `{name}_avg_daily_doses_7_days` | 7-day rolling average of daily doses |
-| `sensor` | `{name}_avg_daily_doses_30_days` | 30-day rolling average of daily doses |
-| `sensor` | `{name}_avg_daily_doses_yearly` | 365-day rolling average of daily doses |
+| `sensor` | `{name}_avg_daily_doses_7_days` | 7-day rolling average of daily doses; `grace_hours` attribute shows active grace period |
+| `sensor` | `{name}_avg_daily_doses_30_days` | 30-day rolling average of daily doses; `grace_hours` attribute shows active grace period |
+| `sensor` | `{name}_avg_daily_doses_yearly` | 365-day rolling average of daily doses; `grace_hours` attribute shows active grace period |
 | `sensor` | `{name}_steady_state` | Days remaining to 90% steady state — requires PK fields |
 | `sensor` | `{name}_strength` | Configured per-dose strength (mg) |
 | `button` | `take_{name}` | Log a dose |
