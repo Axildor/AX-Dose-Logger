@@ -3,15 +3,10 @@
     "step": {
       "user": {
         "title": "Add a Medication",
-        "description": "Choose a medication name and how you want to track it.",
+        "description": "Name your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
         "data": {
           "medication_name": "Medication Name",
-          "tracking_type": "Tracking Type",
-          "enable_calendar": "Calendar Entity"
-        },
-        "data_description": {
-          "tracking_type": "Choose how you want to track this medication.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "tracking_type": "Tracking Type"
         }
       },
       "regular_interval": {
@@ -22,18 +17,14 @@
           "hours_between_doses": "Dose Interval",
           "safe_doses": "Safe Doses",
           "time_window_hours": "Time Window",
-          "strength": "Strength",
-          "half_life": "Half-Life",
-          "hours_to_peak": "Hours to Peak"
+          "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "hours_between_doses": "Minimum hours between consecutive doses.",
           "safe_doses": "Maximum doses allowed within the time window.",
           "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours.",
-          "strength": "Per-dose strength in mg. Required for PK tracking.",
-          "half_life": "Elimination half-life. Required for PK tracking.",
-          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
         }
       },
       "time_of_day": {
@@ -44,18 +35,14 @@
           "time_of_day": "Dose Time",
           "safe_doses": "Safe Doses",
           "time_window_hours": "Time Window",
-          "strength": "Strength",
-          "half_life": "Half-Life",
-          "hours_to_peak": "Hours to Peak"
+          "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "time_of_day": "Time of day to take the medication.",
           "safe_doses": "Maximum doses allowed within the time window.",
           "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 24 hours.",
-          "strength": "Per-dose strength in mg. Required for PK tracking.",
-          "half_life": "Elimination half-life. Required for PK tracking.",
-          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
         }
       },
       "as_needed": {
@@ -65,17 +52,13 @@
           "initial_stock": "Inventory",
           "safe_doses": "Safe Doses",
           "time_window_hours": "Time Window",
-          "strength": "Strength",
-          "half_life": "Half-Life",
-          "hours_to_peak": "Hours to Peak"
+          "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "safe_doses": "Maximum doses allowed within the time window.",
           "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours.",
-          "strength": "Per-dose strength in mg. Required for PK tracking.",
-          "half_life": "Elimination half-life. Required for PK tracking.",
-          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
         }
       },
       "cyclic": {
@@ -89,9 +72,7 @@
           "dose_time": "Dose Time",
           "safe_doses": "Safe Doses",
           "time_window_hours": "Time Window",
-          "strength": "Strength",
-          "half_life": "Half-Life",
-          "hours_to_peak": "Hours to Peak"
+          "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
@@ -101,14 +82,26 @@
           "dose_time": "Time of day to take on active days.",
           "safe_doses": "Maximum doses allowed within the time window.",
           "time_window_hours": "Rolling window for safe dose calculation, e.g. max 1 pill in 24 hours.",
-          "strength": "Per-dose strength in mg. Required for PK tracking.",
-          "half_life": "Elimination half-life. Required for PK tracking.",
-          "hours_to_peak": "Time to peak concentration. Required for absorption modeling."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+        }
+      },
+      "pk": {
+        "title": "Pharmacokinetics",
+        "description": "Optional: configure to track drug concentration and steady state over time. Leave all values at 0 if not needed.",
+        "data": {
+          "strength": "Dose Strength",
+          "half_life": "Elimination Half-Life",
+          "hours_to_peak": "Time to Peak Concentration"
+        },
+        "data_description": {
+          "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
+          "half_life": "Time for the body to eliminate half the drug. Set to 0 if not tracking concentration.",
+          "hours_to_peak": "Hours after taking until concentration peaks. Set to 0 for immediate-release medications."
         }
       },
       "effectiveness": {
-        "title": "Metrics Tracker",
-        "description": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "title": "Metrics Tracker & Adherence",
+        "description": "Select which symptoms to track and configure adherence settings. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
         "data": {
           "metric_pain": "Pain",
           "metric_mood": "Mood",
@@ -118,6 +111,20 @@
         },
         "data_description": {
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
+        },
+        "sections": {
+          "adherence": {
+            "name": "Adherence Tracking",
+            "description": "Monitor how consistently doses are taken on schedule.",
+            "data": {
+              "enable_adherence": "Track Dose Adherence",
+              "adherence_grace_hours": "On-Time Window"
+            },
+            "data_description": {
+              "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
+              "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on."
+            }
+          }
         }
       }
     }
@@ -126,7 +133,7 @@
     "step": {
       "init": {
         "title": "Schedule & Dosing",
-        "description": "Adjust the schedule, safety limits, and pharmacokinetic parameters. Effectiveness metrics can be changed on the next page.",
+        "description": "Adjust the schedule and safety limits. Pharmacokinetic and effectiveness settings are on the next pages.",
         "data": {
           "hours_between_doses": "Dose Interval",
           "time_of_day": "Dose Time",
@@ -136,9 +143,6 @@
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
           "safe_doses": "Safe Doses",
-          "strength": "Strength",
-          "half_life": "Half-Life",
-          "hours_to_peak": "Hours to Peak",
           "enable_calendar": "Calendar Entity"
         },
         "data_description": {
@@ -150,15 +154,26 @@
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
           "safe_doses": "Maximum doses allowed within the time window.",
-          "strength": "Per-dose strength in mg. Required for PK tracking.",
-          "half_life": "Elimination half-life. Required for PK tracking.",
-          "hours_to_peak": "Time to peak concentration. Required for absorption modeling.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity."
         }
       },
+      "pk": {
+        "title": "Pharmacokinetics",
+        "description": "Optional: configure to track drug concentration and steady state over time. Leave all values at 0 if not needed.",
+        "data": {
+          "strength": "Dose Strength",
+          "half_life": "Elimination Half-Life",
+          "hours_to_peak": "Time to Peak Concentration"
+        },
+        "data_description": {
+          "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
+          "half_life": "Time for the body to eliminate half the drug. Set to 0 if not tracking concentration.",
+          "hours_to_peak": "Hours after taking until concentration peaks. Set to 0 for immediate-release medications."
+        }
+      },
       "effectiveness": {
-        "title": "Metrics Tracker",
-        "description": "Select which symptoms to track. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "title": "Metrics Tracker & Adherence",
+        "description": "Select which symptoms to track and configure adherence settings. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
         "data": {
           "metric_pain": "Pain",
           "metric_mood": "Mood",
@@ -168,7 +183,31 @@
         },
         "data_description": {
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
+        },
+        "sections": {
+          "adherence": {
+            "name": "Adherence Tracking",
+            "description": "Monitor how consistently doses are taken on schedule.",
+            "data": {
+              "enable_adherence": "Track Dose Adherence",
+              "adherence_grace_hours": "On-Time Window"
+            },
+            "data_description": {
+              "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
+              "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on."
+            }
+          }
         }
+      }
+    }
+  },
+  "selector": {
+    "tracking_type": {
+      "options": {
+        "Regular Interval": "Regular Interval — fixed hours between doses",
+        "Time of Day": "Time of Day — once daily at a set time",
+        "As Needed": "As Needed — on-demand with a safety limit",
+        "Cyclic/Calendar Pattern": "Cyclic — on/off day patterns"
       }
     }
   }

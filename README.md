@@ -29,7 +29,8 @@ Pill Logger goes far beyond simple counters — it models drug amount in the bod
 * **Custom Metrics** — Add your own tracking metrics separated by commas (e.g. "brain fog, joint stiffness") and get a slider for each.
 
 ### 📈 Insights
-* **Rolling Averages** — Automatically tracks consumption patterns with rolling averages for 7 days, 30 days, and yearly (365 days). For scheduled modes (Regular Interval, Time of Day, Cyclic), averages use **schedule-aligned counting with a grace period** — doses taken within ±grace of the expected time count as on-schedule, eliminating the 0.9/1.1 oscillation caused by sliding-window edge effects. As Needed mode uses the traditional sliding window. Sensors scale calculations from the moment the medication is added or reset.
+* **Adherence Percentage** — Four rolling adherence sensors (7, 14, 30, and 365 days) calculate the percentage of scheduled doses actually taken on time. Uses a configurable **grace period** (default: 1 hour) — doses taken within ±grace of the expected time count as compliant. For Regular Interval mode, adherence is anchored to the patient's actual dosing schedule (not clock boundaries), with forward gap filling to correctly penalize missed doses after the last taken dose. Cyclic mode only counts ON days in the denominator. As Needed (PRN) medications report `None` since adherence is undefined without a schedule. Over-dosing is clamped at 100% with raw counts visible in attributes.
+* **Rolling Averages** — Automatically tracks consumption patterns with rolling averages for 7 days, 14 days, 30 days, and yearly (365 days). For scheduled modes (Regular Interval, Time of Day, Cyclic), averages use **schedule-aligned counting with a grace period** — doses taken within ±grace of the expected time count as on-schedule, eliminating the 0.9/1.1 oscillation caused by sliding-window edge effects. As Needed mode uses the traditional sliding window. Sensors scale calculations from the moment the medication is added or reset.
 * **Total Doses** — Cumulative lifetime dose counter.
 * **Last Dose** — Timestamp of the most recent dose.
 
@@ -59,8 +60,13 @@ Each medication creates a **Device** with the following entities:
 | `sensor` | `{name}_concentration` | Current drug amount in body (mg) — requires PK fields |
 | `sensor` | `{name}_next_dose` | Timestamp of next scheduled dose; `safe_to_take` attribute shows remaining safe doses |
 | `sensor` | `{name}_avg_daily_doses_7_days` | 7-day rolling average of daily doses; `grace_hours` attribute shows active grace period |
+| `sensor` | `{name}_avg_daily_doses_14_days` | 14-day rolling average of daily doses; `grace_hours` attribute shows active grace period |
 | `sensor` | `{name}_avg_daily_doses_30_days` | 30-day rolling average of daily doses; `grace_hours` attribute shows active grace period |
 | `sensor` | `{name}_avg_daily_doses_yearly` | 365-day rolling average of daily doses; `grace_hours` attribute shows active grace period |
+| `sensor` | `{name}_adherence_7_days` | 7-day rolling adherence %; `actual_doses`, `expected_doses`, `grace_hours` attributes |
+| `sensor` | `{name}_adherence_14_days` | 14-day rolling adherence %; `actual_doses`, `expected_doses`, `grace_hours` attributes |
+| `sensor` | `{name}_adherence_30_days` | 30-day rolling adherence %; `actual_doses`, `expected_doses`, `grace_hours` attributes |
+| `sensor` | `{name}_adherence_365_days` | 365-day rolling adherence %; `actual_doses`, `expected_doses`, `grace_hours` attributes |
 | `sensor` | `{name}_steady_state` | Days remaining to 90% steady state — requires PK fields |
 | `sensor` | `{name}_strength` | Configured per-dose strength (mg) |
 | `button` | `take_{name}` | Log a dose |
@@ -77,7 +83,7 @@ Each medication creates a **Device** with the following entities:
 
 ## ⚙️ Configuration Flows
 
-Setup is a 3-step process: **Step 1** — choose a medication name and tracking type; **Step 2** — configure the schedule, dosing, and optional PK parameters; **Step 3** — choose which effectiveness metrics to track.
+Setup is a 4-step process: **Step 1** — name your medication and choose a tracking mode; **Step 2** — configure the schedule and dosing; **Step 3** — set optional pharmacokinetic parameters; **Step 4** — choose which effectiveness metrics to track and configure adherence.
 
 All numeric fields use **NumberSelector (box mode)** with unit labels, min/max validation, and increment/decrement buttons for precise input.
 
@@ -85,8 +91,9 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
 | Medication Name | Text | Display name for the device | My Medication |
-| Tracking Type | Dropdown | How to track dosing | Regular Interval |
-| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
+| Tracking Type | Dropdown | Each option includes a brief description of the mode | Regular Interval |
+
+> Dropdown options include inline descriptions: **Regular Interval — fixed hours between doses**, **Time of Day — once daily at a set time**, **As Needed — on-demand with a safety limit**, **Cyclic — on/off day patterns**.
 
 ### Step 2: Schedule & Dosing
 
@@ -97,9 +104,7 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Dose Interval | 1–48 h | Minimum hours between consecutive doses | 8 |
 | Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 3 pills in 24 hours | 8 |
-| Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
-| Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
-| Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |
+| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### Time of Day
 | Field | Range | Description | Default |
@@ -108,9 +113,7 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Dose Time | Time picker | Time of day to take the medication | 08:00 |
 | Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 2 pills in 24 hours | 24 |
-| Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
-| Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
-| Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |
+| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### As Needed (PRN)
 | Field | Range | Description | Default |
@@ -118,9 +121,7 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 2 |
 | Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours | 8 |
-| Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
-| Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
-| Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |
+| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### Cyclic/Calendar Pattern
 | Field | Range | Description | Default |
@@ -132,11 +133,20 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Dose Time | Time picker | Time of day to take on active days | 08:00 |
 | Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for safe dose calculation, e.g. max 1 pill in 24 hours | 24 |
-| Strength | 0–9999 mg | Per-dose strength. Required for PK tracking. | 0 |
-| Half-Life | 0–168 h | Elimination half-life. Required for PK tracking. | 0 |
-| Hours to Peak | 0–72 h | Time to peak concentration. Required for absorption modeling. | 0 |
+| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
-### Step 3: Metrics Tracker
+### Step 3: Pharmacokinetics
+
+| Field | Range | Description | Default |
+|-------|-------|-------------|---------|
+| Dose Strength | 0–9999 mg | Amount of medication per dose. Set to 0 if not tracking concentration. | 0 |
+| Elimination Half-Life | 0–168 h | Time for the body to eliminate half the drug. Set to 0 if not tracking concentration. | 0 |
+| Time to Peak Concentration | 0–72 h | Hours after taking until concentration peaks. Set to 0 for immediate-release medications. | 0 |
+
+> Leave all values at 0 if you don't need concentration or steady-state tracking.
+
+### Step 4: Metrics Tracker & Adherence
+
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
 | Pain | Toggle | Enable a 1–10 slider for pain | Off |
@@ -144,23 +154,38 @@ All numeric fields use **NumberSelector (box mode)** with unit labels, min/max v
 | Nausea | Toggle | Enable a 1–10 slider for nausea | Off |
 | Fatigue | Toggle | Enable a 1–10 slider for fatigue | Off |
 | Custom Metrics | Text | Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each. | — |
+
+**Adherence Tracking** section:
+
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| Track Dose Adherence | Toggle | Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. | On (Off for As Needed) |
+| On-Time Window | 0.5–24 h | How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on. | 1 |
 
 ---
 
 ## 🔧 Reconfiguring After Setup
 
-Click **Configure** on the integration entry to change settings without recreating the medication. Reconfiguration is a 2-step process:
+Click **Configure** on the integration entry to change settings without recreating the medication. Reconfiguration is a 3-step process:
 
 ### Step 1: Schedule & Dosing
 
 | Tracking Type | Editable Fields |
 |---------------|-----------------|
-| Regular Interval | Dose Interval, Time Window, Safe Doses, PK Parameters, Calendar Entity |
-| Time of Day | Dose Time, Time Window, Safe Doses, PK Parameters, Calendar Entity |
-| As Needed | Time Window, Safe Doses, PK Parameters, Calendar Entity |
-| Cyclic/Calendar Pattern | Days On, Days Off, Cycle Start Date, Dose Time, Time Window, Safe Doses, PK Parameters, Calendar Entity |
+| Regular Interval | Dose Interval, Time Window, Safe Doses, Calendar Entity |
+| Time of Day | Dose Time, Time Window, Safe Doses, Calendar Entity |
+| As Needed | Time Window, Safe Doses, Calendar Entity |
+| Cyclic/Calendar Pattern | Days On, Days Off, Cycle Start Date, Dose Time, Time Window, Safe Doses, Calendar Entity |
 
-### Step 2: Metrics Tracker
+### Step 2: Pharmacokinetics
+
+| Field | Range | Description | Default |
+|-------|-------|-------------|---------|
+| Dose Strength | 0–9999 mg | Amount of medication per dose. Set to 0 if not tracking concentration. | 0 |
+| Elimination Half-Life | 0–168 h | Time for the body to eliminate half the drug. Set to 0 if not tracking concentration. | 0 |
+| Time to Peak Concentration | 0–72 h | Hours after taking until concentration peaks. Set to 0 for immediate-release medications. | 0 |
+
+### Step 3: Metrics Tracker & Adherence
 
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
@@ -169,6 +194,13 @@ Click **Configure** on the integration entry to change settings without recreati
 | Nausea | Toggle | Enable a 1–10 slider for nausea | Off |
 | Fatigue | Toggle | Enable a 1–10 slider for fatigue | Off |
 | Custom Metrics | Text | Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each. | — |
+
+**Adherence Tracking** section:
+
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| Track Dose Adherence | Toggle | Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. | On (Off for As Needed) |
+| On-Time Window | 0.5–24 h | How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on. | 1 |
 
 > **Note:** The medication name and tracking type cannot be changed after creation. To switch, remove the entry and create a new one.
 
@@ -458,11 +490,23 @@ cards:
         content: "7d Avg: {{ states('sensor.YOUR_MEDICATION_avg_daily_doses_7_days') }}"
         icon: mdi:chart-line
       - type: template
+        content: "14d Avg: {{ states('sensor.YOUR_MEDICATION_avg_daily_doses_14_days') }}"
+        icon: mdi:chart-line
+      - type: template
         content: "30d Avg: {{ states('sensor.YOUR_MEDICATION_avg_daily_doses_30_days') }}"
         icon: mdi:chart-line
       - type: template
         content: "Year Avg: {{ states('sensor.YOUR_MEDICATION_avg_daily_doses_yearly') }}"
         icon: mdi:chart-line
+      - type: template
+        content: "7d: {{ states('sensor.YOUR_MEDICATION_adherence_7_days') }}%"
+        icon: mdi:check-decagram
+      - type: template
+        content: "14d: {{ states('sensor.YOUR_MEDICATION_adherence_14_days') }}%"
+        icon: mdi:check-decagram
+      - type: template
+        content: "30d: {{ states('sensor.YOUR_MEDICATION_adherence_30_days') }}%"
+        icon: mdi:check-decagram
       - type: template
         content: "Total: {{ states('sensor.YOUR_MEDICATION_total') }}"
         icon: mdi:counter
