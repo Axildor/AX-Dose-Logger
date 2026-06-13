@@ -1,9 +1,78 @@
+import logging
+
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
 
+_LOGGER = logging.getLogger(__name__)
+
 PLATFORMS = ["sensor", "button", "number", "calendar"]
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old entry to new version."""
+    _LOGGER.debug("Migrating from version %s", config_entry.version)
+
+    new_data = {**config_entry.data}
+    new_options = {**config_entry.options}
+
+    if config_entry.version == 2:
+        # Version 3 added ER pharmacokinetics fields
+        new_data.setdefault("release_type", "Instant Release")
+        new_data.setdefault("bioavailability", 100)
+        new_data.setdefault("ir_fraction", 100)
+        new_data.setdefault("zero_order_duration", 0)
+        new_data.setdefault("release_half_life", 0)
+        # Also ensure these exist in options (user may have partially saved)
+        new_options.setdefault("bioavailability", 100)
+        new_options.setdefault("ir_fraction", 100)
+        new_options.setdefault("zero_order_duration", 0)
+        new_options.setdefault("release_half_life", 0)
+
+    if config_entry.version <= 3:
+        # Version 4 added lag_time
+        new_data.setdefault("lag_time", 0)
+        new_options.setdefault("lag_time", 0)
+
+    if config_entry.version <= 4:
+        # Version 5: Convert time_of_day string to dose_times list
+        # Old format: time_of_day = "08:00"
+        # New format: dose_times = ["08:00"], doses_per_day = 1
+        old_time = new_data.pop("time_of_day", None)
+        if old_time:
+            new_data["dose_times"] = [old_time]
+            new_data["doses_per_day"] = 1
+        else:
+            new_data.setdefault("dose_times", ["08:00"])
+            new_data.setdefault("doses_per_day", 1)
+
+        old_time_opt = new_options.pop("time_of_day", None)
+        if old_time_opt:
+            new_options["dose_times"] = [old_time_opt]
+            new_options["doses_per_day"] = 1
+        else:
+            new_options.setdefault("dose_times", ["08:00"])
+            new_options.setdefault("doses_per_day", 1)
+
+    if config_entry.version <= 5:
+        # Version 6: Rename safe_doses → pill_limit
+        if "safe_doses" in new_data:
+            new_data["pill_limit"] = new_data.pop("safe_doses")
+        if "safe_doses" in new_options:
+            new_options["pill_limit"] = new_options.pop("safe_doses")
+
+    hass.config_entries.async_update_entry(
+        config_entry, data=new_data, options=new_options, version=6
+    )
+
+    _LOGGER.info(
+        "Migration to version %s successful for %s",
+        6, config_entry.title,
+    )
+
+    return True
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})

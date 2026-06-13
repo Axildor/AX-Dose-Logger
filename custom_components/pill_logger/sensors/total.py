@@ -1,4 +1,4 @@
-from homeassistant.components.sensor import RestoreSensor
+from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.core import callback
@@ -6,6 +6,8 @@ from ..const import DOMAIN
 
 class PillTotalSensor(RestoreSensor):
     _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
     should_poll = False
 
     def __init__(self, name, entry_id):

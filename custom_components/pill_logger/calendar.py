@@ -2,7 +2,7 @@
 
 Generates calendar events representing expected dose times based on the
 medication's tracking type configuration:
-  - Time of Day:  One daily event at the configured time.
+  - Time of Day:  One or more daily events at the configured times.
   - Regular Interval: Events every N hours anchored to midnight.
   - Cyclic/Calendar Pattern: Events on ON days at the configured dose time.
   - As Needed (PRN): No future events (unpredictable).
@@ -18,7 +18,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import DOMAIN, get_dose_times
 
 EVENT_DURATION = timedelta(hours=1)
 
@@ -126,39 +126,32 @@ class PillCalendarEntity(CalendarEntity):
         return []
 
     # ------------------------------------------------------------------
-    # Time of Day
+    # Time of Day (supports multiple daily dose times)
     # ------------------------------------------------------------------
 
     def _generate_time_of_day_events(
         self, entry: ConfigEntry, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
-        """One event per day at the configured time_of_day."""
-        time_of_day = entry.options.get(
-            "time_of_day", entry.data.get("time_of_day", "08:00")
-        )
-        try:
-            hour, minute = int(time_of_day.split(":")[0]), int(
-                time_of_day.split(":")[1]
-            )
-        except (ValueError, AttributeError):
-            hour, minute = 8, 0
+        """One or more events per day at the configured dose times."""
+        parsed_times = get_dose_times(entry)
 
         events: list[CalendarEvent] = []
         tz = dt_util.now().tzinfo
         current = start_date.date()
         while current <= end_date.date():
-            event_start = datetime(
-                current.year, current.month, current.day, hour, minute, tzinfo=tz
-            )
-            event_end = event_start + EVENT_DURATION
-            if event_end > start_date and event_start < end_date:
-                events.append(
-                    CalendarEvent(
-                        summary=f"{self._med_name} Dose",
-                        start=event_start,
-                        end=event_end,
-                    )
+            for hour, minute in parsed_times:
+                event_start = datetime(
+                    current.year, current.month, current.day, hour, minute, tzinfo=tz
                 )
+                event_end = event_start + EVENT_DURATION
+                if event_end > start_date and event_start < end_date:
+                    events.append(
+                        CalendarEvent(
+                            summary=f"{self._med_name} Dose",
+                            start=event_start,
+                            end=event_end,
+                        )
+                    )
             current += timedelta(days=1)
         return events
 

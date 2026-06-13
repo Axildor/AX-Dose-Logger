@@ -1,7 +1,7 @@
 from homeassistant.core import HomeAssistant
 from .sensors.total import PillTotalSensor
 from .sensors.last_dose import PillLastDoseSensor
-from .sensors.safe_doses import PillSafeDosesSensor
+from .sensors.pill_limit import PillLimitSensor
 from .sensors.concentration import PillConcentrationSensor
 from .sensors.next_dose import PillNextDoseSensor
 from .sensors.avg_doses import PillAvgDosesSensor
@@ -14,7 +14,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     tracking_type = entry.data.get("tracking_type")
     entities = [PillTotalSensor(med_name, entry.entry_id)]
     entities.append(PillLastDoseSensor(med_name, entry.entry_id))
-    entities.append(PillSafeDosesSensor(entry))
+    entities.append(PillLimitSensor(entry))
     entities.append(PillConcentrationSensor(entry))
     entities.append(PillNextDoseSensor(entry))
     entities.append(PillAvgDosesSensor(entry, 7, "Avg Daily Doses (7 Days)"))

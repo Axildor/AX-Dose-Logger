@@ -5,7 +5,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
-from ..const import DOMAIN
+from ..const import DOMAIN, get_dose_times
 
 class PillNextDoseSensor(RestoreSensor):
     _attr_has_entity_name = True
@@ -111,8 +111,8 @@ class PillNextDoseSensor(RestoreSensor):
             )
 
     def _compute_safe_to_take(self, entry, now):
-        """Compute remaining safe doses using the unified sliding window."""
-        max_pills = entry.options.get("safe_doses", entry.data.get("safe_doses", entry.data.get("max_pills_allowed", 1)))
+        """Compute remaining pills safe to take using the unified sliding window."""
+        max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", entry.data.get("max_pills_allowed", 1)))
         time_window = self._get_time_window(entry)
         cutoff = now - timedelta(hours=time_window)
         valid_timestamps = [ts for ts in self._timestamps if ts >= cutoff]
@@ -149,21 +149,7 @@ class PillNextDoseSensor(RestoreSensor):
             else:
                 self._attr_native_value = now
         elif self._tracking_type == "Time of Day":
-            time_of_day = entry.options.get("time_of_day", entry.data.get("time_of_day"))
-            if time_of_day:
-                try:
-                    target_hour, target_minute = map(int, time_of_day.split(":"))
-                except (ValueError, AttributeError):
-                    target_hour, target_minute = 8, 0
-                target_today = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-                if self._timestamps:
-                    last_ts = self._timestamps[-1]
-                    if last_ts.date() == now.date():
-                        self._attr_native_value = target_today + timedelta(days=1)
-                    else:
-                        self._attr_native_value = target_today
-                else:
-                    self._attr_native_value = target_today
+            self._update_state_time_of_day(entry, now)
         elif self._tracking_type == "Cyclic/Calendar Pattern":
             days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
             days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
@@ -218,12 +204,12 @@ class PillNextDoseSensor(RestoreSensor):
                         self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
 
         elif self._tracking_type == "As Needed":
-            max_pills = entry.options.get("safe_doses", entry.data.get("safe_doses", entry.data.get("max_pills_allowed", 1)))
+            max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", entry.data.get("max_pills_allowed", 1)))
             time_window = entry.options.get("time_window_hours", entry.data.get("time_window_hours", 0))
-            cutoff_for_safe_doses = now - timedelta(hours=time_window)
-            valid_timestamps_for_calc = [ts for ts in self._timestamps if ts >= cutoff_for_safe_doses]
-            safe_doses = max(0, max_pills - len(valid_timestamps_for_calc))
-            if safe_doses == 0 and valid_timestamps_for_calc:
+            cutoff_for_pill_limit = now - timedelta(hours=time_window)
+            valid_timestamps_for_calc = [ts for ts in self._timestamps if ts >= cutoff_for_pill_limit]
+            pills_remaining = max(0, max_pills - len(valid_timestamps_for_calc))
+            if pills_remaining == 0 and valid_timestamps_for_calc:
                 self._attr_native_value = valid_timestamps_for_calc[0] + timedelta(hours=time_window)
             elif self._timestamps:
                 self._attr_native_value = self._timestamps[-1]
@@ -237,3 +223,90 @@ class PillNextDoseSensor(RestoreSensor):
             "timestamps": [ts.isoformat() for ts in self._timestamps],
             "safe_to_take": safe_to_take,
         }
+
+    def _update_state_time_of_day(self, entry, now):
+        """Compute next dose time for Time of Day mode with multi-daily dose support.
+
+        For each dose slot, check if a dose was already taken covering that slot
+        today. The next dose is the earliest uncovered slot today, or the first
+        slot tomorrow if all today's slots are covered.
+        """
+        parsed_times = get_dose_times(entry)
+        time_window = entry.options.get(
+            "time_window_hours", entry.data.get("time_window_hours", 24)
+        )
+        max_pills = entry.options.get(
+            "pill_limit", entry.data.get("pill_limit", 1)
+        )
+
+        if not parsed_times:
+            self._attr_native_value = now
+            return
+
+        # Build a list of today's dose slot datetimes
+        tz = now.tzinfo
+        today_slots = []
+        for hour, minute in parsed_times:
+            slot_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            today_slots.append(slot_time)
+
+        # Check which slots are "covered" by an actual dose taken within the
+        # time window. A dose covers a slot if it was taken within ±(time_window/2)
+        # of the slot time, or more simply if it was taken on the same day near
+        # that slot. We use a simpler heuristic: a slot is covered if any dose
+        # timestamp exists on the same calendar day and is within a reasonable
+        # window of the slot time.
+        #
+        # For multi-dose, we match each dose to its nearest slot. A slot is
+        # covered if there's a dose timestamp within the time window that is
+        # closer to this slot than to any other slot.
+
+        # Simple approach: for each slot, check if any dose was taken within
+        # a grace period around that slot time today.
+        # Use half the minimum inter-dose interval as the grace, but at least 1 hour.
+        if len(parsed_times) >= 2:
+            # Calculate minimum gap between dose times
+            min_gap_minutes = 24 * 60  # Start with max
+            for i in range(len(parsed_times)):
+                for j in range(i + 1, len(parsed_times)):
+                    gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (parsed_times[i][0] * 60 + parsed_times[i][1])
+                    min_gap_minutes = min(min_gap_minutes, gap)
+            grace_minutes = max(30, min_gap_minutes // 2)
+        else:
+            grace_minutes = 60  # Single dose: 1 hour grace
+
+        grace_td = timedelta(minutes=grace_minutes)
+
+        # Find the next uncovered slot
+        # First, check today's slots from earliest to latest
+        for slot_time in today_slots:
+            # Check if any dose covers this slot
+            covered = False
+            for ts in self._timestamps:
+                if abs((ts - slot_time).total_seconds()) <= grace_td.total_seconds():
+                    covered = True
+                    break
+
+            if not covered and slot_time > now:
+                # This slot is in the future and uncovered — that's the next dose
+                self._attr_native_value = slot_time
+                return
+
+        # All today's future slots are covered, or there are no future slots.
+        # Check if there are past uncovered slots today (missed doses).
+        # If all slots are covered today, next dose is the first slot tomorrow.
+        # If pill_limit is reached, next dose is when the window expires.
+        cutoff = now - timedelta(hours=time_window)
+        valid_timestamps = [ts for ts in self._timestamps if ts >= cutoff]
+        if max_pills > 0 and len(valid_timestamps) >= max_pills:
+            # At pill limit — next dose is when the oldest dose in window expires
+            if valid_timestamps:
+                self._attr_native_value = valid_timestamps[0] + timedelta(hours=time_window)
+                return
+
+        # Next dose is the first slot tomorrow
+        first_hour, first_minute = parsed_times[0]
+        tomorrow = now + timedelta(days=1)
+        self._attr_native_value = tomorrow.replace(
+            hour=first_hour, minute=first_minute, second=0, microsecond=0
+        )

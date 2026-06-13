@@ -6,7 +6,8 @@
         "description": "Name your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
         "data": {
           "medication_name": "Medication Name",
-          "tracking_type": "Tracking Type"
+          "tracking_type": "Tracking Type",
+          "release_type": "Release Type"
         }
       },
       "regular_interval": {
@@ -15,34 +16,78 @@
         "data": {
           "initial_stock": "Inventory",
           "hours_between_doses": "Dose Interval",
-          "safe_doses": "Safe Doses",
+          "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
           "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "hours_between_doses": "Minimum hours between consecutive doses.",
-          "safe_doses": "Maximum doses allowed within the time window.",
-          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar."
         }
       },
       "time_of_day": {
         "title": "Time of Day",
-        "description": "Set up dosing at a specific time each day.",
+        "description": "Set up dosing at specific times each day — e.g. twice daily at 8 AM and 8 PM.",
         "data": {
           "initial_stock": "Inventory",
-          "time_of_day": "Dose Time",
-          "safe_doses": "Safe Doses",
+          "doses_per_day": "How Many Times per Day",
+          "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
           "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
-          "time_of_day": "Time of day to take the medication.",
-          "safe_doses": "Maximum doses allowed within the time window.",
-          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 24 hours.",
+          "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. You'll set the exact times on the next screen.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+        }
+      },
+      "time_of_day_times": {
+        "title": "Dose Times",
+        "description": "Set the time for each daily dose. Times are automatically sorted after saving.",
+        "data": {
+          "dose_time_1": "Dose Time 1",
+          "dose_time_2": "Dose Time 2",
+          "dose_time_3": "Dose Time 3",
+          "dose_time_4": "Dose Time 4",
+          "dose_time_5": "Dose Time 5",
+          "dose_time_6": "Dose Time 6",
+          "dose_time_7": "Dose Time 7",
+          "dose_time_8": "Dose Time 8",
+          "dose_time_9": "Dose Time 9",
+          "dose_time_10": "Dose Time 10",
+          "dose_time_11": "Dose Time 11",
+          "dose_time_12": "Dose Time 12",
+          "dose_time_13": "Dose Time 13",
+          "dose_time_14": "Dose Time 14",
+          "dose_time_15": "Dose Time 15",
+          "dose_time_16": "Dose Time 16",
+          "dose_time_17": "Dose Time 17",
+          "dose_time_18": "Dose Time 18"
+        },
+        "data_description": {
+          "dose_time_1": "Time for the first daily dose.",
+          "dose_time_2": "Time for the second daily dose.",
+          "dose_time_3": "Time for the third daily dose.",
+          "dose_time_4": "Time for the fourth daily dose.",
+          "dose_time_5": "Time for the fifth daily dose.",
+          "dose_time_6": "Time for the sixth daily dose.",
+          "dose_time_7": "Time for the seventh daily dose.",
+          "dose_time_8": "Time for the eighth daily dose.",
+          "dose_time_9": "Time for the ninth daily dose.",
+          "dose_time_10": "Time for the tenth daily dose.",
+          "dose_time_11": "Time for the eleventh daily dose.",
+          "dose_time_12": "Time for the twelfth daily dose.",
+          "dose_time_13": "Time for the thirteenth daily dose.",
+          "dose_time_14": "Time for the fourteenth daily dose.",
+          "dose_time_15": "Time for the fifteenth daily dose.",
+          "dose_time_16": "Time for the sixteenth daily dose.",
+          "dose_time_17": "Time for the seventeenth daily dose.",
+          "dose_time_18": "Time for the eighteenth daily dose."
         }
       },
       "as_needed": {
@@ -50,14 +95,14 @@
         "description": "Set up on-demand dosing with a safety limit.",
         "data": {
           "initial_stock": "Inventory",
-          "safe_doses": "Safe Doses",
+          "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
           "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
-          "safe_doses": "Maximum doses allowed within the time window.",
-          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 2 pills in 8 hours.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar."
         }
       },
@@ -70,7 +115,7 @@
           "days_off": "Days Off",
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
-          "safe_doses": "Safe Doses",
+          "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
           "enable_calendar": "Calendar Entity"
         },
@@ -80,23 +125,33 @@
           "days_off": "Number of rest days in the cycle.",
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
-          "safe_doses": "Maximum doses allowed within the time window.",
-          "time_window_hours": "Rolling window for safe dose calculation, e.g. max 1 pill in 24 hours.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 1 pill in 24 hours.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar."
         }
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug concentration over time. Steady state tracking is only available for scheduled medications (Regular Interval, Time of Day, Cyclic). Leave all values at 0 if not needed.",
+        "description": "Optional: configure to track drug amount in the body over time. Pharmacokinetic information can be found online for most drugs; please use only reputable sources. This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription. Leave all values at 0 if not needed.",
         "data": {
           "strength": "Dose Strength",
           "half_life": "Elimination Half-Life",
-          "hours_to_peak": "Time to Peak Concentration"
+          "hours_to_peak": "Time to Peak Concentration",
+          "bioavailability": "Bioavailability",
+          "lag_time": "Lag Time",
+          "ir_fraction": "Initial Release",
+          "zero_order_duration": "Sustained Release Duration",
+          "release_half_life": "Release Half-Life"
         },
         "data_description": {
           "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
           "half_life": "Time for the body to eliminate half the drug. Set to 0 if not tracking concentration.",
-          "hours_to_peak": "Hours after taking until concentration peaks. Set to 0 for immediate-release medications."
+          "hours_to_peak": "Hours after taking until concentration peaks. Set to 0 for immediate-release medications.",
+          "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
+          "lag_time": "Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery. (lag time, absorption delay, enteric coating)",
+          "ir_fraction": "Percentage of the dose released immediately (immediate release fraction). Only for sustained-release medications. Default 100% means all at once.",
+          "zero_order_duration": "Hours the sustained-release phase delivers drug at a constant rate (zero-order release duration). Only for sustained-release medications.",
+          "release_half_life": "Time for the remaining drug to be released after the sustained phase ends (dissolution half-life). Only for sustained-release medications."
         }
       },
       "effectiveness": {
@@ -136,39 +191,85 @@
         "description": "Adjust the schedule and safety limits. Pharmacokinetic and effectiveness settings are on the next pages.",
         "data": {
           "hours_between_doses": "Dose Interval",
-          "time_of_day": "Dose Time",
+          "doses_per_day": "How Many Times per Day",
+          "dose_time_1": "Dose Time 1",
+          "dose_time_2": "Dose Time 2",
+          "dose_time_3": "Dose Time 3",
+          "dose_time_4": "Dose Time 4",
+          "dose_time_5": "Dose Time 5",
+          "dose_time_6": "Dose Time 6",
+          "dose_time_7": "Dose Time 7",
+          "dose_time_8": "Dose Time 8",
+          "dose_time_9": "Dose Time 9",
+          "dose_time_10": "Dose Time 10",
+          "dose_time_11": "Dose Time 11",
+          "dose_time_12": "Dose Time 12",
+          "dose_time_13": "Dose Time 13",
+          "dose_time_14": "Dose Time 14",
+          "dose_time_15": "Dose Time 15",
+          "dose_time_16": "Dose Time 16",
+          "dose_time_17": "Dose Time 17",
+          "dose_time_18": "Dose Time 18",
           "time_window_hours": "Time Window",
           "days_on": "Days On",
           "days_off": "Days Off",
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
-          "safe_doses": "Safe Doses",
+          "pill_limit": "Pill Limit",
           "enable_calendar": "Calendar Entity"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
-          "time_of_day": "Time of day to take the medication.",
-          "time_window_hours": "Rolling window for safe dose calculation.",
+          "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. Save and re-enter options to change the number of time fields.",
+          "dose_time_1": "Time for the first daily dose.",
+          "dose_time_2": "Time for the second daily dose.",
+          "dose_time_3": "Time for the third daily dose.",
+          "dose_time_4": "Time for the fourth daily dose.",
+          "dose_time_5": "Time for the fifth daily dose.",
+          "dose_time_6": "Time for the sixth daily dose.",
+          "dose_time_7": "Time for the seventh daily dose.",
+          "dose_time_8": "Time for the eighth daily dose.",
+          "dose_time_9": "Time for the ninth daily dose.",
+          "dose_time_10": "Time for the tenth daily dose.",
+          "dose_time_11": "Time for the eleventh daily dose.",
+          "dose_time_12": "Time for the twelfth daily dose.",
+          "dose_time_13": "Time for the thirteenth daily dose.",
+          "dose_time_14": "Time for the fourteenth daily dose.",
+          "dose_time_15": "Time for the fifteenth daily dose.",
+          "dose_time_16": "Time for the sixteenth daily dose.",
+          "dose_time_17": "Time for the seventeenth daily dose.",
+          "dose_time_18": "Time for the eighteenth daily dose.",
+          "time_window_hours": "Rolling window for the pill limit.",
           "days_on": "Number of active days in the cycle.",
           "days_off": "Number of rest days in the cycle.",
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
-          "safe_doses": "Maximum doses allowed within the time window.",
+          "pill_limit": "Maximum pills you can take within the time window.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity."
         }
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug concentration over time. Steady state tracking is only available for scheduled medications (Regular Interval, Time of Day, Cyclic). Leave all values at 0 if not needed.",
+        "description": "Optional: configure to track drug amount in the body over time. Pharmacokinetic information can be found online for most drugs; please use only reputable sources. This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription. Leave all values at 0 if not needed.",
         "data": {
           "strength": "Dose Strength",
           "half_life": "Elimination Half-Life",
-          "hours_to_peak": "Time to Peak Concentration"
+          "hours_to_peak": "Time to Peak Concentration",
+          "bioavailability": "Bioavailability",
+          "lag_time": "Lag Time",
+          "ir_fraction": "Initial Release",
+          "zero_order_duration": "Sustained Release Duration",
+          "release_half_life": "Release Half-Life"
         },
         "data_description": {
           "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
           "half_life": "Time for the body to eliminate half the drug. Set to 0 if not tracking concentration.",
-          "hours_to_peak": "Hours after taking until concentration peaks. Set to 0 for immediate-release medications."
+          "hours_to_peak": "Hours after taking until concentration peaks. Set to 0 for immediate-release medications.",
+          "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
+          "lag_time": "Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery. (lag time, absorption delay, enteric coating)",
+          "ir_fraction": "Percentage of the dose released immediately (immediate release fraction). Only for sustained-release medications. Default 100% means all at once.",
+          "zero_order_duration": "Hours the sustained-release phase delivers drug at a constant rate (zero-order release duration). Only for sustained-release medications.",
+          "release_half_life": "Time for the remaining drug to be released after the sustained phase ends (dissolution half-life). Only for sustained-release medications."
         }
       },
       "effectiveness": {
@@ -205,9 +306,15 @@
     "tracking_type": {
       "options": {
         "Regular Interval": "Regular Interval — fixed hours between doses",
-        "Time of Day": "Time of Day — once daily at a set time",
+        "Time of Day": "Time of Day — one or more times daily at set times",
         "As Needed": "As Needed — on-demand with a safety limit",
         "Cyclic/Calendar Pattern": "Cyclic — on/off day patterns"
+      }
+    },
+    "release_type": {
+      "options": {
+        "Instant Release": "Instant Release — most drugs, don't change if unsure",
+        "Sustained Release": "Sustained Release — extended-release or bi-layer tablets"
       }
     }
   }

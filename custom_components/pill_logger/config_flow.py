@@ -3,7 +3,7 @@ from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import callback
 from homeassistant.helpers import selector as sel
 from datetime import date
-from .const import DOMAIN, STANDARD_EFFECTIVENESS_METRICS
+from .const import DOMAIN, STANDARD_EFFECTIVENESS_METRICS, RELEASE_TYPES, PK_DEFAULTS, MAX_DOSES_PER_DAY, generate_default_dose_times
 
 # Section key for adherence (still used as a section)
 _ADHERENCE_SECTION_KEY = "adherence"
@@ -15,8 +15,8 @@ _STOCK_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
 _HOURS_BETWEEN_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=1, max=48, step=1, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
 ))
-_SAFE_DOSES_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
-    min=1, max=20, step=1, unit_of_measurement="doses", mode=sel.NumberSelectorMode.BOX
+_PILL_LIMIT_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=1, max=20, step=1, unit_of_measurement="pills", mode=sel.NumberSelectorMode.BOX
 ))
 _TIME_WINDOW_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=0.5, max=168, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
@@ -30,11 +30,29 @@ _HALF_LIFE_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
 _HOURS_TO_PEAK_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=0, max=72, step=0.1, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
 ))
+_BIOAVAILABILITY_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=100, step=1, unit_of_measurement="%", mode=sel.NumberSelectorMode.BOX
+))
+_IR_FRACTION_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=100, step=1, unit_of_measurement="%", mode=sel.NumberSelectorMode.BOX
+))
+_ZERO_ORDER_DURATION_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=24, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
+))
+_RELEASE_HALF_LIFE_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=24, step=0.1, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
+))
+_LAG_TIME_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=1440, step=1, unit_of_measurement="min", mode=sel.NumberSelectorMode.BOX
+))
 _DAYS_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=1, max=30, step=1, unit_of_measurement="days", mode=sel.NumberSelectorMode.BOX
 ))
 _ADHERENCE_GRACE_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=0.5, max=24, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
+))
+_DOSES_PER_DAY_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=1, max=MAX_DOSES_PER_DAY, step=1, unit_of_measurement="times/day", mode=sel.NumberSelectorMode.BOX
 ))
 
 
@@ -50,7 +68,7 @@ def _make_adherence_section(enable_default=True, grace_default=1):
 
 
 class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 2
+    VERSION = 6
 
     def __init__(self):
         self._data = {}
@@ -78,6 +96,13 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         translation_key="tracking_type",
                     )
                 ),
+                vol.Required("release_type", default="Instant Release"): sel.SelectSelector(
+                    sel.SelectSelectorConfig(
+                        options=RELEASE_TYPES,
+                        mode=sel.SelectSelectorMode.DROPDOWN,
+                        translation_key="release_type",
+                    )
+                ),
             })
         )
 
@@ -91,26 +116,57 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                 vol.Required("hours_between_doses", default=8): _HOURS_BETWEEN_SELECTOR,
-                vol.Required("safe_doses", default=1): _SAFE_DOSES_SELECTOR,
+                vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
                 vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
             }),
         )
 
     async def async_step_time_of_day(self, user_input=None):
+        """Step 2a: Choose how many times per day and safety settings."""
         if user_input is not None:
             self._data.update(user_input)
-            return await self.async_step_pk()
+            return await self.async_step_time_of_day_times()
 
         return self.async_show_form(
             step_id="time_of_day",
             data_schema=vol.Schema({
                 vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
-                vol.Required("time_of_day", default="08:00"): sel.TimeSelector(),
-                vol.Required("safe_doses", default=1): _SAFE_DOSES_SELECTOR,
+                vol.Required("doses_per_day", default=1): _DOSES_PER_DAY_SELECTOR,
+                vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
                 vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
             }),
+        )
+
+    async def async_step_time_of_day_times(self, user_input=None):
+        """Step 2b: Configure individual dose times based on doses_per_day."""
+        doses_per_day = int(self._data.get("doses_per_day", 1))
+        defaults = generate_default_dose_times(doses_per_day)
+
+        if user_input is not None:
+            # Collect dose_time_1..dose_time_N into a sorted list
+            dose_times = []
+            for i in range(doses_per_day):
+                key = f"dose_time_{i + 1}"
+                val = user_input.get(key, defaults[i] if i < len(defaults) else "08:00")
+                dose_times.append(val)
+            dose_times.sort()
+            self._data["dose_times"] = dose_times
+            # Remove individual dose_time_N keys from data
+            for i in range(doses_per_day):
+                self._data.pop(f"dose_time_{i + 1}", None)
+            return await self.async_step_pk()
+
+        # Build schema with dose_time_1 through dose_time_N
+        schema_fields = {}
+        for i in range(doses_per_day):
+            default_time = defaults[i] if i < len(defaults) else "08:00"
+            schema_fields[vol.Required(f"dose_time_{i + 1}", default=default_time)] = sel.TimeSelector()
+
+        return self.async_show_form(
+            step_id="time_of_day_times",
+            data_schema=vol.Schema(schema_fields),
         )
 
     async def async_step_as_needed(self, user_input=None):
@@ -122,7 +178,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="as_needed",
             data_schema=vol.Schema({
                 vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
-                vol.Required("safe_doses", default=2): _SAFE_DOSES_SELECTOR,
+                vol.Required("pill_limit", default=2): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
                 vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
             }),
@@ -141,7 +197,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("days_off", default=2): _DAYS_SELECTOR,
                 vol.Required("cycle_anchor_date", default=date.today().isoformat()): sel.DateSelector(sel.DateSelectorConfig()),
                 vol.Required("dose_time", default="08:00"): sel.TimeSelector(),
-                vol.Required("safe_doses", default=1): _SAFE_DOSES_SELECTOR,
+                vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
                 vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
             }),
@@ -153,13 +209,24 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             return await self.async_step_effectiveness()
 
+        release_type = self._data.get("release_type", "Instant Release")
+
+        pk_schema = {
+            vol.Optional("strength", default=0): _STRENGTH_SELECTOR,
+            vol.Optional("half_life", default=0): _HALF_LIFE_SELECTOR,
+            vol.Optional("hours_to_peak", default=0): _HOURS_TO_PEAK_SELECTOR,
+            vol.Optional("bioavailability", default=PK_DEFAULTS["bioavailability"]): _BIOAVAILABILITY_SELECTOR,
+            vol.Optional("lag_time", default=PK_DEFAULTS["lag_time"]): _LAG_TIME_SELECTOR,
+        }
+
+        if release_type == "Sustained Release":
+            pk_schema[vol.Optional("ir_fraction", default=PK_DEFAULTS["ir_fraction"])] = _IR_FRACTION_SELECTOR
+            pk_schema[vol.Optional("zero_order_duration", default=PK_DEFAULTS["zero_order_duration"])] = _ZERO_ORDER_DURATION_SELECTOR
+            pk_schema[vol.Optional("release_half_life", default=PK_DEFAULTS["release_half_life"])] = _RELEASE_HALF_LIFE_SELECTOR
+
         return self.async_show_form(
             step_id="pk",
-            data_schema=vol.Schema({
-                vol.Optional("strength", default=0): _STRENGTH_SELECTOR,
-                vol.Optional("half_life", default=0): _HALF_LIFE_SELECTOR,
-                vol.Optional("hours_to_peak", default=0): _HOURS_TO_PEAK_SELECTOR,
-            }),
+            data_schema=vol.Schema(pk_schema),
         )
 
     async def async_step_effectiveness(self, user_input=None):
@@ -201,6 +268,21 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         """Step 1: Schedule and dosing parameters."""
         if user_input is not None:
             self._data.update(user_input)
+            # For Time of Day: collect dose_time_N into dose_times list
+            tracking_type = self._entry.data.get("tracking_type")
+            if tracking_type == "Time of Day":
+                doses_per_day = int(user_input.get("doses_per_day", self._entry.data.get("doses_per_day", 1)))
+                dose_times = []
+                for i in range(doses_per_day):
+                    key = f"dose_time_{i + 1}"
+                    val = user_input.get(key)
+                    if val:
+                        dose_times.append(val)
+                dose_times.sort()
+                self._data["dose_times"] = dose_times
+                # Remove individual dose_time_N keys
+                for i in range(doses_per_day):
+                    self._data.pop(f"dose_time_{i + 1}", None)
             return await self.async_step_pk()
 
         tracking_type = self._entry.data.get("tracking_type")
@@ -214,7 +296,13 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             tw_default = options.get("time_window_hours", data.get("time_window_hours", data.get("hours_between_doses", 8)))
             main_schema[vol.Required("time_window_hours", default=tw_default)] = _TIME_WINDOW_SELECTOR
         elif tracking_type == "Time of Day":
-            main_schema[vol.Required("time_of_day", default=options.get("time_of_day", data.get("time_of_day", "08:00")))] = sel.TimeSelector()
+            current_doses_per_day = int(options.get("doses_per_day", data.get("doses_per_day", 1)))
+            main_schema[vol.Required("doses_per_day", default=current_doses_per_day)] = _DOSES_PER_DAY_SELECTOR
+            current_dose_times = options.get("dose_times", data.get("dose_times", generate_default_dose_times(current_doses_per_day)))
+            # Add dose_time_1 through dose_time_N
+            for i in range(current_doses_per_day):
+                default_val = current_dose_times[i] if i < len(current_dose_times) else "08:00"
+                main_schema[vol.Required(f"dose_time_{i + 1}", default=default_val)] = sel.TimeSelector()
             main_schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = _TIME_WINDOW_SELECTOR
         elif tracking_type == "As Needed":
             main_schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 8)))] = _TIME_WINDOW_SELECTOR
@@ -225,7 +313,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             main_schema[vol.Required("dose_time", default=options.get("dose_time", data.get("dose_time", "08:00")))] = sel.TimeSelector()
             main_schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = _TIME_WINDOW_SELECTOR
 
-        main_schema[vol.Required("safe_doses", default=options.get("safe_doses", data.get("safe_doses", 1)))] = _SAFE_DOSES_SELECTOR
+        main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = _PILL_LIMIT_SELECTOR
 
         # Calendar toggle
         main_schema[vol.Optional("enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", True)))] = sel.BooleanSelector()
@@ -243,14 +331,24 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
 
         options = self._entry.options
         data = self._entry.data
+        release_type = data.get("release_type", "Instant Release")
+
+        pk_schema = {
+            vol.Optional("strength", default=options.get("strength", data.get("strength", 0))): _STRENGTH_SELECTOR,
+            vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0))): _HALF_LIFE_SELECTOR,
+            vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0))): _HOURS_TO_PEAK_SELECTOR,
+            vol.Optional("bioavailability", default=options.get("bioavailability", data.get("bioavailability", PK_DEFAULTS["bioavailability"]))): _BIOAVAILABILITY_SELECTOR,
+            vol.Optional("lag_time", default=options.get("lag_time", data.get("lag_time", PK_DEFAULTS["lag_time"]))): _LAG_TIME_SELECTOR,
+        }
+
+        if release_type == "Sustained Release":
+            pk_schema[vol.Optional("ir_fraction", default=options.get("ir_fraction", data.get("ir_fraction", PK_DEFAULTS["ir_fraction"])))] = _IR_FRACTION_SELECTOR
+            pk_schema[vol.Optional("zero_order_duration", default=options.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"])))] = _ZERO_ORDER_DURATION_SELECTOR
+            pk_schema[vol.Optional("release_half_life", default=options.get("release_half_life", data.get("release_half_life", PK_DEFAULTS["release_half_life"])))] = _RELEASE_HALF_LIFE_SELECTOR
 
         return self.async_show_form(
             step_id="pk",
-            data_schema=vol.Schema({
-                vol.Optional("strength", default=options.get("strength", data.get("strength", 0))): _STRENGTH_SELECTOR,
-                vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0))): _HALF_LIFE_SELECTOR,
-                vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0))): _HOURS_TO_PEAK_SELECTOR,
-            }),
+            data_schema=vol.Schema(pk_schema),
         )
 
     async def async_step_effectiveness(self, user_input=None):

@@ -1,5 +1,5 @@
 from datetime import timedelta, date
-from homeassistant.components.sensor import RestoreSensor
+from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_time_interval
@@ -7,15 +7,17 @@ from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
 from ..const import DOMAIN
 
-class PillSafeDosesSensor(RestoreSensor):
+class PillLimitSensor(RestoreSensor):
     _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
     should_poll = False
 
     def __init__(self, entry):
         med_name = entry.data["medication_name"]
         self._med_name = med_name
-        self._attr_name = "Safe Doses"
-        self._attr_unique_id = f"{entry.entry_id}_safe_doses"
+        self._attr_name = "Pills Safe to Take"
+        self._attr_unique_id = f"{entry.entry_id}_pills_safe_to_take"
         self._attr_icon = "mdi:pill"
         self._entry_id = entry.entry_id
         self._tracking_type = entry.data.get("tracking_type")
@@ -86,7 +88,12 @@ class PillSafeDosesSensor(RestoreSensor):
         self.async_write_ha_state()
 
     def _get_time_window(self, entry):
-        """Get time_window_hours with mode-specific fallbacks."""
+        """Get time_window_hours with mode-specific fallbacks.
+
+        For Time of Day mode with multiple daily doses, the default 24h window
+        naturally supports multi-dose regimens (e.g. BID with pill_limit=2
+        means max 2 pills in any 24h window).
+        """
         if self._tracking_type == "Regular Interval":
             # Fall back to hours_between_doses if time_window_hours not explicitly set
             return entry.options.get(
@@ -114,10 +121,10 @@ class PillSafeDosesSensor(RestoreSensor):
     def _update_state(self):
         now = dt_util.now()
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        max_pills = entry.options.get("safe_doses", entry.data.get("safe_doses", entry.data.get("max_pills_allowed", 1)))
+        max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", entry.data.get("max_pills_allowed", 1)))
         time_window = self._get_time_window(entry)
 
-        # Cyclic OFF days: force safe_doses to 0 regardless of window
+        # Cyclic OFF days: force pill_limit to 0 regardless of window
         if self._tracking_type == "Cyclic/Calendar Pattern":
             days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
             days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
@@ -132,7 +139,7 @@ class PillSafeDosesSensor(RestoreSensor):
             days_since_anchor = (now.date() - anchor_date).days
             position_in_cycle = days_since_anchor % cycle_length
             if position_in_cycle >= days_on:
-                # Currently in an OFF window — no doses allowed
+                # Currently in an OFF window — no pills allowed
                 self._attr_native_value = 0
                 self._attr_extra_state_attributes = {
                     "timestamps": [ts.isoformat() for ts in self._timestamps],

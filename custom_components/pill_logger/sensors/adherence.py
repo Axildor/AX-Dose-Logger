@@ -8,7 +8,7 @@ from homeassistant.helpers.event import async_track_time_change, async_call_late
 from homeassistant.core import callback
 from homeassistant.const import STATE_UNKNOWN
 import homeassistant.util.dt as dt_util
-from ..const import DOMAIN
+from ..const import DOMAIN, get_dose_times
 
 
 class PillAdherenceSensor(RestoreSensor):
@@ -164,48 +164,50 @@ class PillAdherenceSensor(RestoreSensor):
     def _count_slots_time_of_day(self, now, cutoff, grace_td):
         """Count actual and expected dose slots for Time of Day tracking.
 
-        For each day in the window, check if any dose was taken within
-        ±grace of the target time. Days where the dose window is still
-        open and no dose covers the slot are skipped (pending).
+        For each day in the window, check each dose slot (one per entry in
+        dose_times) to see if any dose was taken within ±grace of the
+        target time. Slots where the dose window is still open and no dose
+        covers the slot are skipped (pending).
 
         Returns:
             (actual_doses, expected_doses)
         """
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        time_of_day = entry.options.get(
-            "time_of_day", entry.data.get("time_of_day", "08:00")
-        )
-        try:
-            target_hour, target_minute = map(int, time_of_day.split(":"))
-        except (ValueError, AttributeError):
-            target_hour, target_minute = 8, 0
+        parsed_times = get_dose_times(entry)
+
+        if not parsed_times:
+            return 0, 0
 
         actual = 0
         expected = 0
         day_offset = 0
         while True:
             check_date = (now - timedelta(days=day_offset)).date()
-            expected_time = datetime.combine(
-                check_date, time(target_hour, target_minute),
-                tzinfo=now.tzinfo,
-            )
-            if expected_time < cutoff:
-                break
 
-            # Check if any dose covers this slot
-            dose_covers = any(
-                abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds()
-                for ts in self._timestamps
-            )
+            # Process slots in reverse order (latest first) so we can
+            # determine if today's future slots should be skipped
+            for target_hour, target_minute in reversed(parsed_times):
+                expected_time = datetime.combine(
+                    check_date, time(target_hour, target_minute),
+                    tzinfo=now.tzinfo,
+                )
+                if expected_time < cutoff:
+                    return actual, expected
 
-            # Skip today if the dose window is still open and no dose covers it
-            if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
-                day_offset += 1
-                continue
+                # Check if any dose covers this slot
+                dose_covers = any(
+                    abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds()
+                    for ts in self._timestamps
+                )
 
-            expected += 1
-            if dose_covers:
-                actual += 1
+                # Skip today if the dose window is still open and no dose covers it
+                if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
+                    continue
+
+                expected += 1
+                if dose_covers:
+                    actual += 1
+
             day_offset += 1
 
         return actual, expected
@@ -360,25 +362,21 @@ class PillAdherenceSensor(RestoreSensor):
             else:
                 return now
         elif self._tracking_type == "Time of Day":
-            time_of_day = entry.options.get(
-                "time_of_day", entry.data.get("time_of_day")
-            )
-            if time_of_day:
-                try:
-                    target_hour, target_minute = map(int, time_of_day.split(":"))
-                except (ValueError, AttributeError):
-                    target_hour, target_minute = 8, 0
-                target_today = now.replace(
-                    hour=target_hour, minute=target_minute, second=0, microsecond=0
-                )
-                if self._timestamps:
-                    last_ts = self._timestamps[-1]
-                    if last_ts.date() == now.date():
-                        return target_today + timedelta(days=1)
-                    else:
-                        return target_today
-                else:
-                    return target_today
+            parsed_times = get_dose_times(entry)
+            if not parsed_times:
+                return now
+
+            # Find the next upcoming dose slot
+            for hour, minute in parsed_times:
+                target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target > now:
+                    return target
+
+            # All today's slots have passed; next is first slot tomorrow
+            first_hour, first_minute = parsed_times[0]
+            tomorrow = now + timedelta(days=1)
+            return tomorrow.replace(hour=first_hour, minute=first_minute, second=0, microsecond=0)
+
         elif self._tracking_type == "Cyclic/Calendar Pattern":
             days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
             days_off = entry.options.get("days_off", entry.data.get("days_off", 2))

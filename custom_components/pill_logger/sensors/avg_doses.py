@@ -5,7 +5,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_time_change, async_call_later
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
-from ..const import DOMAIN
+from ..const import DOMAIN, get_dose_times
 
 class PillAvgDosesSensor(RestoreSensor):
     _attr_has_entity_name = True
@@ -112,8 +112,13 @@ class PillAvgDosesSensor(RestoreSensor):
             hours_between = entry.options.get(
                 "hours_between_doses", entry.data.get("hours_between_doses", 24)
             )
+        elif self._tracking_type == "Time of Day":
+            # For multi-dose Time of Day, use average interval
+            parsed_times = get_dose_times(entry)
+            doses_per_day = max(1, len(parsed_times))
+            hours_between = 24.0 / doses_per_day
         else:
-            # Time of Day and Cyclic: daily dosing = 24h interval
+            # Cyclic: daily dosing = 24h interval
             hours_between = 24
         # 25% of interval, clamped to [1, 6] hours
         return max(1.0, min(6.0, hours_between * 0.25))
@@ -121,46 +126,49 @@ class PillAvgDosesSensor(RestoreSensor):
     def _count_covered_slots_time_of_day(self, now, cutoff, grace_td):
         """Count covered dose slots for Time of Day tracking.
 
-        For each day in the window, check if any dose was taken
-        within ±grace of the target time on that day. Days where
-        the dose window is still open and no dose covers the slot
-        are skipped (not counted as covered or uncovered).
+        For each day in the window, check each dose slot (one per entry in
+        dose_times) to see if any dose was taken within ±grace of the
+        target time. Days where the dose window is still open and no dose
+        covers the slot are skipped (not counted as covered or uncovered).
+
+        Returns:
+            (covered_slots, total_days)
         """
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        time_of_day = entry.options.get(
-            "time_of_day", entry.data.get("time_of_day", "08:00")
-        )
-        try:
-            target_hour, target_minute = map(int, time_of_day.split(":"))
-        except (ValueError, AttributeError):
-            target_hour, target_minute = 8, 0
+        parsed_times = get_dose_times(entry)
+
+        if not parsed_times:
+            return 0, 0.0
 
         covered = 0
         total_days = 0
         day_offset = 0
         while True:
             check_date = (now - timedelta(days=day_offset)).date()
-            expected_time = datetime.combine(
-                check_date, time(target_hour, target_minute),
-                tzinfo=now.tzinfo
-            )
-            if expected_time < cutoff:
-                break
 
-            # Check if any dose covers this slot
-            dose_covers = any(
-                abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds()
-                for ts in self._timestamps
-            )
+            # Process slots in reverse order for today's pending check
+            for target_hour, target_minute in reversed(parsed_times):
+                expected_time = datetime.combine(
+                    check_date, time(target_hour, target_minute),
+                    tzinfo=now.tzinfo
+                )
+                if expected_time < cutoff:
+                    return covered, float(total_days) if total_days > 0 else 0.0
 
-            # Skip today if the dose window is still open and no dose covers it
-            if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
-                day_offset += 1
-                continue
+                # Check if any dose covers this slot
+                dose_covers = any(
+                    abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds()
+                    for ts in self._timestamps
+                )
 
-            total_days += 1
-            if dose_covers:
-                covered += 1
+                # Skip today if the dose window is still open and no dose covers it
+                if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
+                    continue
+
+                total_days += 1
+                if dose_covers:
+                    covered += 1
+
             day_offset += 1
 
         return covered, float(total_days) if total_days > 0 else 0.0
@@ -277,19 +285,18 @@ class PillAvgDosesSensor(RestoreSensor):
             else:
                 return now
         elif self._tracking_type == "Time of Day":
-            time_of_day = entry.options.get("time_of_day", entry.data.get("time_of_day"))
-            if time_of_day:
-                try:
-                    target_hour, target_minute = map(int, time_of_day.split(":"))
-                except (ValueError, AttributeError):
-                    target_hour, target_minute = 8, 0
-                target_today = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-                if self._timestamps:
-                    last_ts = self._timestamps[-1]
-                    if last_ts.date() == now.date():
-                        return target_today + timedelta(days=1)
-                    else:
-                        return target_today
+            parsed_times = get_dose_times(entry)
+            if not parsed_times:
+                return now
+            # Find the next upcoming dose slot
+            for hour, minute in parsed_times:
+                target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target > now:
+                    return target
+            # All today's slots have passed; next is first slot tomorrow
+            first_hour, first_minute = parsed_times[0]
+            tomorrow = now + timedelta(days=1)
+            return tomorrow.replace(hour=first_hour, minute=first_minute, second=0, microsecond=0)
         return None
 
     def _update_state(self):

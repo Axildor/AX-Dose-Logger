@@ -2,7 +2,7 @@
 
 A fully local Home Assistant integration for tracking medications — when you took them, when your next dose is, and whether it's safe to take another. It runs entirely on your instance with no cloud dependency.
 
-If you want to go deeper, Pill Logger can also model how much medication is actually in your body over time using a two-compartment pharmacokinetic engine, track how well your meds are working with custom sliders, and send you mobile reminders when it's time to take a dose.
+If you want to go deeper, Pill Logger can also model how much medication is actually in your body over time using pharmacokinetic engines for both instant-release and sustained-release formulations, track how well your meds are working with custom sliders, and send you mobile reminders when it's time to take a dose.
 
 > ⚠️ **Medical disclaimer:** This integration is for informational and home automation purposes only. It is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.
 
@@ -24,25 +24,30 @@ Pill Logger supports four ways to track a medication, depending on how you take 
 |------|---------------|--------------|
 | **Regular Interval** | You take it every N hours (e.g. every 8 hours) | Schedules doses at fixed intervals from midnight. Shows a countdown to your next dose. |
 | **Time of Day** | You take it at the same time each day (e.g. 08:30 every morning) | One dose per day at the time you pick. The calendar entity shows daily events. |
-| **As Needed (PRN)** | You take it when you need it, but there's a limit (e.g. max 2 in 8 hours) | No fixed schedule — you log doses as you take them. Safe doses enforce a rolling window. |
+| **As Needed (PRN)** | You take it when you need it, but there's a limit (e.g. max 2 in 8 hours) | No fixed schedule — you log doses as you take them. The pill limit enforces a rolling window. |
 | **Cyclic / Calendar Pattern** | You take it on a cycle — some days on, some days off (e.g. 5 days on, 2 days off) | Doses only happen on ON days at the time you set. The calendar entity only shows events on ON days. |
 
 ### Staying Safe
 
 Accidentally taking too much is easy to do, especially with medications that have a wide dosing window. Pill Logger helps prevent that:
 
-- **Safe Dose Tracking** — You set how many doses are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so safe doses recover one at a time. On Cyclic OFF days, safe doses drop to 0 automatically.
-- **Overdose Warning** — When safe doses hit 0, the Take button on your dashboard turns red and asks you to confirm before logging.
+- **Pill Limit Tracking** — You set how many pills are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so the limit recovers one at a time. On Cyclic OFF days, the limit drops to 0 automatically.
+- **Overdose Warning** — When the pill limit hits 0, the Take button on your dashboard turns red and asks you to confirm before logging.
 - **Next Dose Countdown** — The Next Dose sensor tells you exactly when your next dose is available, so you can show live countdowns like "Wait: 2 hours" or "Available now" on your dashboard.
 
 ### Pharmacokinetics
 
-If you want to understand what's happening in your body between doses, Pill Logger can optionally model the **amount of medication in your system over time** using a standard two-compartment pharmacokinetic model. When enabled, it creates sensors based on your tracking type:
+If you want to understand what's happening in your body between doses, Pill Logger can optionally model the **amount of medication in your system over time** using pharmacokinetic models. When enabled, it creates sensors based on your tracking type:
 
 - **Amount in Body** — Shows current drug amount (mg), updated every 2 minutes, accounting for absorption and elimination. Available for all tracking types.
 - **Steady State** — Shows how many days remain until you reach 90% steady state, along with the theoretical maximum and your current percentage. **Only available for scheduled medications** (Regular Interval, Time of Day, Cyclic). Not available for As Needed since steady state requires a fixed dosing interval.
 
-You configure three parameters: **Dose Strength** (mg per pill), **Elimination Half-Life** (hours), and **Time to Peak Concentration** (hours; set to 0 for immediate-release). Leave all three at 0 to disable PK tracking.
+You choose a **Release Type** when adding a medication — **Instant Release** or **Sustained Release** — and then configure the appropriate parameters:
+
+- **Instant Release** — Three parameters: **Dose Strength** (mg), **Elimination Half-Life** (h), and **Time to Peak Concentration** (h; set to 0 for immediate-release). Uses a standard two-compartment (Bateman) model. An optional **Lag Time** (min) can model delayed-release formulations.
+- **Sustained Release** — Adds **Bioavailability** (%), **Initial Release** (%), **Sustained Release Duration** (h), **Release Half-Life** (h), and **Lag Time** (min) to model hybrid extended-release formulations with both fast-acting and slow-release components.
+
+Leave all PK values at 0 to disable concentration tracking.
 
 > **Note:** The sensor reports **drug amount in the body (mg)**, not blood concentration. Converting to concentration would require the volume of distribution, which varies from person to person. This model is for informational tracking only.
 
@@ -89,9 +94,9 @@ Each medication shows up as a **Device** in Home Assistant. Replace `ibuprofen` 
 |--------|-----------|---------------|----------------|
 | Total Doses | `sensor.ibuprofen_total_doses` | Cumulative lifetime dose count | — |
 | Last Dose | `sensor.ibuprofen_last_dose` | Timestamp of most recent dose | — |
-| Safe Doses | `sensor.ibuprofen_safe_doses` | Remaining safe doses in the current window | `timestamps`, `time_window_hours` |
-| Amount in Body | `sensor.ibuprofen_amount_in_body` | Current drug amount in body (mg) — requires PK fields | `last_updated`, `gut_mass`, `ka`, `dose_history` |
-| Next Dose | `sensor.ibuprofen_next_dose` | Timestamp of next scheduled dose | `safe_to_take` (number of safe doses remaining now) |
+| Pills Safe to Take | `sensor.ibuprofen_pills_safe_to_take` | Remaining pills safe to take in the current window | `timestamps`, `time_window_hours` |
+| Amount in Body | `sensor.ibuprofen_amount_in_body` | Current drug amount in body (mg) — requires PK fields | `last_updated`, `gut_mass`, `ka`, `lag_time`, `dose_history` (IR); `gut_ir_mass`, `matrix_sr_mass`, `gut_sr_mass`, `ka`, `kr`, `lag_time`, `dose_history` (ER) |
+| Next Dose | `sensor.ibuprofen_next_dose` | Timestamp of next scheduled dose | `safe_to_take` (number of pills safe to take remaining now) |
 | 7-Day Average | `sensor.ibuprofen_avg_daily_doses_7_days` | Average daily doses over 7 days | `grace_hours` |
 | 14-Day Average | `sensor.ibuprofen_avg_daily_doses_14_days` | Average daily doses over 14 days | `grace_hours` |
 | 30-Day Average | `sensor.ibuprofen_avg_daily_doses_30_days` | Average daily doses over 30 days | `grace_hours` |
@@ -152,17 +157,17 @@ automation:
           message: "Ibuprofen dose logged at {{ trigger.event.data.timestamp }}"
 ```
 
-**Alert when safe doses reach 0:**
+**Alert when pill limit reaches 0:**
 ```yaml
 automation:
   - trigger:
       - platform: numeric_state
-        entity_id: sensor.ibuprofen_safe_doses
+        entity_id: sensor.ibuprofen_pills_safe_to_take
         below: 1
     action:
       - service: notify.mobile_app_your_phone
         data:
-          message: "⚠️ No safe doses remaining for Ibuprofen"
+          message: "⚠️ No pills safe to take for Ibuprofen"
 ```
 
 **Notify when steady state is reached** (scheduled medications only):
@@ -186,21 +191,31 @@ automation:
 
 Key entities and their attributes for template references:
 
-**Safe Doses** (`sensor.ibuprofen_safe_doses`)
-- State: number of safe doses remaining (integer)
+**Pills Safe to Take** (`sensor.ibuprofen_pills_safe_to_take`)
+- State: number of pills safe to take remaining (integer)
 - `timestamps`: list of recent dose timestamps within the window
 - `time_window_hours`: configured rolling window size
 - `in_on_window`: (Cyclic only) whether currently in an ON period
 
 **Next Dose** (`sensor.ibuprofen_next_dose`)
 - State: datetime of next scheduled dose
-- `safe_to_take`: number of safe doses available right now
+- `safe_to_take`: number of pills safe to take right now
 
 **Amount in Body** (`sensor.ibuprofen_amount_in_body`)
 - State: current drug amount in mg (float, 1 decimal)
-- `gut_mass`: drug remaining in gut compartment (mg)
-- `ka`: absorption rate constant (h⁻¹)
-- `dose_history`: list of `[timestamp, strength]` pairs
+- *Instant Release attributes:*
+  - `gut_mass`: drug remaining in gut compartment (mg)
+  - `ka`: absorption rate constant (h⁻¹)
+  - `lag_time`: configured lag time (min)
+  - `dose_history`: list of `[timestamp, strength]` pairs
+- *Sustained Release attributes:*
+  - `gut_ir_mass`: drug in IR gut compartment (mg)
+  - `matrix_sr_mass`: drug remaining in SR matrix (mg)
+  - `gut_sr_mass`: drug in SR gut compartment (mg)
+  - `ka`: absorption rate constant (h⁻¹)
+  - `kr`: SR release rate constant (h⁻¹)
+  - `lag_time`: configured lag time (min)
+  - `dose_history`: list of `[timestamp, strength]` pairs
 
 **Steady State** (`sensor.ibuprofen_days_to_steady_state`)
 - State: days remaining to 90% steady state (float, 1 decimal), or `0.0` if reached
@@ -249,7 +264,7 @@ cards:
           - type: conditional
             conditions:
               - condition: numeric_state
-                entity: sensor.YOUR_MEDICATION_safe_doses
+                entity: sensor.YOUR_MEDICATION_pills_safe_to_take
                 above: 0
             card:
               type: custom:mushroom-template-card
@@ -294,7 +309,7 @@ cards:
           - type: conditional
             conditions:
               - condition: state
-                entity: sensor.YOUR_MEDICATION_safe_doses
+                entity: sensor.YOUR_MEDICATION_pills_safe_to_take
                 state: unknown
             card:
               type: custom:mushroom-template-card
@@ -343,7 +358,7 @@ cards:
           - type: conditional
             conditions:
               - condition: numeric_state
-                entity: sensor.YOUR_MEDICATION_safe_doses
+                entity: sensor.YOUR_MEDICATION_pills_safe_to_take
                 below: 1
             card:
               type: custom:mushroom-template-card
@@ -367,7 +382,7 @@ cards:
                 target:
                   entity_id: button.YOUR_MEDICATION_take
                 confirmation:
-                  text: "WARNING: 0 safe doses available. Override?"
+                  text: "WARNING: 0 pills safe to take. Override?"
               card_mod:
                 style: >
                   ha-card {
@@ -411,9 +426,9 @@ cards:
       - type: vertical-stack
         cards:
           - type: custom:mushroom-template-card
-            entity: sensor.YOUR_MEDICATION_safe_doses
+            entity: sensor.YOUR_MEDICATION_pills_safe_to_take
             primary: Can take
-            secondary: "{{ states('sensor.YOUR_MEDICATION_safe_doses') }}"
+            secondary: "{{ states('sensor.YOUR_MEDICATION_pills_safe_to_take') }}"
             icon: mdi:pill
             icon_color: blue
             tap_action:
@@ -519,10 +534,10 @@ cards:
 {% else %}Never{% endif %}
 ```
 
-**Safe doses conditional:**
+**Pill limit conditional:**
 ```yaml
-{% set safe = states('sensor.ibuprofen_safe_doses') | int %}
-{% if safe > 0 %}{{ safe }} dose{{ 's' if safe > 1 }} available{% else %}⚠️ Limit reached{% endif %}
+{% set safe = states('sensor.ibuprofen_pills_safe_to_take') | int %}
+{% if safe > 0 %}{{ safe }} pill{{ 's' if safe > 1 }} available{% else %}⚠️ Limit reached{% endif %}
 ```
 
 **Concentration display:**
@@ -548,7 +563,7 @@ custom_components/pill_logger/
 ├── button.py            # Take, Reset, Undo button entities
 ├── calendar.py          # Calendar entity for expected dose times
 ├── config_flow.py       # 4-step config wizard + 3-step options flow
-├── const.py             # Domain, logger, effectiveness metrics, sanitize_key()
+├── const.py             # Domain, logger, effectiveness metrics, release types, PK defaults
 ├── data.py              # Type aliases (PillLoggerConfigEntry, PillLoggerData)
 ├── entity.py            # Base PillLoggerEntity class
 ├── manifest.json        # HACS metadata (domain, version, codeowners)
@@ -558,11 +573,11 @@ custom_components/pill_logger/
 ├── sensors/
 │   ├── adherence.py     # Rolling adherence % (7/14/30/365 days)
 │   ├── avg_doses.py      # Rolling daily averages (7/14/30/365 days)
-│   ├── concentration.py  # Two-compartment PK model (Bateman equation)
+│   ├── concentration.py  # PK model (Bateman IR + hybrid ER 4-compartment)
 │   ├── last_dose.py      # Most recent dose timestamp
 │   ├── next_dose.py      # Next scheduled dose + safe_to_take attribute
-│   ├── safe_doses.py     # Sliding window safe dose counter
-│   ├── steady_state.py   # Days to 90% steady state
+│   ├── pill_limit.py      # Sliding window pill limit counter
+│   ├── steady_state.py   # Days to 90% steady state (with bioavailability scaling)
 │   ├── strength.py       # Configured per-dose strength (mg)
 │   └── total.py          # Lifetime dose counter
 └── translations/
@@ -602,14 +617,14 @@ Home Assistant event bus events (for automations):
 ### Config Flow Architecture
 
 **Initial setup (4 steps):**
-1. `user` → choose name + tracking type
+1. `user` → choose name + tracking type + release type
 2. `regular_interval` / `time_of_day` / `as_needed` / `cyclic` → schedule & dosing parameters
-3. `pk` → pharmacokinetic parameters (strength, half-life, hours to peak)
+3. `pk` → pharmacokinetic parameters (varies by release type)
 4. `effectiveness` → metrics toggles + adherence settings
 
 **Options flow (3 steps):**
 1. `init` → schedule & dosing (varies by tracking type)
-2. `pk` → pharmacokinetic parameters
+2. `pk` → pharmacokinetic parameters (varies by release type)
 3. `effectiveness` → metrics toggles + adherence settings
 
 ### Development Setup
@@ -630,8 +645,9 @@ Home Assistant event bus events (for automations):
 |-------|------|-------------|---------|
 | Medication Name | Text | Display name for the device | My Medication |
 | Tracking Type | Dropdown | Choose a tracking mode (descriptions shown inline) | Regular Interval |
+| Release Type | Dropdown | Choose how the medication is released: **Instant Release** for standard pills, **Sustained Release** for extended-release formulations | Instant Release |
 
-> The medication name and tracking type can't be changed after creation. To switch, remove the entry and create a new one.
+> The medication name, tracking type, and release type can't be changed after creation. To switch, remove the entry and create a new one.
 
 ### Step 2: Schedule & Dosing
 
@@ -641,8 +657,8 @@ Home Assistant event bus events (for automations):
 |-------|-------|-------------|---------|
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Dose Interval | 1–48 h | Minimum hours between consecutive doses | 8 |
-| Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
-| Time Window | 0.5–168 h | Rolling window for safe dose calculation | 8 |
+| Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
+| Time Window | 0.5–168 h | Rolling window for the pill limit | 8 |
 | Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### Time of Day
@@ -651,8 +667,8 @@ Home Assistant event bus events (for automations):
 |-------|-------|-------------|---------|
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Dose Time | Time picker | Time of day to take the medication | 08:00 |
-| Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
-| Time Window | 0.5–168 h | Rolling window for safe dose calculation | 24 |
+| Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
+| Time Window | 0.5–168 h | Rolling window for the pill limit | 24 |
 | Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### As Needed (PRN)
@@ -660,8 +676,8 @@ Home Assistant event bus events (for automations):
 | Field | Range | Description | Default |
 |-------|-------|-------------|---------|
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
-| Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 2 |
-| Time Window | 0.5–168 h | Rolling window for safe dose calculation | 8 |
+| Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 2 |
+| Time Window | 0.5–168 h | Rolling window for the pill limit | 8 |
 | Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### Cyclic / Calendar Pattern
@@ -673,19 +689,33 @@ Home Assistant event bus events (for automations):
 | Days Off | 1–30 days | Number of rest days in the cycle | 2 |
 | Cycle Start Date | Date picker | Start date of the on/off cycle | Today |
 | Dose Time | Time picker | Time of day to take on active days | 08:00 |
-| Safe Doses | 1–20 doses | Maximum doses allowed within the time window | 1 |
-| Time Window | 0.5–168 h | Rolling window for safe dose calculation | 24 |
+| Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
+| Time Window | 0.5–168 h | Rolling window for the pill limit | 24 |
 | Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 ### Step 3: Pharmacokinetics
+
+> ⚠️ **Important:** PK parameters should be sourced from official pharmacokinetic data (e.g., FDA labels, EMA assessments, peer-reviewed literature). Do not guess — incorrect values will produce misleading results.
+
+**Common fields (all release types):**
 
 | Field | Range | Description | Default |
 |-------|-------|-------------|---------|
 | Dose Strength | 0–9999 mg | Amount of medication per dose. Set to 0 if not tracking concentration. | 0 |
 | Elimination Half-Life | 0–168 h | Time for the body to eliminate half the drug. Set to 0 if not tracking concentration. | 0 |
 | Time to Peak Concentration | 0–72 h | Hours after taking until concentration peaks. Set to 0 for immediate-release medications. | 0 |
+| Bioavailability | 0–100 % | Fraction of the dose that reaches systemic circulation (bioavailability). For example, ibuprofen ≈ 87%, while some drugs are closer to 50%. | 100 |
+| Lag Time | 0–1440 min | Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery. | 0 |
 
-> Leave all values at 0 if you don't need concentration tracking. The Amount in Body sensor will report `0` when PK fields are not configured. The Steady State sensor is only created for scheduled medications (Regular Interval, Time of Day, Cyclic) — it is not available for As Needed medications.
+**Sustained Release fields** (only shown when Release Type is Sustained Release):
+
+| Field | Range | Description | Default |
+|-------|-------|-------------|---------|
+| Initial Release | 0–100 % | Percentage of the dose released immediately (IR fraction). For Panadol Extend, this is ~39%. | 100 |
+| Sustained Release Duration | 0–72 h | Duration of the zero-order (constant-rate) release phase. For Panadol Extend, this is ~4.5 h. | 0 |
+| Release Half-Life | 0–168 h | Half-life of the first-order release from the SR matrix after the zero-order phase ends. For Panadol Extend, this is ~2.5 h. | 0 |
+
+> Leave Dose Strength and Elimination Half-Life at 0 if you don't need concentration tracking. The Amount in Body sensor will report `0` when PK fields are not configured. The Steady State sensor is only created for scheduled medications (Regular Interval, Time of Day, Cyclic) — it is not available for As Needed medications.
 
 ### Step 4: Metrics & Adherence
 
@@ -709,17 +739,17 @@ Click **Configure** on the integration entry to change settings without recreati
 
 **Step 3: Metrics & Adherence** (same as Step 4 above)
 
-> **Note:** The medication name and tracking type can't be changed after creation.
+> **Note:** The medication name, tracking type, and release type can't be changed after creation.
 
 ---
 
 ## Pharmacokinetics Reference
 
-This section covers the complete mathematical methodology behind Pill Logger's pharmacokinetic model. All calculations are transparent and evidence-based, using the standard two-compartment framework from clinical pharmacokinetics.
+This section covers the complete mathematical methodology behind Pill Logger's pharmacokinetic models. All calculations are transparent and evidence-based, using standard compartmental frameworks from clinical pharmacokinetics.
 
-### The Two-Compartment Model
+### Instant Release: The Two-Compartment Model
 
-When you take a pill, the drug doesn't instantly appear in your bloodstream. It must first be absorbed from the gastrointestinal tract. Pill Logger models this as two compartments:
+When you take a standard (instant-release) pill, the drug doesn't instantly appear in your bloodstream. It must first be absorbed from the gastrointestinal tract. Pill Logger models this as two compartments:
 
 ```
 ┌─────────┐    absorption (kₐ)    ┌─────────┐    elimination (kₑ)    ┌─────┐
@@ -731,15 +761,17 @@ When you take a pill, the drug doesn't instantly appear in your bloodstream. It 
 - **Gut compartment**: Drug waiting to be absorbed. Decays exponentially as drug moves into the body.
 - **Body compartment**: Drug currently in your system. Increases from absorption, decreases from elimination.
 
-### Parameters You Configure
+#### IR Parameters
 
 | Parameter | What It Means | Example |
 |-----------|--------------|---------|
 | **Dose Strength (D)** | Milligrams per pill | 200 mg |
 | **Elimination Half-Life (t½)** | Time for the body to eliminate half the drug | 2 hours |
 | **Time to Peak Concentration (t_max)** | Hours after taking until the drug amount in the body is highest | 1.5 hours |
+| **Bioavailability (F)** | Fraction of the dose that reaches systemic circulation | 87% |
+| **Lag Time** | Minutes before the medication begins releasing. During the lag time, the entire dose sits inert (no absorption, no release). After the lag time elapses, normal release kinetics apply. Set to 0 for immediate onset. | 0 min (most drugs) |
 
-### How the Absorption Rate Is Calculated
+#### How the Absorption Rate Is Calculated
 
 The elimination rate constant is derived directly from the half-life:
 
@@ -749,19 +781,19 @@ The absorption rate constant **kₐ** cannot be solved in closed form from t_max
 
 > **t_max = ln(kₐ / kₑ) / (kₐ − kₑ)**
 
-Pill Logger solves this equation using a binary search over kₐ ��� [0.0001, 20.0] with 50 iterations, which converges to within 0.001% accuracy.
+Pill Logger solves this equation using a binary search over kₐ ∈ [0.0001, 20.0] with 50 iterations, which converges to within 0.001% accuracy.
 
-### The Bateman Equation
+#### The Bateman Equation
 
 For a single dose of strength **D** at time t = 0, the amount of drug in the body at time **t** is given by the **Bateman equation**:
 
 **General case (kₐ ≠ kₑ):**
 
-> C(t) = D × kₐ / (kₐ − kₑ) × (e^(−kₑ·t) − e^(−kₐ·t))
+> C(t) = F × D × kₐ / (kₐ − kₑ) × (e^(−kₑ·t) − e^(−kₐ·t))
 
 **Limiting case (kₐ ≈ kₑ):**
 
-> C(t) = D × kₐ × t × e^(−kₐ·t)
+> C(t) = F × D × kₐ × t × e^(−kₐ·t)
 
 The gut compartment decays independently:
 
@@ -769,29 +801,98 @@ The gut compartment decays independently:
 
 When a dose is taken while drug from a previous dose is still in the gut, the body compartment receives an additional contribution from the remaining gut mass:
 
-> Body contribution from gut = G₀ × kₐ / (kₐ − kₑ) × (e^(−kₑ·t) − e^(−kₐ·t))
+> Body contribution from gut = F × G₀ × kₐ / (kₐ − kₑ) × (e^(−kₑ·t) − e^(−kₐ·t))
 
-### Immediate Release Mode
+#### Immediate Release Mode
 
 When **t_max = 0**, the dose enters the body directly with no absorption phase. This is appropriate for sublingual, IV, or fast-dissolving formulations. The formula simplifies to:
 
-> C(t) = D × e^(−kₑ·t)
+> C(t) = F × D × e^(−kₑ·t)
 
 The gut compartment is bypassed entirely (G = 0 at all times).
 
-### Multi-Dose Superposition
+### Sustained Release: The Four-Compartment Hybrid Model
 
-Because the two-compartment model is **linear**, the total drug amount at any time equals the sum of each individual dose's contribution:
+For extended-release medications (e.g., Panadol Extend 665 mg), the drug is released in two phases: an initial burst for quick onset, followed by a sustained release that maintains therapeutic levels. Pill Logger models this with four compartments:
+
+```
+                    ┌──────────────┐
+                    │  IR Gut      │  Immediate-release fraction (F × D × IR%)
+                    │  absorbs via kₐ│
+                    └──────┬───────┘
+                           │  kₐ absorption
+                           ▼
+┌──────────────┐    ┌──────────────┐    elimination (kₑ)    ┌─────┐
+│  SR Matrix   │───▶│  SR Gut      │──────────────────────▶ │ Out │
+│  (mg)        │    │  (mg)        │                         │     │
+└──────────────┘    └──────┬───────┘                         └─────┘
+  zero-order R₀             │  kₐ absorption
+  then first-order kᵣ       ▼
+                    ┌──────────────┐
+                    │  Body        │
+                    │  (mg)        │
+                    └──────────────┘
+```
+
+- **IR Gut**: The immediate-release fraction of the dose, absorbed with rate constant kₐ (same as instant release).
+- **SR Matrix**: The sustained-release fraction, released at a constant rate R₀ during the zero-order phase, then exponentially with rate constant kᵣ = ln(2) / release_half_life.
+- **SR Gut**: Drug released from the SR matrix, waiting to be absorbed into the body with rate constant kₐ.
+- **Body**: Drug currently in your system. Receives contributions from both IR and SR gut compartments, and is eliminated with rate constant kₑ.
+
+#### SR Parameters
+
+| Parameter | What It Means | Example (Panadol Extend) |
+|-----------|--------------|--------------------------|
+| **Dose Strength (D)** | Milligrams per pill | 665 mg |
+| **Elimination Half-Life (t½)** | Time for the body to eliminate half the drug | 2.5 h (paracetamol) |
+| **Time to Peak Concentration (t_max)** | Hours until peak for the IR fraction | 0.5 h |
+| **Bioavailability (F)** | Fraction reaching systemic circulation | 85% |
+| **Initial Release (IR%)** | Percentage of the dose released immediately | 39% |
+| **Sustained Release Duration** | Duration of the constant-rate (zero-order) release phase | 4.5 h |
+| **Release Half-Life** | Half-life of the exponential release from the SR matrix after the zero-order phase | 2.5 h |
+
+#### Piecewise Analytical Solution
+
+The ER model uses exact analytical solutions for recalculation (on pill taken/undo/reset) and Euler integration for real-time decay updates.
+
+**Phase 1: During zero-order release (0 ≤ t ≤ T)**
+
+The SR matrix releases drug at a constant rate R₀ = (1 − IR%) × D × F / (T + release_half_life × (1 − e^(−kᵣ·T)) / (kᵣ × T)), ensuring the total SR fraction is fully released over the combined zero-order and first-order phases.
+
+During this phase:
+- IR gut: G_IR(t) = D_IR × e^(−kₐ·t)
+- SR matrix: M(t) = M₀ − R₀ × t
+- SR gut: G_SR(t) = R₀ / kₐ × (1 − e^(−kₐ·t)) + contributions from initial conditions
+- Body: B(t) = sum of contributions from IR gut, SR gut, and elimination
+
+**Phase 2: After zero-order release ends (t > T)**
+
+The remaining SR matrix mass decays exponentially:
+- M(t) = M_T × e^(−kᵣ·(t−T))
+
+where M_T is the matrix mass at the end of Phase 1, and kᵣ = ln(2) / release_half_life.
+
+#### Multi-Dose Superposition
+
+Both the IR and ER models are **linear**, so the total drug amount at any time equals the sum of each individual dose's contribution:
 
 > C_total(t) = Σᵢ Cᵢ(t − tᵢ)
 
-where **tᵢ** is the time of dose **i** and **Cᵢ** is the Bateman equation applied to that dose.
+This is **mathematically exact** — Pill Logger stores the complete dose history and recalculates from scratch on every update (including the periodic 2-minute decay updates), eliminating floating-point drift entirely. When you undo a dose, the last entry is removed and the entire model is recalculated from the remaining history.
 
-This is **mathematically exact** — Pill Logger stores the complete dose history and recalculates from scratch on every update, eliminating floating-point drift. When you undo a dose, the last entry is removed and the entire model is recalculated from the remaining history.
+#### Lag Time
 
-### Worked Example: Ibuprofen 200 mg
+For medications with a delayed onset (enteric-coated, colon-targeted), the **Lag Time** parameter specifies how many minutes pass before any drug release begins. During the lag period, the entire dose sits inert — no absorption, no release. After the lag time elapses, normal IR or SR kinetics apply as if the dose had just been taken at `t = dose_time + lag_time`.
 
-**Configuration:** D = 200 mg, t½ = 2 h, t_max = 1.5 h, dosing interval τ = 6 h
+Mathematically, for each dose with elapsed time `t` and lag time `L`:
+
+> t_effective = t − L
+
+If `t_effective < 0`, the dose contributes nothing to any compartment. If `t_effective ≥ 0`, all PK calculations use `t_effective` in place of `t`.
+
+### Worked Example: Ibuprofen 200 mg (Instant Release)
+
+**Configuration:** D = 200 mg, t½ = 2 h, t_max = 1.5 h, F = 100%, dosing interval τ = 6 h
 
 **Step 1 — Elimination rate:**
 > kₑ = ln(2) / 2 = 0.347 h⁻¹
@@ -822,11 +923,31 @@ At the moment of the second dose, the body still holds ~35.5 mg from the first d
 
 This means at steady state, the peak amount in the body reaches approximately 228 mg — only 14% more than a single dose, because ibuprofen's 2-hour half-life allows significant elimination between doses.
 
+### Worked Example: Panadol Extend 665 mg (Sustained Release)
+
+**Configuration:** D = 665 mg, t½ = 2.5 h, t_max = 0.5 h, F = 85%, IR% = 39%, T = 4.5 h, release_half_life = 2.5 h
+
+**Step 1 — Rate constants:**
+> kₑ = ln(2) / 2.5 = 0.277 h⁻¹
+> kₐ ≈ 2.08 h⁻¹ (solved from t_max = 0.5 h)
+> kᵣ = ln(2) / 2.5 = 0.277 h⁻¹
+
+**Step 2 — Dose fractions:**
+> D_IR = 665 × 0.39 = 259.4 mg (immediate release)
+> D_SR = 665 × 0.61 = 405.7 mg (sustained release)
+
+**Step 3 — Zero-order release rate:**
+> R₀ ≈ 50.6 mg/h (constant release during the first 4.5 hours)
+
+**Step 4 — Resulting profile:**
+
+The IR fraction peaks quickly (~30 min), providing rapid onset. The SR fraction then maintains drug levels over 8–12 hours through the combined zero-order and first-order release. The total body amount at any time is the sum of all compartment contributions plus any residual from previous doses.
+
 ### Steady State Tracking
 
 > **Availability:** The Steady State sensor is only created for **scheduled medications** (Regular Interval, Time of Day, Cyclic). It is not available for As Needed medications because steady state requires a fixed dosing interval (τ), which PRN medications do not have.
 
-The Steady State sensor calculates how many days remain until you reach 90% of pharmacokinetic steady state.
+The Steady State sensor calculates how many days remain until you reach 90% of pharmacokinetic steady state. For sustained-release medications, the effective dose is scaled by bioavailability (F).
 
 **Accumulation factor:**
 > R = 1 / (1 − e^(−kₑ × τ))
@@ -834,7 +955,7 @@ The Steady State sensor calculates how many days remain until you reach 90% of p
 where **τ** is the dosing interval (hours between doses).
 
 **Theoretical maximum at steady state:**
-> C_max_ss = D × R
+> C_max_ss = F × D × R
 
 The sensor reports one of three cases:
 

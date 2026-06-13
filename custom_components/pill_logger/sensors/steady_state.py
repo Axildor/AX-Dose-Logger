@@ -6,7 +6,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
 import math
-from ..const import DOMAIN
+from ..const import DOMAIN, PK_DEFAULTS, get_dose_times
 
 class PillSteadyStateSensor(RestoreSensor):
     _attr_has_entity_name = True
@@ -81,7 +81,24 @@ class PillSteadyStateSensor(RestoreSensor):
 
         half_life = float(entry.options.get("half_life", entry.data.get("half_life", 0.0)))
         strength = float(entry.options.get("strength", entry.data.get("strength", 0.0)))
-        tau = float(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24.0)))
+        bioavailability = float(entry.options.get("bioavailability", entry.data.get("bioavailability", PK_DEFAULTS["bioavailability"])))
+
+        # Compute tau (dosing interval) based on tracking type
+        tracking_type = entry.data.get("tracking_type")
+        if tracking_type == "Time of Day":
+            # For multi-dose Time of Day, use average interval: 24h / doses_per_day
+            parsed_times = get_dose_times(entry)
+            doses_per_day = max(1, len(parsed_times))
+            tau = 24.0 / doses_per_day
+        elif tracking_type == "Regular Interval":
+            tau = float(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24.0)))
+        else:
+            # Cyclic and others default to 24h (daily dosing)
+            tau = 24.0
+
+        # Apply bioavailability to get effective strength
+        F = bioavailability / 100.0
+        effective_strength = strength * F
 
         # Must return None instead of "N/A" to satisfy MEASUREMENT state class requirements
         if half_life <= 0 or strength <= 0 or tau <= 0:
@@ -91,7 +108,7 @@ class PillSteadyStateSensor(RestoreSensor):
 
         k_e = math.log(2) / half_life
         accumulation_factor = 1.0 / (1.0 - math.exp(-k_e * tau))
-        c_max_ss = strength * accumulation_factor
+        c_max_ss = effective_strength * accumulation_factor
         target_ss = c_max_ss * 0.90
 
         if self._current_mass > c_max_ss * 1.1:
