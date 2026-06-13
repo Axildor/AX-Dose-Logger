@@ -92,18 +92,16 @@
       },
       "as_needed": {
         "title": "As Needed",
-        "description": "Set up on-demand dosing with a safety limit.",
+        "description": "Set up on-demand dosing with a safety limit. Calendar and adherence tracking are not available for as-needed medications.",
         "data": {
           "initial_stock": "Inventory",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity"
+          "time_window_hours": "Time Window"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours."
         }
       },
       "cyclic": {

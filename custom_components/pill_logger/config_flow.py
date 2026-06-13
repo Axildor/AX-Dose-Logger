@@ -68,7 +68,7 @@ def _make_adherence_section(enable_default=True, grace_default=1):
 
 
 class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 6
+    VERSION = 7
 
     def __init__(self):
         self._data = {}
@@ -172,6 +172,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_as_needed(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
+            self._data["enable_calendar"] = False  # No calendar for PRN meds
             return await self.async_step_pk()
 
         return self.async_show_form(
@@ -180,7 +181,6 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                 vol.Required("pill_limit", default=2): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
-                vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
             }),
         )
 
@@ -235,6 +235,9 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             adherence_data = user_input.pop(_ADHERENCE_SECTION_KEY, {})
             user_input.update(adherence_data)
             self._data.update(user_input)
+            # Force adherence off for As Needed — no scheduled doses to track
+            if self._data.get("tracking_type") == "As Needed":
+                self._data["enable_adherence"] = False
             return self.async_create_entry(title=self._data["medication_name"], data=self._data)
 
         tracking_type = self._data.get("tracking_type")
@@ -244,9 +247,11 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         for key in STANDARD_EFFECTIVENESS_METRICS:
             fields[vol.Optional(f"metric_{key}", default=False)] = sel.BooleanSelector()
         fields[vol.Optional("custom_metrics", default="")] = sel.TextSelector()
-        fields[vol.Required(_ADHERENCE_SECTION_KEY)] = _make_adherence_section(
-            enable_default=default_adherence,
-        )
+        # Only show adherence section for scheduled tracking types
+        if tracking_type != "As Needed":
+            fields[vol.Required(_ADHERENCE_SECTION_KEY)] = _make_adherence_section(
+                enable_default=default_adherence,
+            )
 
         return self.async_show_form(
             step_id="effectiveness",
@@ -283,6 +288,9 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 # Remove individual dose_time_N keys
                 for i in range(doses_per_day):
                     self._data.pop(f"dose_time_{i + 1}", None)
+            # Force calendar off for As Needed — no predictable schedule
+            if tracking_type == "As Needed":
+                self._data["enable_calendar"] = False
             return await self.async_step_pk()
 
         tracking_type = self._entry.data.get("tracking_type")
@@ -315,8 +323,9 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
 
         main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = _PILL_LIMIT_SELECTOR
 
-        # Calendar toggle
-        main_schema[vol.Optional("enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", True)))] = sel.BooleanSelector()
+        # Calendar toggle — only for scheduled tracking types (not As Needed)
+        if tracking_type != "As Needed":
+            main_schema[vol.Optional("enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", True)))] = sel.BooleanSelector()
 
         return self.async_show_form(
             step_id="init",
@@ -357,6 +366,9 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             adherence_data = user_input.pop(_ADHERENCE_SECTION_KEY, {})
             user_input.update(adherence_data)
             self._data.update(user_input)
+            # Force adherence off for As Needed — no scheduled doses to track
+            if self._entry.data.get("tracking_type") == "As Needed":
+                self._data["enable_adherence"] = False
             return self.async_create_entry(title="", data=self._data)
 
         options = self._entry.options
@@ -369,11 +381,12 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             fields[vol.Optional(opt_key, default=options.get(opt_key, data.get(opt_key, False)))] = sel.BooleanSelector()
         fields[vol.Optional("custom_metrics", default=options.get("custom_metrics", data.get("custom_metrics", "")))] = sel.TextSelector()
 
-        # Adherence section with loaded defaults
-        fields[vol.Required(_ADHERENCE_SECTION_KEY)] = _make_adherence_section(
-            enable_default=options.get("enable_adherence", data.get("enable_adherence", tracking_type != "As Needed")),
-            grace_default=options.get("adherence_grace_hours", data.get("adherence_grace_hours", 1)),
-        )
+        # Only show adherence section for scheduled tracking types
+        if tracking_type != "As Needed":
+            fields[vol.Required(_ADHERENCE_SECTION_KEY)] = _make_adherence_section(
+                enable_default=options.get("enable_adherence", data.get("enable_adherence", True)),
+                grace_default=options.get("adherence_grace_hours", data.get("adherence_grace_hours", 1)),
+            )
 
         return self.async_show_form(
             step_id="effectiveness",

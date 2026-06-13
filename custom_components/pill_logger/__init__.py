@@ -62,13 +62,21 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         if "safe_doses" in new_options:
             new_options["pill_limit"] = new_options.pop("safe_doses")
 
+    if config_entry.version <= 6:
+        # Version 7: Force calendar and adherence off for As Needed entries
+        if new_data.get("tracking_type") == "As Needed":
+            new_data["enable_calendar"] = False
+            new_data["enable_adherence"] = False
+            new_options["enable_calendar"] = False
+            new_options["enable_adherence"] = False
+
     hass.config_entries.async_update_entry(
-        config_entry, data=new_data, options=new_options, version=6
+        config_entry, data=new_data, options=new_options, version=7
     )
 
     _LOGGER.info(
         "Migration to version %s successful for %s",
-        6, config_entry.title,
+        7, config_entry.title,
     )
 
     return True
@@ -99,9 +107,9 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         if entity_id:
             ent_reg.async_remove(entity_id)
 
-    # Steady state is only meaningful for scheduled medications (requires a
-    # fixed dosing interval). Remove the entity for As Needed entries to
-    # prevent a ghost "unavailable" entity.
+    # Steady state, calendar, and adherence are only meaningful for scheduled
+    # medications. Remove their entities for As Needed entries to prevent
+    # ghost "unavailable" entities.
     tracking_type = entry.data.get("tracking_type")
     if tracking_type == "As Needed":
         ss_entity_id = ent_reg.async_get_entity_id(
@@ -109,7 +117,22 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         )
         if ss_entity_id:
             ent_reg.async_remove(ss_entity_id)
-    
+
+        # Remove calendar entity (no future events for PRN)
+        cal_entity_id = ent_reg.async_get_entity_id(
+            "calendar", DOMAIN, f"{entry.entry_id}_calendar"
+        )
+        if cal_entity_id:
+            ent_reg.async_remove(cal_entity_id)
+
+        # Remove adherence entities (undefined for PRN)
+        for window in (7, 14, 30, 365):
+            adh_entity_id = ent_reg.async_get_entity_id(
+                "sensor", DOMAIN, f"{entry.entry_id}_adherence_{window}"
+            )
+            if adh_entity_id:
+                ent_reg.async_remove(adh_entity_id)
+
     await hass.config_entries.async_reload(entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
