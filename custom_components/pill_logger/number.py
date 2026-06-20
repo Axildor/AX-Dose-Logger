@@ -1,12 +1,22 @@
-from homeassistant.components.number import RestoreNumber, NumberEntity, NumberMode
-from homeassistant.core import HomeAssistant, CALLBACK_TYPE, callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
+from homeassistant.components.number import NumberEntity, NumberMode, RestoreNumber
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
-from .const import DOMAIN, STANDARD_EFFECTIVENESS_METRICS, EFFECTIVENESS_METRIC_ICONS, DEFAULT_METRIC_ICON, sanitize_key
-from .coordinator import PillLoggerCoordinator
+
+from .const import (
+    DEFAULT_METRIC_ICON,
+    DOMAIN,
+    EFFECTIVENESS_METRIC_ICONS,
+    STANDARD_EFFECTIVENESS_METRICS,
+    sanitize_key,
+)
 from .data import PillLoggerConfigEntry
 from .entity import PillLoggerEntity
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -74,7 +84,8 @@ class PillStockNumber(PillLoggerEntity, RestoreNumber):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle coordinator updates — decrement on dose taken, increment on undo.
+        """
+        Handle coordinator updates — decrement on dose taken, increment on undo.
 
         We detect take vs undo by comparing the dose_history length to our
         last-seen count. This avoids needing separate dispatcher signals.

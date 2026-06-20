@@ -79,7 +79,8 @@ DEFAULT_DOSE_TIMES: dict[int, list[str]] = {
 
 
 def generate_default_dose_times(n: int) -> list[str]:
-    """Generate n evenly-spaced dose times between 07:00 and 21:00.
+    """
+    Generate n evenly-spaced dose times between 07:00 and 21:00.
 
     For n <= 6, use the hand-tuned DEFAULT_DOSE_TIMES dict instead.
     """
@@ -98,8 +99,9 @@ def generate_default_dose_times(n: int) -> list[str]:
     return times
 
 
-def get_dose_times(entry: "ConfigEntry") -> list[tuple[int, int]]:
-    """Parse dose_times from config entry, returning sorted list of (hour, minute) pairs.
+def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:
+    """
+    Parse dose_times from config entry, returning sorted list of (hour, minute) pairs.
 
     Falls back to the legacy time_of_day field for entries that haven't been
     migrated yet, and ultimately defaults to ["08:00"].

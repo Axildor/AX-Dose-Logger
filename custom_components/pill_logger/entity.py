@@ -11,7 +11,8 @@ from .coordinator import PillLoggerCoordinator
 
 
 class PillLoggerEntity(CoordinatorEntity[PillLoggerCoordinator]):
-    """Base entity class for Pill Logger integration.
+    """
+    Base entity class for Pill Logger integration.
 
     Extends ``CoordinatorEntity`` so all entities receive coordinator
     updates.  The coordinator is the single source of truth for dose
@@ -42,7 +43,8 @@ class PillLoggerEntity(CoordinatorEntity[PillLoggerCoordinator]):
 
 
 class PillLoggerSensorEntity(PillLoggerEntity):
-    """Base class for Pill Logger sensor entities.
+    """
+    Base class for Pill Logger sensor entities.
 
     Inherits device_info and entry parsing from PillLoggerEntity.
     Sensor classes should use multiple inheritance with RestoreSensor:

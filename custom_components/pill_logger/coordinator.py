@@ -1,4 +1,5 @@
-"""PillLoggerCoordinator — single source of truth for dose history.
+"""
+PillLoggerCoordinator — single source of truth for dose history.
 
 Owns the authoritative ``dose_history`` list, debounced store saves, and a
 single 1-minute refresh interval.  Entities become ``CoordinatorEntity``
@@ -22,7 +23,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import LOGGER, PK_DEFAULTS
+from .const import LOGGER, PK_DEFAULTS, RELEASE_INSTANT
 from .pk_model import PKModel, PKParams, PKResult
 
 if TYPE_CHECKING:
@@ -39,7 +40,8 @@ _SAVE_DEBOUNCE_SECONDS = 5.0
 
 @dataclass
 class PillLoggerCoordinatorData:
-    """Snapshot of all derived state that entities read from the coordinator.
+    """
+    Snapshot of all derived state that entities read from the coordinator.
 
     ``dose_history`` is the single in-memory source of truth — entities
     must NOT maintain their own copies.  ``concentration`` and
@@ -58,7 +60,8 @@ class PillLoggerCoordinatorData:
 
 
 class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
-    """Coordinator that owns dose history and drives all entity updates.
+    """
+    Coordinator that owns dose history and drives all entity updates.
 
     Push-based updates (dose taken / undo / reset) call the ``async_*``
     API methods which update ``self.data`` and notify listeners via
@@ -119,7 +122,8 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
     # Periodic refresh — called every 1 minute by the coordinator timer
     # ------------------------------------------------------------------
     async def _async_update_data(self) -> PillLoggerCoordinatorData:
-        """Recompute derived state (PK concentration) on every tick.
+        """
+        Recompute derived state (PK concentration) on every tick.
 
         This is called both by the 1-minute interval and by
         ``async_request_refresh`` after a dose event.  The dose_history
@@ -187,7 +191,8 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
     # Public API — called by buttons and services
     # ------------------------------------------------------------------
     async def async_take_dose(self, timestamp: datetime | None = None) -> None:
-        """Record a dose and trigger an immediate refresh.
+        """
+        Record a dose and trigger an immediate refresh.
 
         ``timestamp`` defaults to ``now``.  The dose strength is read
         from the config entry (supports options-flow changes).
@@ -268,7 +273,8 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
         await self.async_request_refresh()
 
     async def async_add_stock(self, amount: float) -> None:
-        """Notify the stock entity to add pills.
+        """
+        Notify the stock entity to add pills.
 
         Stock management is independent of dose history — this just
         fires the legacy signal so ``PillStockNumber`` can increment.

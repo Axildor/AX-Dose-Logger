@@ -1,4 +1,5 @@
-"""Custom REST endpoint exposing dose history to the frontend.
+"""
+Custom REST endpoint exposing dose history to the frontend.
 
 Provides /api/pill_logger/history/{device_id} which returns the
 authoritative, pruned dose_history array from PillLoggerStore.
@@ -12,7 +13,8 @@ from .const import DOMAIN
 
 
 class PillLoggerHistoryView(HomeAssistantView):
-    """Expose dose history via custom REST endpoint.
+    """
+    Expose dose history via custom REST endpoint.
 
     URL: /api/pill_logger/history/{device_id}
     Method: GET

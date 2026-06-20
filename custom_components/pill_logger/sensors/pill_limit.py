@@ -1,7 +1,9 @@
 from datetime import timedelta
+
+import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
-import homeassistant.util.dt as dt_util
+
 from ..const import TRACKING_CYCLIC
 from ..entity import PillLoggerSensorEntity
 from ..sliding_window import get_time_window, is_on_day

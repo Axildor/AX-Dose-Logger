@@ -1,11 +1,12 @@
-from homeassistant.components.sensor import RestoreSensor, SensorStateClass
-from homeassistant.core import callback
+
 import homeassistant.util.dt as dt_util
-from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE
-import math
+from homeassistant.components.sensor import RestoreSensor, SensorStateClass
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.core import callback
+
 from ..const import PK_DEFAULTS, RELEASE_INSTANT, RELEASE_SUSTAINED
 from ..entity import PillLoggerSensorEntity
-from ..pk_model import PKModel, PKParams, PKResult
+from ..pk_model import PKParams
 
 
 class PillConcentrationSensor(PillLoggerSensorEntity, RestoreSensor):
@@ -69,7 +70,8 @@ class PillConcentrationSensor(PillLoggerSensorEntity, RestoreSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator.
+        """
+        Handle updated data from the coordinator.
 
         The coordinator recomputes PK concentration on every refresh
         (dose event or 1-min tick) and stores it in

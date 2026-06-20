@@ -1,14 +1,27 @@
+from datetime import date
+
 import voluptuous as vol
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import callback
 from homeassistant.helpers import selector as sel
-from datetime import date
+
 from .const import (
-    DOMAIN, STANDARD_EFFECTIVENESS_METRICS, RELEASE_TYPES, STRENGTH_UNITS,
-    PK_DEFAULTS, MAX_DOSES_PER_DAY, CURRENT_VERSION, generate_default_dose_times,
-    TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY, TRACKING_AS_NEEDED, TRACKING_CYCLIC,
-    TRACKING_TYPES, RELEASE_INSTANT, RELEASE_SUSTAINED,
+    CURRENT_VERSION,
+    DOMAIN,
+    MAX_DOSES_PER_DAY,
+    PK_DEFAULTS,
+    RELEASE_INSTANT,
+    RELEASE_SUSTAINED,
+    RELEASE_TYPES,
+    STANDARD_EFFECTIVENESS_METRICS,
     STRENGTH_UNIT_MG,
+    STRENGTH_UNITS,
+    TRACKING_AS_NEEDED,
+    TRACKING_CYCLIC,
+    TRACKING_REGULAR_INTERVAL,
+    TRACKING_TIME_OF_DAY,
+    TRACKING_TYPES,
+    generate_default_dose_times,
 )
 
 # Section key for adherence (still used as a section)
@@ -94,12 +107,11 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             if user_input["tracking_type"] == TRACKING_REGULAR_INTERVAL:
                 return await self.async_step_regular_interval()
-            elif user_input["tracking_type"] == TRACKING_TIME_OF_DAY:
+            if user_input["tracking_type"] == TRACKING_TIME_OF_DAY:
                 return await self.async_step_time_of_day()
-            elif user_input["tracking_type"] == TRACKING_CYCLIC:
+            if user_input["tracking_type"] == TRACKING_CYCLIC:
                 return await self.async_step_cyclic()
-            else:
-                return await self.async_step_as_needed()
+            return await self.async_step_as_needed()
 
         return self.async_show_form(
             step_id="user",

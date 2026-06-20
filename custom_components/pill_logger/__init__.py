@@ -1,6 +1,7 @@
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from .const import DOMAIN, CURRENT_VERSION, LOGGER, TRACKING_AS_NEEDED, RELEASE_INSTANT
+
+from .const import CURRENT_VERSION, DOMAIN, LOGGER, RELEASE_INSTANT, TRACKING_AS_NEEDED
 from .coordinator import PillLoggerCoordinator
 from .data import PillLoggerConfigEntry
 from .services import async_setup_services, async_unload_services
@@ -31,7 +32,8 @@ _RELEASE_TYPE_MIGRATION = {
 
 
 def _get_structural_options(entry: PillLoggerConfigEntry) -> dict:
-    """Return a snapshot of the structural options that affect entity creation.
+    """
+    Return a snapshot of the structural options that affect entity creation.
 
     Each key is resolved from ``entry.options`` with a fallback to
     ``entry.data`` (matching the pattern used in sensor.py / calendar.py).
@@ -48,7 +50,8 @@ def _get_structural_options(entry: PillLoggerConfigEntry) -> dict:
 
 
 def _remove_entity(ent_reg: er.EntityRegistry, platform: str, unique_id: str) -> None:
-    """Remove an entity from the registry if it exists.
+    """
+    Remove an entity from the registry if it exists.
 
     Prevents ghost "unavailable" entities after a feature is disabled.
     """
@@ -189,7 +192,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -
     return True
 
 async def async_reload_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -> None:
-    """Reload config entry, but only when structural options change.
+    """
+    Reload config entry, but only when structural options change.
 
     Compares ``enable_calendar``, ``enable_adherence``, and ``tracking_type``
     before/after.  If none changed (e.g. a PK-only save), the coordinator and

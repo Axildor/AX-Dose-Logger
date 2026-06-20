@@ -1,17 +1,19 @@
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
 from .const import DOMAIN, TRACKING_AS_NEEDED
 from .data import PillLoggerConfigEntry
-from .sensors.total import PillTotalSensor
-from .sensors.last_dose import PillLastDoseSensor
-from .sensors.pill_limit import PillLimitSensor
-from .sensors.concentration import PillConcentrationSensor
-from .sensors.next_dose import PillNextDoseSensor
+from .sensors.adherence import PillAdherenceSensor
 from .sensors.avg_doses import PillAvgDosesSensor
+from .sensors.concentration import PillConcentrationSensor
+from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
+from .sensors.last_dose import PillLastDoseSensor
+from .sensors.next_dose import PillNextDoseSensor
+from .sensors.pill_limit import PillLimitSensor
 from .sensors.steady_state import PillSteadyStateSensor
 from .sensors.strength import PillStrengthSensor
-from .sensors.adherence import PillAdherenceSensor
-from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
+from .sensors.total import PillTotalSensor
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

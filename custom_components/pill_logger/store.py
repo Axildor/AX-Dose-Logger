@@ -1,4 +1,5 @@
-"""Persistent storage for dose history data outside entity attributes.
+"""
+Persistent storage for dose history data outside entity attributes.
 
 Uses HA's storage.Store to persist dose history to a JSON file,
 avoiding SQLite bloat and the 16KB attribute limit.
@@ -12,7 +13,8 @@ STORAGE_KEY = "pill_logger_dose_history"
 
 
 class PillLoggerStore:
-    """Manages persistent storage for dose history data outside entity attributes.
+    """
+    Manages persistent storage for dose history data outside entity attributes.
 
     Data format: { entry_id: [[iso_timestamp, strength], ...] }
     """
@@ -31,7 +33,8 @@ class PillLoggerStore:
 
     @callback
     def get_history(self, entry_id: str) -> list[list[str | float]]:
-        """Get dose history for a specific entry.
+        """
+        Get dose history for a specific entry.
 
         Returns [[iso_timestamp, strength], ...].
         """

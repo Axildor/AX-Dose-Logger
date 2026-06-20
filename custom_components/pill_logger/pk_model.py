@@ -1,4 +1,5 @@
-"""Pure-math pharmacokinetic model for the Pill Logger integration.
+"""
+Pure-math pharmacokinetic model for the Pill Logger integration.
 
 This module contains NO Home Assistant imports — only ``math`` and
 ``dataclasses`` — so it can be unit-tested standalone via
@@ -21,11 +22,11 @@ reference implementation.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Sequence
 
-__all__ = ["PKParams", "PKResult", "PKModel"]
+__all__ = ["PKModel", "PKParams", "PKResult"]
 
 # Tolerance used to decide whether two rate constants are "equal".
 # Using an epsilon instead of exact float equality avoids spurious
@@ -35,7 +36,8 @@ _EPS = 0.0001
 
 @dataclass(frozen=True)
 class PKParams:
-    """All pharmacokinetic parameters for one medication config entry.
+    """
+    All pharmacokinetic parameters for one medication config entry.
 
     Built by the sensor from ``ConfigEntry`` data/options each time a
     recalculation is performed (parameters may change via the options flow).
@@ -55,7 +57,8 @@ class PKParams:
 
 @dataclass(frozen=True)
 class PKResult:
-    """Compartment masses returned by :meth:`PKModel.compute`.
+    """
+    Compartment masses returned by :meth:`PKModel.compute`.
 
     For IR mode ``gut_ir`` holds the gut mass, ``matrix_sr`` and
     ``gut_sr`` are always 0, and ``kr`` is always 0.
@@ -70,7 +73,8 @@ class PKResult:
 
 
 class PKModel:
-    """Stateless pharmacokinetic computation engine.
+    """
+    Stateless pharmacokinetic computation engine.
 
     All methods are static; the class holds no instance state.  Callers
     build a :class:`PKParams` and pass a dose history
@@ -82,7 +86,8 @@ class PKModel:
     # ------------------------------------------------------------------
     @staticmethod
     def solve_ka(t_max: float, k_e: float) -> float:
-        """Solve for the absorption rate constant ``k_a`` given a desired
+        """
+        Solve for the absorption rate constant ``k_a`` given a desired
         time-to-peak ``t_max`` and elimination rate ``k_e``.
 
         Uses the standard pharmacokinetic relationship::
@@ -113,7 +118,8 @@ class PKModel:
     @staticmethod
     def compute(params: PKParams, dose_history: Sequence[tuple[datetime, float]],
                 now: datetime) -> PKResult:
-        """Recalculate all compartments from the full dose history.
+        """
+        Recalculate all compartments from the full dose history.
 
         Routes to the IR or ER model based on ``params.release_type``.
         Returns a :class:`PKResult` with the four compartment masses and
@@ -159,12 +165,11 @@ class PKModel:
                 # Limiting case k_a ≈ k_e
                 total_gut += effective_dose * math.exp(-k_a * t_eff)
                 total_body += effective_dose * k_a * t_eff * math.exp(-k_a * t_eff)
+            # Immediate release (no absorption phase)
+            elif k_e > 0:
+                total_body += effective_dose * math.exp(-k_e * t_eff)
             else:
-                # Immediate release (no absorption phase)
-                if k_e > 0:
-                    total_body += effective_dose * math.exp(-k_e * t_eff)
-                else:
-                    total_body += effective_dose
+                total_body += effective_dose
 
         return PKResult(
             body=total_body,
@@ -181,7 +186,8 @@ class PKModel:
     @staticmethod
     def _compute_er(params: PKParams, dose_history: Sequence[tuple[datetime, float]],
                     now: datetime) -> PKResult:
-        """4-compartment ER model (hybrid IR coat + SR matrix).
+        """
+        4-compartment ER model (hybrid IR coat + SR matrix).
 
         For each dose:
         - **IR component**: standard Bateman equation with
@@ -246,11 +252,10 @@ class PKModel:
                 elif k_a_ir > 0:
                     total_gut_ir += D_IR * math.exp(-k_a_ir * t_eff)
                     total_body += D_IR * k_a_ir * t_eff * math.exp(-k_a_ir * t_eff)
+                elif k_e > 0:
+                    total_body += D_IR * math.exp(-k_e * t_eff)
                 else:
-                    if k_e > 0:
-                        total_body += D_IR * math.exp(-k_e * t_eff)
-                    else:
-                        total_body += D_IR
+                    total_body += D_IR
 
             # --- SR component: piecewise analytical solution ---
             if D_SR > 0 and T_dur > 0:
@@ -394,15 +399,14 @@ class PKModel:
                     else:
                         k = k_r
                         total_body += D_SR * k * k * t_eff * t_eff / 2.0 * math.exp(-k * t_eff)
+                elif k_e > 0 and abs(k_r - k_e) > _EPS:
+                    total_body += D_SR * k_r / (k_r - k_e) * (
+                        math.exp(-k_e * t_eff) - math.exp(-k_r * t_eff)
+                    )
+                elif k_e > 0:
+                    total_body += D_SR * k_r * t_eff * math.exp(-k_e * t_eff)
                 else:
-                    if k_e > 0 and abs(k_r - k_e) > _EPS:
-                        total_body += D_SR * k_r / (k_r - k_e) * (
-                            math.exp(-k_e * t_eff) - math.exp(-k_r * t_eff)
-                        )
-                    elif k_e > 0:
-                        total_body += D_SR * k_r * t_eff * math.exp(-k_e * t_eff)
-                    else:
-                        total_body += D_SR * (1 - math.exp(-k_r * t_eff))
+                    total_body += D_SR * (1 - math.exp(-k_r * t_eff))
 
             elif D_SR > 0:
                 # Degenerate fallback: T_dur = 0 AND k_r = 0.
@@ -415,11 +419,10 @@ class PKModel:
                 elif k_a > 0:
                     total_gut_sr += D_SR * math.exp(-k_a * t_eff)
                     total_body += D_SR * k_a * t_eff * math.exp(-k_a * t_eff)
+                elif k_e > 0:
+                    total_body += D_SR * math.exp(-k_e * t_eff)
                 else:
-                    if k_e > 0:
-                        total_body += D_SR * math.exp(-k_e * t_eff)
-                    else:
-                        total_body += D_SR
+                    total_body += D_SR
 
         return PKResult(
             body=total_body,
@@ -436,7 +439,8 @@ class PKModel:
     @staticmethod
     def decay_ir(params: PKParams, body: float, gut: float,
                  elapsed_hours: float) -> tuple[float, float]:
-        """Decay the IR model compartments by ``elapsed_hours`` using the
+        """
+        Decay the IR model compartments by ``elapsed_hours`` using the
         exact Bateman equation.
 
         This is an optimization used by the 2-minute decay timer: instead

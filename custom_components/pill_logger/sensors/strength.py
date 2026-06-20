@@ -1,4 +1,9 @@
-from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor import (
+    RestoreSensor,
+    SensorDeviceClass,
+    SensorStateClass,
+)
+
 from ..entity import PillLoggerSensorEntity
 
 

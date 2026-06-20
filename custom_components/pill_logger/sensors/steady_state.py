@@ -1,7 +1,9 @@
+import math
+
+import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
-import homeassistant.util.dt as dt_util
-import math
+
 from ..const import PK_DEFAULTS, get_dose_times
 from ..entity import PillLoggerSensorEntity
 
@@ -42,7 +44,8 @@ class PillSteadyStateSensor(PillLoggerSensorEntity, RestoreSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator.
+        """
+        Handle updated data from the coordinator.
 
         Reads ``concentration`` and ``last_dose_time`` directly from
         coordinator data — no more ``concentration_updated`` signal.
@@ -60,7 +63,7 @@ class PillSteadyStateSensor(PillLoggerSensorEntity, RestoreSensor):
         bioavailability = float(entry.options.get("bioavailability", entry.data.get("bioavailability", PK_DEFAULTS["bioavailability"])))
 
         # Compute tau (dosing interval) based on tracking type
-        from ..const import TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL
+        from ..const import TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY
         tracking_type = entry.data.get("tracking_type")
         if tracking_type == TRACKING_TIME_OF_DAY:
             parsed_times = get_dose_times(entry)
@@ -89,19 +92,18 @@ class PillSteadyStateSensor(PillLoggerSensorEntity, RestoreSensor):
             self._attr_native_value = round(t_decay / 24.0, 1)
         elif self._current_mass >= target_ss:
             self._attr_native_value = 0.0
+        elif self._current_mass <= 0:
+            t_90 = -math.log(0.1) / k_e
+            self._attr_native_value = round(t_90 / 24.0, 1)
         else:
-            if self._current_mass <= 0:
-                t_90 = -math.log(0.1) / k_e
-                self._attr_native_value = round(t_90 / 24.0, 1)
+            p = self._current_mass / c_max_ss
+            if p >= 0.90:
+                self._attr_native_value = 0.0
             else:
-                p = self._current_mass / c_max_ss
-                if p >= 0.90:
-                    self._attr_native_value = 0.0
-                else:
-                    t_current = -math.log(1.0 - p) / k_e
-                    t_90 = -math.log(0.1) / k_e
-                    remaining_hours = max(0.0, t_90 - t_current)
-                    self._attr_native_value = round(remaining_hours / 24.0, 1)
+                t_current = -math.log(1.0 - p) / k_e
+                t_90 = -math.log(0.1) / k_e
+                remaining_hours = max(0.0, t_90 - t_current)
+                self._attr_native_value = round(remaining_hours / 24.0, 1)
 
         self._attr_extra_state_attributes = {
             "theoretical_max_mg": round(c_max_ss, 1),

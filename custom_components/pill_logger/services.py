@@ -1,4 +1,5 @@
-"""Services for the Pill Logger integration.
+"""
+Services for the Pill Logger integration.
 
 Exposes the coordinator's dose-management API as HA services so users
 can log doses, undo, reset, and manage adherence from automations,
@@ -19,8 +20,8 @@ from __future__ import annotations
 
 from typing import Final
 
-import voluptuous as vol
 import homeassistant.util.dt as dt_util
+import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import selector, service
 
@@ -56,7 +57,8 @@ SERVICE_TAKE_DOSE_SCHEMA = SERVICE_BASE_SCHEMA.extend(
 
 
 def _get_coordinator(hass: HomeAssistant, entry_id: str) -> PillLoggerCoordinator:
-    """Retrieve the coordinator for the given config entry.
+    """
+    Retrieve the coordinator for the given config entry.
 
     Raises ``HomeAssistantError`` (via ``service.async_get_config_entry``)
     if the entry_id is invalid or not loaded.
@@ -70,7 +72,7 @@ async def _async_take_dose(call: ServiceCall) -> None:
     """Handle the ``take_dose`` service — log a dose."""
     coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
     timestamp = None
-    if ATTR_TIMESTAMP in call.data and call.data[ATTR_TIMESTAMP]:
+    if call.data.get(ATTR_TIMESTAMP):
         timestamp = dt_util.parse_datetime(call.data[ATTR_TIMESTAMP])
     await coordinator.async_take_dose(timestamp)
 
@@ -100,7 +102,8 @@ async def _async_adherence_override(call: ServiceCall) -> None:
 
 
 def async_setup_services(hass: HomeAssistant) -> None:
-    """Register all pill_logger services.
+    """
+    Register all pill_logger services.
 
     Called once from ``async_setup_entry``. Services are domain-level
     (not per-entry), so they are registered only if not already registered
@@ -132,7 +135,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
 
 
 def async_unload_services(hass: HomeAssistant) -> None:
-    """Remove all pill_logger services.
+    """
+    Remove all pill_logger services.
 
     Called when the last config entry is unloaded.
     """

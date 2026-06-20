@@ -1,10 +1,18 @@
-from datetime import timedelta, date, datetime
+from datetime import date, timedelta
+
+import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
 from homeassistant.core import callback
-import homeassistant.util.dt as dt_util
-from ..const import TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY, TRACKING_CYCLIC, TRACKING_AS_NEEDED, get_dose_times
+
+from ..const import (
+    TRACKING_AS_NEEDED,
+    TRACKING_CYCLIC,
+    TRACKING_REGULAR_INTERVAL,
+    TRACKING_TIME_OF_DAY,
+    get_dose_times,
+)
 from ..entity import PillLoggerSensorEntity
-from ..sliding_window import get_time_window, compute_safe_to_take, is_on_day
+from ..sliding_window import compute_safe_to_take, is_on_day
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
 _TIMESTAMPS_MAX_DAYS = 365
@@ -83,26 +91,24 @@ class PillNextDoseSensor(PillLoggerSensorEntity, RestoreSensor):
             if not is_on_day(entry, now.date(), now.date()):
                 days_until_next_on = cycle_length - position_in_cycle
                 self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
-            else:
-                if timestamps:
-                    last_ts = timestamps[-1]
-                    if last_ts.date() == now.date() and now >= dose_time_today:
-                        days_until_next_on = cycle_length - position_in_cycle
-                        if days_until_next_on == 0:
-                            days_until_next_on = cycle_length
-                        self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
-                    elif now < dose_time_today:
-                        self._attr_native_value = dose_time_today
-                    else:
-                        self._attr_native_value = dose_time_today
+            elif timestamps:
+                last_ts = timestamps[-1]
+                if last_ts.date() == now.date() and now >= dose_time_today:
+                    days_until_next_on = cycle_length - position_in_cycle
+                    if days_until_next_on == 0:
+                        days_until_next_on = cycle_length
+                    self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
+                elif now < dose_time_today:
+                    self._attr_native_value = dose_time_today
                 else:
-                    if now < dose_time_today:
-                        self._attr_native_value = dose_time_today
-                    else:
-                        days_until_next_on = cycle_length - position_in_cycle
-                        if days_until_next_on == 0:
-                            days_until_next_on = cycle_length
-                        self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
+                    self._attr_native_value = dose_time_today
+            elif now < dose_time_today:
+                self._attr_native_value = dose_time_today
+            else:
+                days_until_next_on = cycle_length - position_in_cycle
+                if days_until_next_on == 0:
+                    days_until_next_on = cycle_length
+                self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
 
         elif self._tracking_type == TRACKING_AS_NEEDED:
             max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", 1))

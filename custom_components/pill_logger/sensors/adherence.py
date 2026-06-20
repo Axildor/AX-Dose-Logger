@@ -1,14 +1,22 @@
 """Adherence percentage sensor for Pill Logger integration."""
 
-from datetime import timedelta, datetime, time, date
-from homeassistant.components.sensor import RestoreSensor, SensorStateClass
-from homeassistant.helpers.event import async_call_later
-from homeassistant.core import callback
+from datetime import date, datetime, time, timedelta
+
 import homeassistant.util.dt as dt_util
-from ..const import TRACKING_AS_NEEDED, TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL, TRACKING_CYCLIC, get_dose_times
+from homeassistant.components.sensor import RestoreSensor, SensorStateClass
+from homeassistant.core import callback
+from homeassistant.helpers.event import async_call_later
+
+from ..const import (
+    TRACKING_AS_NEEDED,
+    TRACKING_CYCLIC,
+    TRACKING_REGULAR_INTERVAL,
+    TRACKING_TIME_OF_DAY,
+    get_dose_times,
+)
 from ..entity import PillLoggerSensorEntity
-from ..sliding_window import is_on_day
 from ..schedule import get_next_dose_time
+from ..sliding_window import is_on_day
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
 _TIMESTAMPS_MAX_DAYS = 365
@@ -16,7 +24,8 @@ _TIMESTAMPS_MAX_COUNT = 100
 
 
 class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
-    """Sensor that calculates rolling adherence percentage over a configurable window.
+    """
+    Sensor that calculates rolling adherence percentage over a configurable window.
 
     Adherence % = min(actual_doses / expected_doses * 100, 100)
 
@@ -31,12 +40,14 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator, window_days):
-        """Initialize the adherence sensor.
+        """
+        Initialize the adherence sensor.
 
         Args:
             entry: The config entry object.
             coordinator: The PillLoggerCoordinator (single source of truth).
             window_days: Fixed trailing window size (7, 14, 30, or 365).
+
         """
         super().__init__(entry, coordinator)
         self._window_days = window_days
@@ -57,7 +68,8 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
         self._next_dose_timeout_unsub = None
 
     def _get_timestamps(self) -> list:
-        """Combine real doses + adherence overrides from the coordinator.
+        """
+        Combine real doses + adherence overrides from the coordinator.
 
         Adherence overrides are synthetic timestamps representing missed
         slots that the user marked as taken via the 'Mark Last Adherence
@@ -78,8 +90,7 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
         last_state_obj = await self.async_get_last_state()
         if last_state_obj:
             if (
-                "history_start_date" in last_state_obj.attributes
-                and last_state_obj.attributes["history_start_date"]
+                last_state_obj.attributes.get("history_start_date")
             ):
                 self._history_start_date = dt_util.parse_datetime(
                     last_state_obj.attributes["history_start_date"]
@@ -102,7 +113,8 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator.
+        """
+        Handle updated data from the coordinator.
 
         Covers dose events, adherence reset/override, and the 1-min tick
         (which handles midnight rollover). No separate midnight timer needed.
@@ -111,7 +123,8 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
         self.async_write_ha_state()
 
     def _find_last_missed_slot(self):
-        """Find the most recent expected dose slot not covered by any timestamp.
+        """
+        Find the most recent expected dose slot not covered by any timestamp.
 
         Dispatches to a tracking-type-specific helper. Returns the expected
         slot datetime, or None if there are no missed slots in the window.
@@ -142,9 +155,9 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
 
         if self._tracking_type == TRACKING_TIME_OF_DAY:
             return self._find_last_missed_time_of_day(now, base_cutoff, grace_td, pruned)
-        elif self._tracking_type == TRACKING_REGULAR_INTERVAL:
+        if self._tracking_type == TRACKING_REGULAR_INTERVAL:
             return self._find_last_missed_regular_interval(now, base_cutoff, grace_td, pruned)
-        elif self._tracking_type == TRACKING_CYCLIC:
+        if self._tracking_type == TRACKING_CYCLIC:
             return self._find_last_missed_cyclic(now, base_cutoff, grace_td, pruned)
         return None
 
@@ -432,14 +445,12 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
             if position_in_cycle >= days_on:
                 days_until_next_on = cycle_length - position_in_cycle
                 return dose_time_today + timedelta(days=days_until_next_on)
-            else:
-                if now < dose_time_today:
-                    return dose_time_today
-                else:
-                    days_until_next_on = cycle_length - position_in_cycle
-                    if days_until_next_on == 0:
-                        days_until_next_on = cycle_length
-                    return dose_time_today + timedelta(days=days_until_next_on)
+            if now < dose_time_today:
+                return dose_time_today
+            days_until_next_on = cycle_length - position_in_cycle
+            if days_until_next_on == 0:
+                days_until_next_on = cycle_length
+            return dose_time_today + timedelta(days=days_until_next_on)
         return None
 
     def _update_state(self):

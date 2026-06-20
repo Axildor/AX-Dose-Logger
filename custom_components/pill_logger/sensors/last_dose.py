@@ -1,7 +1,9 @@
 from datetime import timedelta
+
+import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
 from homeassistant.core import callback
-import homeassistant.util.dt as dt_util
+
 from ..entity import PillLoggerSensorEntity
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100

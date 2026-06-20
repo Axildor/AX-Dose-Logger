@@ -1,4 +1,5 @@
-"""Shared sliding-window and cyclic ON/OFF helpers for Pill Logger.
+"""
+Shared sliding-window and cyclic ON/OFF helpers for Pill Logger.
 
 These pure functions were extracted from duplicated inline copies in
 ``pill_limit.py``, ``next_dose.py``, ``adherence.py``, ``avg_doses.py``,
@@ -9,11 +10,12 @@ from datetime import date, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 
-from .const import TRACKING_REGULAR_INTERVAL, TRACKING_AS_NEEDED, TRACKING_CYCLIC
+from .const import TRACKING_AS_NEEDED, TRACKING_CYCLIC, TRACKING_REGULAR_INTERVAL
 
 
 def get_time_window(entry: ConfigEntry, tracking_type: str) -> float:
-    """Return ``time_window_hours`` with mode-specific fallbacks.
+    """
+    Return ``time_window_hours`` with mode-specific fallbacks.
 
     * Regular Interval → falls back to ``hours_between_doses`` (default 8)
     * As Needed → default 8
@@ -42,7 +44,8 @@ def get_time_window(entry: ConfigEntry, tracking_type: str) -> float:
 
 
 def is_on_day(entry: ConfigEntry, check_date: date, fallback_date: date | None = None) -> bool:
-    """Return ``True`` when *check_date* falls on an ON day of the cyclic cycle.
+    """
+    Return ``True`` when *check_date* falls on an ON day of the cyclic cycle.
 
     *fallback_date* is used only when ``cycle_anchor_date`` cannot be parsed
     (which should never happen post-config-flow).  It defaults to
@@ -75,7 +78,8 @@ def compute_safe_to_take(
     now,
     tracking_type: str,
 ) -> int:
-    """Compute remaining pills safe to take using the unified sliding window.
+    """
+    Compute remaining pills safe to take using the unified sliding window.
 
     Returns ``0`` on Cyclic OFF days.  This is the pure (side-effect-free)
     version of the logic that lived inline in ``next_dose._compute_safe_to_take``.

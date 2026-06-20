@@ -1,5 +1,6 @@
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
+
 from ..entity import PillLoggerSensorEntity
 
 

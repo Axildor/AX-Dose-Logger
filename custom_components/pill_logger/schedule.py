@@ -1,4 +1,5 @@
-"""Shared next-dose-time scheduling helpers for Pill Logger.
+"""
+Shared next-dose-time scheduling helpers for Pill Logger.
 
 Extracted from duplicated inline copies in ``adherence.py`` (Batch 4A of
 the backend technical audit).  Only the *Regular Interval* and *Time of
@@ -20,7 +21,8 @@ def get_next_dose_time(
     now,
     tracking_type: str,
 ):
-    """Return the next expected dose datetime, or ``None`` if unknown.
+    """
+    Return the next expected dose datetime, or ``None`` if unknown.
 
     Handles *Regular Interval* and *Time of Day* tracking types.
     Returns ``None`` for *Cyclic/Calendar Pattern* and *As Needed* —

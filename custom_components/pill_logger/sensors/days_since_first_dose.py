@@ -1,7 +1,7 @@
-from datetime import date
+import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
-import homeassistant.util.dt as dt_util
+
 from ..entity import PillLoggerSensorEntity
 
 
@@ -29,7 +29,8 @@ class PillDaysSinceFirstDoseSensor(PillLoggerSensorEntity, RestoreSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator.
+        """
+        Handle updated data from the coordinator.
 
         Computes days since the earliest dose in coordinator dose_history.
         """

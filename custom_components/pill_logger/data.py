@@ -16,4 +16,3 @@ type PillLoggerConfigEntry = ConfigEntry[PillLoggerData]
 class PillLoggerData:
     """Data for the Pill Logger integration."""
 
-    pass

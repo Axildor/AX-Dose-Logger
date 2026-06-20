@@ -1,4 +1,5 @@
-"""Average daily dose-coverage sensor for Pill Logger integration.
+"""
+Average daily dose-coverage sensor for Pill Logger integration.
 
 The "Day Average" measures **day-level dose coverage** (PDC-aligned):
 the fraction of scheduled days in the trailing window on which at least
@@ -16,17 +17,20 @@ Day bucketing uses the local calendar date, mirroring the frontend
 disagree on which day a dose belongs to.
 """
 
-from datetime import timedelta, datetime, date
+from datetime import date, datetime, timedelta
+
+import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
-import homeassistant.util.dt as dt_util
+
 from ..const import TRACKING_CYCLIC
 from ..entity import PillLoggerSensorEntity
 from ..sliding_window import is_on_day
 
 
 def _local_date(dt: datetime) -> date:
-    """Convert a datetime to its local calendar date.
+    """
+    Convert a datetime to its local calendar date.
 
     Mirrors the frontend ``_toLocalDateKey()`` so backend average and
     frontend bar graph always agree on day bucketing. Handles both
@@ -38,7 +42,8 @@ def _local_date(dt: datetime) -> date:
 
 
 class PillAvgDosesSensor(PillLoggerSensorEntity, RestoreSensor):
-    """Rolling day-coverage average sensor (PDC-aligned).
+    """
+    Rolling day-coverage average sensor (PDC-aligned).
 
     State = covered scheduled days / scheduled days in the trailing
     window, rounded to 1 decimal. Range 0.0–1.0.
@@ -66,7 +71,7 @@ class PillAvgDosesSensor(PillLoggerSensorEntity, RestoreSensor):
         # overrides the native_value.
         last_state_obj = await self.async_get_last_state()
         if last_state_obj:
-            if "history_start_date" in last_state_obj.attributes and last_state_obj.attributes["history_start_date"]:
+            if last_state_obj.attributes.get("history_start_date"):
                 self._history_start_date = dt_util.parse_datetime(last_state_obj.attributes["history_start_date"])
         # Anchor to earliest dose from coordinator dose_history
         if self.coordinator.data and self.coordinator.data.dose_history:
@@ -79,7 +84,8 @@ class PillAvgDosesSensor(PillLoggerSensorEntity, RestoreSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator (dose event or 1-min tick).
+        """
+        Handle updated data from the coordinator (dose event or 1-min tick).
 
         The 1-min coordinator tick covers midnight rollover — no
         separate ``async_track_time_change`` timer needed.

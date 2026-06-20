@@ -3,6 +3,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
 from .const import DOMAIN, TRACKING_AS_NEEDED
 from .coordinator import PillLoggerCoordinator
 from .data import PillLoggerConfigEntry
@@ -44,7 +45,8 @@ class PillTakeButton(PillLoggerEntity, ButtonEntity):
         self._attr_icon = "mdi:pill"
 
     async def async_press(self):
-        """When pressed, record a dose via the coordinator.
+        """
+        When pressed, record a dose via the coordinator.
 
         The coordinator updates dose history, fires legacy dispatcher
         signals for not-yet-migrated sensors, and triggers an immediate

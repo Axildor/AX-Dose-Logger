@@ -1,4 +1,5 @@
-"""Calendar platform for the Pill Logger integration.
+"""
+Calendar platform for the Pill Logger integration.
 
 Generates calendar events representing expected dose times based on the
 medication's tracking type configuration:
@@ -11,11 +12,18 @@ medication's tracking type configuration:
 from datetime import date, datetime, timedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL, TRACKING_CYCLIC, get_dose_times
+from .const import (
+    DOMAIN,
+    TRACKING_CYCLIC,
+    TRACKING_REGULAR_INTERVAL,
+    TRACKING_TIME_OF_DAY,
+    get_dose_times,
+)
 from .coordinator import PillLoggerCoordinator
 from .data import PillLoggerConfigEntry
 from .entity import PillLoggerEntity
@@ -62,7 +70,8 @@ class PillCalendarEntity(PillLoggerEntity, CalendarEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator.
+        """
+        Handle updated data from the coordinator.
 
         The 1-min coordinator tick covers midnight rollover — no
         separate ``async_track_time_change`` timer needed.

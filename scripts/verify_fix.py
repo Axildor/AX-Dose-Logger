@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Verify the FIXED concentration.py produces a continuous, mass-conserving curve.
+"""
+Verify the FIXED concentration.py produces a continuous, mass-conserving curve.
 
 Extracts the _recalculate_er math by stubbing the HA dependencies and calling
 the real method with the user's parameters.
 """
-import math
 import os
 import sys
-from datetime import datetime, timedelta
 
 # Stub HA modules so we can import the sensor
 import types
+from datetime import datetime, timedelta
 
 # homeassistant.util.dt must be importable as `import homeassistant.util.dt as dt_util`
 ha = types.ModuleType("homeassistant")
@@ -79,6 +79,7 @@ sys.modules["custom_components.pill_logger.sensors"] = sensors_pkg
 sys.path.insert(0, ".")
 from custom_components.pill_logger.sensors.concentration import PillConcentrationSensor
 
+
 # Build a fake entry
 class FakeEntry:
     entry_id = "test"
@@ -99,7 +100,7 @@ print("=== Fixed concentration.py: ER curve (user params) ===")
 print("t_hours, body, gut_ir, matrix_sr, gut_sr, total_in_system")
 prev = None
 max_jump = 0.0
-for i in range(0, 721):  # 0 to 12h in 1-min steps
+for i in range(721):  # 0 to 12h in 1-min steps
     t_h = i / 60.0
     now = dose_time + timedelta(hours=t_h)
     sensor._recalculate_er(now=now)
