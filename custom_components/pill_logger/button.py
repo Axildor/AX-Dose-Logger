@@ -3,7 +3,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from .const import DOMAIN
+from .const import DOMAIN, TRACKING_AS_NEEDED
 from .coordinator import PillLoggerCoordinator
 from .data import PillLoggerConfigEntry
 from .entity import PillLoggerEntity
@@ -29,7 +29,7 @@ async def async_setup_entry(
     # Adherence tools are only meaningful for scheduled medications.
     # As Needed (PRN) devices have no adherence sensors, so the buttons
     # would be dead entities — skip them.
-    if tracking_type != "As Needed":
+    if tracking_type != TRACKING_AS_NEEDED:
         entities.append(PillAdherenceResetButton(entry, coordinator))
         entities.append(PillAdherenceCoverButton(entry, coordinator))
     async_add_entities(entities)

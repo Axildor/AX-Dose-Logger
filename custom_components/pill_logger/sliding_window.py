@@ -9,6 +9,8 @@ from datetime import date, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 
+from .const import TRACKING_REGULAR_INTERVAL, TRACKING_AS_NEEDED, TRACKING_CYCLIC
+
 
 def get_time_window(entry: ConfigEntry, tracking_type: str) -> float:
     """Return ``time_window_hours`` with mode-specific fallbacks.
@@ -17,7 +19,7 @@ def get_time_window(entry: ConfigEntry, tracking_type: str) -> float:
     * As Needed → default 8
     * everything else (Cyclic, Time of Day) → default 24
     """
-    if tracking_type == "Regular Interval":
+    if tracking_type == TRACKING_REGULAR_INTERVAL:
         return entry.options.get(
             "time_window_hours",
             entry.data.get(
@@ -28,7 +30,7 @@ def get_time_window(entry: ConfigEntry, tracking_type: str) -> float:
                 ),
             ),
         )
-    if tracking_type == "As Needed":
+    if tracking_type == TRACKING_AS_NEEDED:
         return entry.options.get(
             "time_window_hours",
             entry.data.get("time_window_hours", 8),
@@ -84,7 +86,7 @@ def compute_safe_to_take(
     valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
     safe_to_take = max(0, max_pills - len(valid_timestamps))
 
-    if tracking_type == "Cyclic/Calendar Pattern" and not is_on_day(entry, now.date(), now.date()):
+    if tracking_type == TRACKING_CYCLIC and not is_on_day(entry, now.date(), now.date()):
         safe_to_take = 0
 
     return safe_to_take

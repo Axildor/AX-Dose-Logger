@@ -2,6 +2,7 @@ from datetime import timedelta
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
+from ..const import TRACKING_CYCLIC
 from ..entity import PillLoggerSensorEntity
 from ..sliding_window import get_time_window, is_on_day
 
@@ -53,7 +54,7 @@ class PillLimitSensor(PillLoggerSensorEntity, RestoreSensor):
         timestamps = self._get_timestamps()
 
         # Cyclic OFF days: force pill_limit to 0 regardless of window
-        if self._tracking_type == "Cyclic/Calendar Pattern" and not is_on_day(entry, now.date(), now.date()):
+        if self._tracking_type == TRACKING_CYCLIC and not is_on_day(entry, now.date(), now.date()):
             self._attr_native_value = 0
             # Prune timestamps to last 365 days and cap at 100 entries
             cutoff = now - timedelta(days=_TIMESTAMPS_MAX_DAYS)

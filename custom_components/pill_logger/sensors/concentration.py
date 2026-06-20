@@ -3,7 +3,7 @@ from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
 from homeassistant.const import STATE_UNKNOWN, STATE_UNAVAILABLE
 import math
-from ..const import PK_DEFAULTS
+from ..const import PK_DEFAULTS, RELEASE_INSTANT, RELEASE_SUSTAINED
 from ..entity import PillLoggerSensorEntity
 from ..pk_model import PKModel, PKParams, PKResult
 
@@ -17,7 +17,7 @@ class PillConcentrationSensor(PillLoggerSensorEntity, RestoreSensor):
         self._attr_unique_id = f"{entry.entry_id}_concentration"
         self._attr_icon = "mdi:chart-bell-curve"
         self._strength_unit = entry.options.get("strength_unit", entry.data.get("strength_unit", "mg"))
-        self._release_type = entry.data.get("release_type", "Instant Release")
+        self._release_type = entry.data.get("release_type", RELEASE_INSTANT)
 
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = self._strength_unit
@@ -29,7 +29,7 @@ class PillConcentrationSensor(PillLoggerSensorEntity, RestoreSensor):
         """Reload PK parameters + unit from the current config entry."""
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry:
-            self._release_type = entry.data.get("release_type", "Instant Release")
+            self._release_type = entry.data.get("release_type", RELEASE_INSTANT)
             self._strength_unit = entry.options.get("strength_unit", entry.data.get("strength_unit", "mg"))
             self._attr_native_unit_of_measurement = self._strength_unit
 
@@ -39,7 +39,7 @@ class PillConcentrationSensor(PillLoggerSensorEntity, RestoreSensor):
         opts = entry.options
         data = entry.data
         return PKParams(
-            release_type=data.get("release_type", "Instant Release"),
+            release_type=data.get("release_type", RELEASE_INSTANT),
             strength=float(opts.get("strength", data.get("strength", 0))),
             half_life=float(opts.get("half_life", data.get("half_life", 0))),
             hours_to_peak=float(opts.get("hours_to_peak", data.get("hours_to_peak", 0.0))),
@@ -82,7 +82,7 @@ class PillConcentrationSensor(PillLoggerSensorEntity, RestoreSensor):
             pk = self.coordinator.data.pk_result
             self._attr_native_value = round(self.coordinator.data.concentration, 1)
 
-            if self._release_type == "Sustained Release":
+            if self._release_type == RELEASE_SUSTAINED:
                 self._attr_extra_state_attributes = {
                     "last_updated": dt_util.now().isoformat(),
                     "gut_mass": round(pk.gut_ir, 1),

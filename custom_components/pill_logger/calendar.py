@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, get_dose_times
+from .const import DOMAIN, TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL, TRACKING_CYCLIC, get_dose_times
 from .coordinator import PillLoggerCoordinator
 from .data import PillLoggerConfigEntry
 from .entity import PillLoggerEntity
@@ -109,11 +109,11 @@ class PillCalendarEntity(PillLoggerEntity, CalendarEntity):
             return []
 
         tracking_type = entry.data.get("tracking_type")
-        if tracking_type == "Time of Day":
+        if tracking_type == TRACKING_TIME_OF_DAY:
             return self._generate_time_of_day_events(entry, start_date, end_date)
-        if tracking_type == "Regular Interval":
+        if tracking_type == TRACKING_REGULAR_INTERVAL:
             return self._generate_regular_interval_events(entry, start_date, end_date)
-        if tracking_type == "Cyclic/Calendar Pattern":
+        if tracking_type == TRACKING_CYCLIC:
             return self._generate_cyclic_events(entry, start_date, end_date)
         # As Needed — cannot predict future doses
         return []

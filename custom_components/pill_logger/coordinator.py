@@ -171,7 +171,7 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
         opts = entry.options
         data = entry.data
         return PKParams(
-            release_type=data.get("release_type", "Instant Release"),
+            release_type=data.get("release_type", RELEASE_INSTANT),
             strength=float(opts.get("strength", data.get("strength", 0))),
             half_life=float(opts.get("half_life", data.get("half_life", 0))),
             hours_to_peak=float(opts.get("hours_to_peak", data.get("hours_to_peak", 0.0))),

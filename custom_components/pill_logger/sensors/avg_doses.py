@@ -20,6 +20,7 @@ from datetime import timedelta, datetime, date
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
+from ..const import TRACKING_CYCLIC
 from ..entity import PillLoggerSensorEntity
 from ..sliding_window import is_on_day
 
@@ -151,7 +152,7 @@ class PillAvgDosesSensor(PillLoggerSensorEntity, RestoreSensor):
         dose_dates = {_local_date(ts) for ts in valid_timestamps}
         today = _local_date(now)
 
-        if self._tracking_type == "Cyclic/Calendar Pattern":
+        if self._tracking_type == TRACKING_CYCLIC:
             scheduled_days, covered_days = self._count_cyclic_days(
                 now, base_cutoff, dose_dates, today
             )

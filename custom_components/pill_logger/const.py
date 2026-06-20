@@ -10,7 +10,36 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "pill_logger"
-CURRENT_VERSION = 8
+CURRENT_VERSION = 9
+
+# --- Tracking type constants ---
+TRACKING_REGULAR_INTERVAL = "regular_interval"
+TRACKING_TIME_OF_DAY = "time_of_day"
+TRACKING_AS_NEEDED = "as_needed"
+TRACKING_CYCLIC = "cyclic"
+
+TRACKING_TYPES: list[str] = [
+    TRACKING_REGULAR_INTERVAL,
+    TRACKING_TIME_OF_DAY,
+    TRACKING_AS_NEEDED,
+    TRACKING_CYCLIC,
+]
+
+# --- Release type constants ---
+RELEASE_INSTANT = "instant_release"
+RELEASE_SUSTAINED = "sustained_release"
+
+RELEASE_TYPES: list[str] = [
+    RELEASE_INSTANT,
+    RELEASE_SUSTAINED,
+]
+
+# --- Strength unit constants ---
+STRENGTH_UNIT_MCG = "mcg"
+STRENGTH_UNIT_MG = "mg"
+STRENGTH_UNIT_G = "g"
+
+STRENGTH_UNITS: list[str] = [STRENGTH_UNIT_MCG, STRENGTH_UNIT_MG, STRENGTH_UNIT_G]
 
 STANDARD_EFFECTIVENESS_METRICS: dict[str, str] = {
     "pain": "Pain",
@@ -27,11 +56,6 @@ EFFECTIVENESS_METRIC_ICONS: dict[str, str] = {
 }
 
 DEFAULT_METRIC_ICON = "mdi:chart-line"
-
-RELEASE_TYPES: list[str] = [
-    "Instant Release",
-    "Sustained Release",
-]
 
 PK_DEFAULTS: dict[str, float] = {
     "bioavailability": 100,
@@ -104,5 +128,3 @@ def get_dose_times(entry: "ConfigEntry") -> list[tuple[int, int]]:
 def sanitize_key(name: str) -> str:
     """Convert a human-readable metric name into a safe entity key component."""
     return re.sub(r"[^a-z0-9]", "_", name.lower().strip())
-
-STRENGTH_UNITS: list[str] = ["µg", "mg", "g"]

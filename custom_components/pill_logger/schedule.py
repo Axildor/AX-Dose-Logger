@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 
-from .const import get_dose_times
+from .const import TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY, get_dose_times
 
 
 def get_next_dose_time(
@@ -26,7 +26,7 @@ def get_next_dose_time(
     Returns ``None`` for *Cyclic/Calendar Pattern* and *As Needed* —
     callers must handle those branches inline.
     """
-    if tracking_type == "Regular Interval":
+    if tracking_type == TRACKING_REGULAR_INTERVAL:
         hours_between = entry.options.get(
             "hours_between_doses", entry.data.get("hours_between_doses", 0)
         )
@@ -34,7 +34,7 @@ def get_next_dose_time(
             return timestamps[-1] + timedelta(hours=hours_between)
         return now
 
-    if tracking_type == "Time of Day":
+    if tracking_type == TRACKING_TIME_OF_DAY:
         parsed_times = get_dose_times(entry)
         if not parsed_times:
             return now

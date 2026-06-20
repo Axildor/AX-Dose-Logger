@@ -2,7 +2,7 @@ from datetime import timedelta, date, datetime
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
-from ..const import get_dose_times
+from ..const import TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY, TRACKING_CYCLIC, TRACKING_AS_NEEDED, get_dose_times
 from ..entity import PillLoggerSensorEntity
 from ..sliding_window import get_time_window, compute_safe_to_take, is_on_day
 
@@ -49,16 +49,16 @@ class PillNextDoseSensor(PillLoggerSensorEntity, RestoreSensor):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         timestamps = self._get_timestamps()
 
-        if self._tracking_type == "Regular Interval":
+        if self._tracking_type == TRACKING_REGULAR_INTERVAL:
             hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
             if timestamps:
                 last_ts = timestamps[-1]
                 self._attr_native_value = last_ts + timedelta(hours=hours_between)
             else:
                 self._attr_native_value = now
-        elif self._tracking_type == "Time of Day":
+        elif self._tracking_type == TRACKING_TIME_OF_DAY:
             self._update_state_time_of_day(entry, now, timestamps)
-        elif self._tracking_type == "Cyclic/Calendar Pattern":
+        elif self._tracking_type == TRACKING_CYCLIC:
             days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
             days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
             anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
@@ -104,7 +104,7 @@ class PillNextDoseSensor(PillLoggerSensorEntity, RestoreSensor):
                             days_until_next_on = cycle_length
                         self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
 
-        elif self._tracking_type == "As Needed":
+        elif self._tracking_type == TRACKING_AS_NEEDED:
             max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", 1))
             time_window = entry.options.get("time_window_hours", entry.data.get("time_window_hours", 0))
             cutoff_for_pill_limit = now - timedelta(hours=time_window)

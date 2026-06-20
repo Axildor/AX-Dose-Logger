@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Add a Medication",
-        "description": "Name your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
+        "description": "Name your medication and choose a tracking mode. Your choice determines which schedule settings appear next.\n\nThis tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.",
         "data": {
           "medication_name": "Medication Name",
           "tracking_type": "Tracking Type",
@@ -130,29 +130,29 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Pharmacokinetic information can be found online for most drugs; please use only reputable sources. This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription. Leave all values at 0 if not needed.\n\n**To find these values, search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet using the following terms:**\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n* Sustained Release Duration [Duration of Action]",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed. Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values.",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
-          "half_life": "Elimination Half-Life [t1/2]",
-          "hours_to_peak": "Time to Peak Concentration [Tmax]",
-          "bioavailability": "Bioavailability [%]",
+          "half_life": "Elimination Half-Life",
+          "hours_to_peak": "Time to Peak Concentration",
+          "bioavailability": "Bioavailability",
           "lag_time": "Lag Time",
-          "ir_hours_to_peak": "Immediate Release Time to Peak [IR Tmax]",
-          "ir_fraction": "Initial Release [%]",
-          "zero_order_duration": "Sustained Release Duration [Duration of Action]",
+          "ir_hours_to_peak": "Immediate Release Time to Peak",
+          "ir_fraction": "Initial Release",
+          "zero_order_duration": "Sustained Release Duration",
           "release_half_life": "Release Half-Life"
         },
         "data_description": {
           "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
           "strength_unit": "Unit for the dose strength value. Also sets the unit shown on the Amount in Body sensor and the card.",
-          "half_life": "Time for the body to eliminate half the drug. Set to 0 if not tracking concentration.",
-          "hours_to_peak": "Hours after taking until concentration peaks. Set to 0 for immediate-release medications.",
+          "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
+          "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
           "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
-          "lag_time": "Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery. (lag time, absorption delay, enteric coating)",
-          "ir_hours_to_peak": "Time required for the immediate-release fraction to reach peak concentration. Default is 1.0h.",
-          "ir_fraction": "Percentage of the dose released immediately (immediate release fraction). Only for sustained-release medications. Default 100% means all at once.",
-          "zero_order_duration": "Hours the sustained-release phase delivers drug at a constant rate (zero-order release duration). Only for sustained-release medications.",
+          "lag_time": "Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery.",
+          "ir_hours_to_peak": "Time for the immediate-release fraction to reach peak concentration [IR Tmax]. Search for the Tmax of the standard/instant version of the drug. Default is 1.0h.",
+          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once.",
+          "zero_order_duration": "Hours the sustained-release phase delivers drug at a constant rate [Duration of Action]. Only for sustained-release medications.",
           "release_half_life": "Time for the remaining drug to be released after the sustained phase ends (dissolution half-life). Only for sustained-release medications."
         }
       },
@@ -252,29 +252,29 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Pharmacokinetic information can be found online for most drugs; please use only reputable sources. This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription. Leave all values at 0 if not needed.\n\n**To find these values, search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet using the following terms:**\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n* Sustained Release Duration [Duration of Action]",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed. Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values.",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
-          "half_life": "Elimination Half-Life [t1/2]",
-          "hours_to_peak": "Time to Peak Concentration [Tmax]",
-          "bioavailability": "Bioavailability [%]",
+          "half_life": "Elimination Half-Life",
+          "hours_to_peak": "Time to Peak Concentration",
+          "bioavailability": "Bioavailability",
           "lag_time": "Lag Time",
-          "ir_hours_to_peak": "Immediate Release Time to Peak [IR Tmax]",
-          "ir_fraction": "Initial Release [%]",
-          "zero_order_duration": "Sustained Release Duration [Duration of Action]",
+          "ir_hours_to_peak": "Immediate Release Time to Peak",
+          "ir_fraction": "Initial Release",
+          "zero_order_duration": "Sustained Release Duration",
           "release_half_life": "Release Half-Life"
         },
         "data_description": {
           "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
           "strength_unit": "Unit for the dose strength value. Also sets the unit shown on the Amount in Body sensor and the card.",
-          "half_life": "Time for the body to eliminate half the drug. Set to 0 if not tracking concentration.",
-          "hours_to_peak": "Hours after taking until concentration peaks. Set to 0 for immediate-release medications.",
+          "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
+          "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
           "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
-          "lag_time": "Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery. (lag time, absorption delay, enteric coating)",
-          "ir_hours_to_peak": "Time required for the immediate-release fraction to reach peak concentration. Default is 1.0h.",
-          "ir_fraction": "Percentage of the dose released immediately (immediate release fraction). Only for sustained-release medications. Default 100% means all at once.",
-          "zero_order_duration": "Hours the sustained-release phase delivers drug at a constant rate (zero-order release duration). Only for sustained-release medications.",
+          "lag_time": "Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery.",
+          "ir_hours_to_peak": "Time for the immediate-release fraction to reach peak concentration [IR Tmax]. Search for the Tmax of the standard/instant version of the drug. Default is 1.0h.",
+          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once.",
+          "zero_order_duration": "Hours the sustained-release phase delivers drug at a constant rate [Duration of Action]. Only for sustained-release medications.",
           "release_half_life": "Time for the remaining drug to be released after the sustained phase ends (dissolution half-life). Only for sustained-release medications."
         }
       },
@@ -311,21 +311,21 @@
   "selector": {
     "tracking_type": {
       "options": {
-        "Regular Interval": "Regular Interval — fixed hours between doses",
-        "Time of Day": "Time of Day — one or more times daily at set times",
-        "As Needed": "As Needed — on-demand with a safety limit",
-        "Cyclic/Calendar Pattern": "Cyclic — on/off day patterns"
+        "regular_interval": "Regular Interval — fixed hours between doses",
+        "time_of_day": "Time of Day — one or more times daily at set times",
+        "as_needed": "As Needed — on-demand with a safety limit",
+        "cyclic": "Cyclic — on/off day patterns"
       }
     },
     "release_type": {
       "options": {
-        "Instant Release": "Instant Release — most drugs, don't change if unsure",
-        "Sustained Release": "Sustained Release — extended-release or bi-layer tablets"
+        "instant_release": "Instant Release — most drugs, don't change if unsure",
+        "sustained_release": "Sustained Release — extended-release or bi-layer tablets"
       }
     },
     "strength_unit": {
       "options": {
-        "µg": "µg — micrograms",
+        "mcg": "mcg — micrograms",
         "mg": "mg — milligrams (default)",
         "g": "g — grams"
       }

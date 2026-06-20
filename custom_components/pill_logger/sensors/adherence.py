@@ -5,7 +5,7 @@ from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.helpers.event import async_call_later
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
-from ..const import get_dose_times
+from ..const import TRACKING_AS_NEEDED, TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL, TRACKING_CYCLIC, get_dose_times
 from ..entity import PillLoggerSensorEntity
 from ..sliding_window import is_on_day
 from ..schedule import get_next_dose_time
@@ -118,7 +118,7 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
         """
         now = dt_util.now()
 
-        if self._tracking_type == "As Needed":
+        if self._tracking_type == TRACKING_AS_NEEDED:
             return None
 
         if not self._history_start_date:
@@ -140,11 +140,11 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
         timestamps = self._get_timestamps()
         pruned = [ts for ts in timestamps if ts >= extended_cutoff]
 
-        if self._tracking_type == "Time of Day":
+        if self._tracking_type == TRACKING_TIME_OF_DAY:
             return self._find_last_missed_time_of_day(now, base_cutoff, grace_td, pruned)
-        elif self._tracking_type == "Regular Interval":
+        elif self._tracking_type == TRACKING_REGULAR_INTERVAL:
             return self._find_last_missed_regular_interval(now, base_cutoff, grace_td, pruned)
-        elif self._tracking_type == "Cyclic/Calendar Pattern":
+        elif self._tracking_type == TRACKING_CYCLIC:
             return self._find_last_missed_cyclic(now, base_cutoff, grace_td, pruned)
         return None
 
@@ -404,7 +404,7 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
         if shared is not None:
             return shared
 
-        if self._tracking_type == "Cyclic/Calendar Pattern":
+        if self._tracking_type == TRACKING_CYCLIC:
             days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
             days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
             anchor_str = entry.options.get(
@@ -448,7 +448,7 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
         timestamps = self._get_timestamps()
 
         # PRN medications: adherence is undefined
-        if self._tracking_type == "As Needed":
+        if self._tracking_type == TRACKING_AS_NEEDED:
             self._attr_native_value = None
             # Prune timestamps to last 365 days and cap at 100 entries
             cutoff = now - timedelta(days=_TIMESTAMPS_MAX_DAYS)
@@ -485,15 +485,15 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
         # Prune timestamps outside the extended window
         valid_timestamps = [ts for ts in timestamps if ts >= extended_cutoff]
 
-        if self._tracking_type == "Time of Day":
+        if self._tracking_type == TRACKING_TIME_OF_DAY:
             actual, expected = self._count_slots_time_of_day(
                 now, base_cutoff, grace_td, valid_timestamps
             )
-        elif self._tracking_type == "Regular Interval":
+        elif self._tracking_type == TRACKING_REGULAR_INTERVAL:
             actual, expected = self._count_slots_regular_interval(
                 now, base_cutoff, grace_td, valid_timestamps
             )
-        elif self._tracking_type == "Cyclic/Calendar Pattern":
+        elif self._tracking_type == TRACKING_CYCLIC:
             actual, expected = self._count_slots_cyclic(
                 now, base_cutoff, grace_td, valid_timestamps
             )
@@ -519,13 +519,13 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
                 else None
             ),
         }
-        if expected == 0 and self._tracking_type != "As Needed":
+        if expected == 0 and self._tracking_type != TRACKING_AS_NEEDED:
             attrs["reason"] = "No scheduled doses in window"
 
         self._attr_extra_state_attributes = attrs
 
         # Schedule a recalculation when the next dose's grace period expires
-        if self._tracking_type in ("Time of Day", "Regular Interval", "Cyclic/Calendar Pattern"):
+        if self._tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL, TRACKING_CYCLIC):
             next_dose = self._get_next_dose_time()
             if next_dose:
                 grace_expiry = next_dose + grace_td

@@ -41,7 +41,7 @@ class PKParams:
     recalculation is performed (parameters may change via the options flow).
     """
 
-    release_type: str           # "Instant Release" | "Sustained Release"
+    release_type: str           # "instant_release" | "sustained_release"
     strength: float             # mg per dose (raw; bioavailability applied at compute time)
     half_life: float            # elimination half-life (hours)
     hours_to_peak: float        # SR absorption time-to-peak (hours)
@@ -119,7 +119,7 @@ class PKModel:
         Returns a :class:`PKResult` with the four compartment masses and
         the cached rate constants.
         """
-        if params.release_type == "Sustained Release":
+        if params.release_type == "sustained_release":
             return PKModel._compute_er(params, dose_history, now)
         return PKModel._compute_ir(params, dose_history, now)
 

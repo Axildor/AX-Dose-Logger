@@ -1,6 +1,6 @@
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from .const import DOMAIN
+from .const import DOMAIN, TRACKING_AS_NEEDED
 from .data import PillLoggerConfigEntry
 from .sensors.total import PillTotalSensor
 from .sensors.last_dose import PillLastDoseSensor
@@ -30,12 +30,12 @@ async def async_setup_entry(
     entities.append(PillAvgDosesSensor(entry, coordinator, 30))
     entities.append(PillAvgDosesSensor(entry, coordinator, 365))
     # Steady state is only meaningful for scheduled medications (requires a fixed dosing interval τ)
-    if tracking_type != "As Needed":
+    if tracking_type != TRACKING_AS_NEEDED:
         entities.append(PillSteadyStateSensor(entry, coordinator))
     entities.append(PillStrengthSensor(entry, coordinator))
     entities.append(PillDaysSinceFirstDoseSensor(entry, coordinator))
     enable_adherence = entry.options.get(
-        "enable_adherence", entry.data.get("enable_adherence", tracking_type != "As Needed")
+        "enable_adherence", entry.data.get("enable_adherence", tracking_type != TRACKING_AS_NEEDED)
     )
     if enable_adherence:
         entities.append(PillAdherenceSensor(entry, coordinator, 7))

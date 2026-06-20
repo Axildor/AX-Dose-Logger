@@ -60,12 +60,13 @@ class PillSteadyStateSensor(PillLoggerSensorEntity, RestoreSensor):
         bioavailability = float(entry.options.get("bioavailability", entry.data.get("bioavailability", PK_DEFAULTS["bioavailability"])))
 
         # Compute tau (dosing interval) based on tracking type
+        from ..const import TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL
         tracking_type = entry.data.get("tracking_type")
-        if tracking_type == "Time of Day":
+        if tracking_type == TRACKING_TIME_OF_DAY:
             parsed_times = get_dose_times(entry)
             doses_per_day = max(1, len(parsed_times))
             tau = 24.0 / doses_per_day
-        elif tracking_type == "Regular Interval":
+        elif tracking_type == TRACKING_REGULAR_INTERVAL:
             tau = float(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24.0)))
         else:
             tau = 24.0

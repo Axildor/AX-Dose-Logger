@@ -1,6 +1,6 @@
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from .const import DOMAIN, CURRENT_VERSION, LOGGER
+from .const import DOMAIN, CURRENT_VERSION, LOGGER, TRACKING_AS_NEEDED, RELEASE_INSTANT
 from .coordinator import PillLoggerCoordinator
 from .data import PillLoggerConfigEntry
 from .services import async_setup_services, async_unload_services
@@ -14,6 +14,20 @@ PLATFORMS = ["sensor", "button", "number", "calendar"]
 # fresh by the coordinator and sensors on every update cycle, so they
 # don't need a reload.
 _STRUCTURAL_KEYS = ("enable_calendar", "enable_adherence", "tracking_type")
+
+# Migration mapping for tracking_type (v8 title-case → v9 snake_case)
+_TRACKING_TYPE_MIGRATION = {
+    "Regular Interval": "regular_interval",
+    "Time of Day": "time_of_day",
+    "As Needed": "as_needed",
+    "Cyclic/Calendar Pattern": "cyclic",
+}
+
+# Migration mapping for release_type (v8 title-case → v9 snake_case)
+_RELEASE_TYPE_MIGRATION = {
+    "Instant Release": "instant_release",
+    "Sustained Release": "sustained_release",
+}
 
 
 def _get_structural_options(entry: PillLoggerConfigEntry) -> dict:
@@ -52,7 +66,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: PillLoggerConfi
 
     if config_entry.version == 2:
         # Version 3 added ER pharmacokinetics fields
-        new_data.setdefault("release_type", "Instant Release")
+        new_data.setdefault("release_type", RELEASE_INSTANT)
         new_data.setdefault("bioavailability", 100)
         new_data.setdefault("ir_fraction", 100)
         new_data.setdefault("zero_order_duration", 0)
@@ -97,7 +111,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: PillLoggerConfi
 
     if config_entry.version <= 6:
         # Version 7: Force calendar and adherence off for As Needed entries
-        if new_data.get("tracking_type") == "As Needed":
+        if new_data.get("tracking_type") == TRACKING_AS_NEEDED:
             new_data["enable_calendar"] = False
             new_data["enable_adherence"] = False
             new_options["enable_calendar"] = False
@@ -107,6 +121,24 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: PillLoggerConfi
         # Version 8: Add strength_unit (default mg for existing entries)
         new_data.setdefault("strength_unit", "mg")
         new_options.setdefault("strength_unit", "mg")
+
+    if config_entry.version <= 8:
+        # Version 9: Migrate title-case selector values to snake_case
+        # tracking_type: "Regular Interval" → "regular_interval", etc.
+        old_tracking = new_data.get("tracking_type")
+        if old_tracking and old_tracking in _TRACKING_TYPE_MIGRATION:
+            new_data["tracking_type"] = _TRACKING_TYPE_MIGRATION[old_tracking]
+
+        # release_type: "Instant Release" → "instant_release", etc.
+        old_release = new_data.get("release_type")
+        if old_release and old_release in _RELEASE_TYPE_MIGRATION:
+            new_data["release_type"] = _RELEASE_TYPE_MIGRATION[old_release]
+
+        # strength_unit: "µg" → "mcg" (mg and g unchanged)
+        if new_data.get("strength_unit") == "µg":
+            new_data["strength_unit"] = "mcg"
+        if new_options.get("strength_unit") == "µg":
+            new_options["strength_unit"] = "mcg"
 
     hass.config_entries.async_update_entry(
         config_entry, data=new_data, options=new_options, version=CURRENT_VERSION
@@ -194,11 +226,11 @@ async def async_reload_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) 
         for suffix in ("_reset_adherence", "_cover_last_missed"):
             _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
 
-    # --- tracking_type: * → "As Needed" ---
+    # --- tracking_type: * → "as_needed" ---
     # tracking_type is immutable via the options flow (set during initial
     # config flow), so this branch is effectively dead code.  It's kept for
     # safety in case a future reconfigure step allows changing tracking_type.
-    if "tracking_type" in changed and curr["tracking_type"] == "As Needed":
+    if "tracking_type" in changed and curr["tracking_type"] == TRACKING_AS_NEEDED:
         _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_steady_state")
         _remove_entity(ent_reg, "calendar", f"{entry.entry_id}_calendar")
         for window in (7, 14, 30, 365):

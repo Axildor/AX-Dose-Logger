@@ -3,7 +3,13 @@ from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import callback
 from homeassistant.helpers import selector as sel
 from datetime import date
-from .const import DOMAIN, STANDARD_EFFECTIVENESS_METRICS, RELEASE_TYPES, STRENGTH_UNITS, PK_DEFAULTS, MAX_DOSES_PER_DAY, CURRENT_VERSION, generate_default_dose_times
+from .const import (
+    DOMAIN, STANDARD_EFFECTIVENESS_METRICS, RELEASE_TYPES, STRENGTH_UNITS,
+    PK_DEFAULTS, MAX_DOSES_PER_DAY, CURRENT_VERSION, generate_default_dose_times,
+    TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY, TRACKING_AS_NEEDED, TRACKING_CYCLIC,
+    TRACKING_TYPES, RELEASE_INSTANT, RELEASE_SUSTAINED,
+    STRENGTH_UNIT_MG,
+)
 
 # Section key for adherence (still used as a section)
 _ADHERENCE_SECTION_KEY = "adherence"
@@ -86,11 +92,11 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
-            if user_input["tracking_type"] == "Regular Interval":
+            if user_input["tracking_type"] == TRACKING_REGULAR_INTERVAL:
                 return await self.async_step_regular_interval()
-            elif user_input["tracking_type"] == "Time of Day":
+            elif user_input["tracking_type"] == TRACKING_TIME_OF_DAY:
                 return await self.async_step_time_of_day()
-            elif user_input["tracking_type"] == "Cyclic/Calendar Pattern":
+            elif user_input["tracking_type"] == TRACKING_CYCLIC:
                 return await self.async_step_cyclic()
             else:
                 return await self.async_step_as_needed()
@@ -99,14 +105,14 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required("medication_name", default="My Medication"): str,
-                vol.Required("tracking_type", default="Regular Interval"): sel.SelectSelector(
+                vol.Required("tracking_type", default=TRACKING_REGULAR_INTERVAL): sel.SelectSelector(
                     sel.SelectSelectorConfig(
-                        options=["Regular Interval", "Time of Day", "As Needed", "Cyclic/Calendar Pattern"],
+                        options=TRACKING_TYPES,
                         mode=sel.SelectSelectorMode.DROPDOWN,
                         translation_key="tracking_type",
                     )
                 ),
-                vol.Required("release_type", default="Instant Release"): sel.SelectSelector(
+                vol.Required("release_type", default=RELEASE_INSTANT): sel.SelectSelector(
                     sel.SelectSelectorConfig(
                         options=RELEASE_TYPES,
                         mode=sel.SelectSelectorMode.DROPDOWN,
@@ -219,18 +225,18 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             return await self.async_step_effectiveness()
 
-        release_type = self._data.get("release_type", "Instant Release")
+        release_type = self._data.get("release_type", RELEASE_INSTANT)
 
         pk_schema = {
             vol.Optional("strength", default=0): _STRENGTH_SELECTOR,
-            vol.Optional("strength_unit", default="mg"): _STRENGTH_UNIT_SELECTOR,
+            vol.Optional("strength_unit", default=STRENGTH_UNIT_MG): _STRENGTH_UNIT_SELECTOR,
             vol.Optional("half_life", default=0): _HALF_LIFE_SELECTOR,
             vol.Optional("hours_to_peak", default=0): _HOURS_TO_PEAK_SELECTOR,
             vol.Optional("bioavailability", default=PK_DEFAULTS["bioavailability"]): _BIOAVAILABILITY_SELECTOR,
             vol.Optional("lag_time", default=PK_DEFAULTS["lag_time"]): _LAG_TIME_SELECTOR,
         }
 
-        if release_type == "Sustained Release":
+        if release_type == RELEASE_SUSTAINED:
             pk_schema[vol.Optional("ir_hours_to_peak", default=PK_DEFAULTS["ir_hours_to_peak"])] = _IR_HOURS_TO_PEAK_SELECTOR
             pk_schema[vol.Optional("ir_fraction", default=PK_DEFAULTS["ir_fraction"])] = _IR_FRACTION_SELECTOR
             pk_schema[vol.Optional("zero_order_duration", default=PK_DEFAULTS["zero_order_duration"])] = _ZERO_ORDER_DURATION_SELECTOR
@@ -248,19 +254,19 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             user_input.update(adherence_data)
             self._data.update(user_input)
             # Force adherence off for As Needed — no scheduled doses to track
-            if self._data.get("tracking_type") == "As Needed":
+            if self._data.get("tracking_type") == TRACKING_AS_NEEDED:
                 self._data["enable_adherence"] = False
             return self.async_create_entry(title=self._data["medication_name"], data=self._data)
 
         tracking_type = self._data.get("tracking_type")
-        default_adherence = tracking_type != "As Needed"
+        default_adherence = tracking_type != TRACKING_AS_NEEDED
 
         fields = {}
         for key in STANDARD_EFFECTIVENESS_METRICS:
             fields[vol.Optional(f"metric_{key}", default=False)] = sel.BooleanSelector()
         fields[vol.Optional("custom_metrics", default="")] = sel.TextSelector()
         # Only show adherence section for scheduled tracking types
-        if tracking_type != "As Needed":
+        if tracking_type != TRACKING_AS_NEEDED:
             fields[vol.Required(_ADHERENCE_SECTION_KEY)] = _make_adherence_section(
                 enable_default=default_adherence,
             )
@@ -287,7 +293,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             self._data.update(user_input)
             # For Time of Day: collect dose_time_N into dose_times list
             tracking_type = self._entry.data.get("tracking_type")
-            if tracking_type == "Time of Day":
+            if tracking_type == TRACKING_TIME_OF_DAY:
                 doses_per_day = int(user_input.get("doses_per_day", self._entry.data.get("doses_per_day", 1)))
                 dose_times = []
                 for i in range(doses_per_day):
@@ -301,7 +307,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 for i in range(doses_per_day):
                     self._data.pop(f"dose_time_{i + 1}", None)
             # Force calendar off for As Needed — no predictable schedule
-            if tracking_type == "As Needed":
+            if tracking_type == TRACKING_AS_NEEDED:
                 self._data["enable_calendar"] = False
             return await self.async_step_pk()
 
@@ -310,12 +316,12 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         data = self._entry.data
 
         main_schema = {}
-        if tracking_type == "Regular Interval":
+        if tracking_type == TRACKING_REGULAR_INTERVAL:
             main_schema[vol.Required("hours_between_doses", default=options.get("hours_between_doses", data.get("hours_between_doses", 8)))] = _HOURS_BETWEEN_SELECTOR
             # Default time_window_hours to hours_between_doses if not explicitly set
             tw_default = options.get("time_window_hours", data.get("time_window_hours", data.get("hours_between_doses", 8)))
             main_schema[vol.Required("time_window_hours", default=tw_default)] = _TIME_WINDOW_SELECTOR
-        elif tracking_type == "Time of Day":
+        elif tracking_type == TRACKING_TIME_OF_DAY:
             current_doses_per_day = int(options.get("doses_per_day", data.get("doses_per_day", 1)))
             main_schema[vol.Required("doses_per_day", default=current_doses_per_day)] = _DOSES_PER_DAY_SELECTOR
             current_dose_times = options.get("dose_times", data.get("dose_times", generate_default_dose_times(current_doses_per_day)))
@@ -324,9 +330,9 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 default_val = current_dose_times[i] if i < len(current_dose_times) else "08:00"
                 main_schema[vol.Required(f"dose_time_{i + 1}", default=default_val)] = sel.TimeSelector()
             main_schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = _TIME_WINDOW_SELECTOR
-        elif tracking_type == "As Needed":
+        elif tracking_type == TRACKING_AS_NEEDED:
             main_schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 8)))] = _TIME_WINDOW_SELECTOR
-        elif tracking_type == "Cyclic/Calendar Pattern":
+        elif tracking_type == TRACKING_CYCLIC:
             main_schema[vol.Required("days_on", default=options.get("days_on", data.get("days_on", 5)))] = _DAYS_SELECTOR
             main_schema[vol.Required("days_off", default=options.get("days_off", data.get("days_off", 2)))] = _DAYS_SELECTOR
             main_schema[vol.Required("cycle_anchor_date", default=options.get("cycle_anchor_date", data.get("cycle_anchor_date", date.today().isoformat())))] = sel.DateSelector(sel.DateSelectorConfig())
@@ -336,7 +342,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = _PILL_LIMIT_SELECTOR
 
         # Calendar toggle — only for scheduled tracking types (not As Needed)
-        if tracking_type != "As Needed":
+        if tracking_type != TRACKING_AS_NEEDED:
             main_schema[vol.Optional("enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", True)))] = sel.BooleanSelector()
 
         return self.async_show_form(
@@ -352,18 +358,18 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
 
         options = self._entry.options
         data = self._entry.data
-        release_type = data.get("release_type", "Instant Release")
+        release_type = data.get("release_type", RELEASE_INSTANT)
 
         pk_schema = {
             vol.Optional("strength", default=options.get("strength", data.get("strength", 0))): _STRENGTH_SELECTOR,
-            vol.Optional("strength_unit", default=options.get("strength_unit", data.get("strength_unit", "mg"))): _STRENGTH_UNIT_SELECTOR,
+            vol.Optional("strength_unit", default=options.get("strength_unit", data.get("strength_unit", STRENGTH_UNIT_MG))): _STRENGTH_UNIT_SELECTOR,
             vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0))): _HALF_LIFE_SELECTOR,
             vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0))): _HOURS_TO_PEAK_SELECTOR,
             vol.Optional("bioavailability", default=options.get("bioavailability", data.get("bioavailability", PK_DEFAULTS["bioavailability"]))): _BIOAVAILABILITY_SELECTOR,
             vol.Optional("lag_time", default=options.get("lag_time", data.get("lag_time", PK_DEFAULTS["lag_time"]))): _LAG_TIME_SELECTOR,
         }
 
-        if release_type == "Sustained Release":
+        if release_type == RELEASE_SUSTAINED:
             pk_schema[vol.Optional("ir_hours_to_peak", default=options.get("ir_hours_to_peak", data.get("ir_hours_to_peak", PK_DEFAULTS["ir_hours_to_peak"])))] = _IR_HOURS_TO_PEAK_SELECTOR
             pk_schema[vol.Optional("ir_fraction", default=options.get("ir_fraction", data.get("ir_fraction", PK_DEFAULTS["ir_fraction"])))] = _IR_FRACTION_SELECTOR
             pk_schema[vol.Optional("zero_order_duration", default=options.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"])))] = _ZERO_ORDER_DURATION_SELECTOR
@@ -381,7 +387,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             user_input.update(adherence_data)
             self._data.update(user_input)
             # Force adherence off for As Needed — no scheduled doses to track
-            if self._entry.data.get("tracking_type") == "As Needed":
+            if self._entry.data.get("tracking_type") == TRACKING_AS_NEEDED:
                 self._data["enable_adherence"] = False
             # OptionsFlow.async_create_entry REPLACES entry.options entirely
             # (it does not merge). self._data accumulates all fields across the
@@ -400,7 +406,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         fields[vol.Optional("custom_metrics", default=options.get("custom_metrics", data.get("custom_metrics", "")))] = sel.TextSelector()
 
         # Only show adherence section for scheduled tracking types
-        if tracking_type != "As Needed":
+        if tracking_type != TRACKING_AS_NEEDED:
             fields[vol.Required(_ADHERENCE_SECTION_KEY)] = _make_adherence_section(
                 enable_default=options.get("enable_adherence", data.get("enable_adherence", True)),
                 grace_default=options.get("adherence_grace_hours", data.get("adherence_grace_hours", 1)),
