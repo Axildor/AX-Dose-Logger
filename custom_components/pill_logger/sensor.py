@@ -1,4 +1,7 @@
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from .const import DOMAIN
+from .data import PillLoggerConfigEntry
 from .sensors.total import PillTotalSensor
 from .sensors.last_dose import PillLastDoseSensor
 from .sensors.pill_limit import PillLimitSensor
@@ -8,29 +11,35 @@ from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.steady_state import PillSteadyStateSensor
 from .sensors.strength import PillStrengthSensor
 from .sensors.adherence import PillAdherenceSensor
+from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
 
-async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
-    med_name = entry.data["medication_name"]
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: PillLoggerConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     tracking_type = entry.data.get("tracking_type")
-    entities = [PillTotalSensor(med_name, entry.entry_id)]
-    entities.append(PillLastDoseSensor(med_name, entry.entry_id))
-    entities.append(PillLimitSensor(entry))
-    entities.append(PillConcentrationSensor(entry))
-    entities.append(PillNextDoseSensor(entry))
-    entities.append(PillAvgDosesSensor(entry, 7, "Avg Daily Doses (7 Days)"))
-    entities.append(PillAvgDosesSensor(entry, 14, "Avg Daily Doses (14 Days)"))
-    entities.append(PillAvgDosesSensor(entry, 30, "Avg Daily Doses (30 Days)"))
-    entities.append(PillAvgDosesSensor(entry, 365, "Avg Daily Doses (Yearly)"))
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    entities = [PillTotalSensor(entry, coordinator)]
+    entities.append(PillLastDoseSensor(entry, coordinator))
+    entities.append(PillLimitSensor(entry, coordinator))
+    entities.append(PillConcentrationSensor(entry, coordinator))
+    entities.append(PillNextDoseSensor(entry, coordinator))
+    entities.append(PillAvgDosesSensor(entry, coordinator, 7))
+    entities.append(PillAvgDosesSensor(entry, coordinator, 14))
+    entities.append(PillAvgDosesSensor(entry, coordinator, 30))
+    entities.append(PillAvgDosesSensor(entry, coordinator, 365))
     # Steady state is only meaningful for scheduled medications (requires a fixed dosing interval τ)
     if tracking_type != "As Needed":
-        entities.append(PillSteadyStateSensor(entry))
-    entities.append(PillStrengthSensor(entry))
+        entities.append(PillSteadyStateSensor(entry, coordinator))
+    entities.append(PillStrengthSensor(entry, coordinator))
+    entities.append(PillDaysSinceFirstDoseSensor(entry, coordinator))
     enable_adherence = entry.options.get(
         "enable_adherence", entry.data.get("enable_adherence", tracking_type != "As Needed")
     )
     if enable_adherence:
-        entities.append(PillAdherenceSensor(entry, 7, "Adherence (7 Days)"))
-        entities.append(PillAdherenceSensor(entry, 14, "Adherence (14 Days)"))
-        entities.append(PillAdherenceSensor(entry, 30, "Adherence (30 Days)"))
-        entities.append(PillAdherenceSensor(entry, 365, "Adherence (Yearly)"))
+        entities.append(PillAdherenceSensor(entry, coordinator, 7))
+        entities.append(PillAdherenceSensor(entry, coordinator, 14))
+        entities.append(PillAdherenceSensor(entry, coordinator, 30))
+        entities.append(PillAdherenceSensor(entry, coordinator, 365))
     async_add_entities(entities)

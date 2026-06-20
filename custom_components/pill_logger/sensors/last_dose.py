@@ -1,88 +1,57 @@
+from datetime import timedelta
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
-from ..const import DOMAIN
+from ..entity import PillLoggerSensorEntity
 
-class PillLastDoseSensor(RestoreSensor):
+# Cap for timestamps attribute: prune older than 365 days, keep last 100
+_TIMESTAMPS_MAX_DAYS = 365
+_TIMESTAMPS_MAX_COUNT = 100
+
+
+class PillLastDoseSensor(PillLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
-    should_poll = False
 
-    def __init__(self, name, entry_id):
-        self._med_name = name
-        self._attr_name = "Last Dose"
-        self._attr_unique_id = f"{entry_id}_last_dose"
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "last_dose"
+        self._attr_unique_id = f"{entry.entry_id}_last_dose"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
-        self._entry_id = entry_id
-        self._timestamps = []
-        self._attr_extra_state_attributes = {"timestamps": []}
         self._attr_native_value = None
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry_id)},
-            name=self._med_name,
-            manufacturer="Pill Logger",
-        )
+        self._attr_extra_state_attributes = {"timestamps": []}
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_taken_{self._entry_id}", self._update_last_dose)
-        )
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self._reset_data)
-        )
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_undone_{self._entry_id}", self._undo_last_dose)
-        )
-
+        # Legacy restore for smooth UI transition; coordinator is
+        # authoritative so we override in _handle_coordinator_update.
         last_state_obj = await self.async_get_last_state()
-        if last_state_obj and "timestamps" in last_state_obj.attributes:
-            saved_timestamps = last_state_obj.attributes["timestamps"]
-            for ts_str in saved_timestamps:
-                dt = dt_util.parse_datetime(ts_str)
-                if dt:
-                    self._timestamps.append(dt)
-            self._update_native_value()
-            self.async_write_ha_state()
-        elif last_state_obj and last_state_obj.state not in (None, "unknown", "unavailable"):
-            # Legacy restore: single timestamp state
+        if last_state_obj and last_state_obj.state not in (None, "unknown", "unavailable"):
             parsed = dt_util.parse_datetime(last_state_obj.state)
             if parsed:
-                self._timestamps.append(parsed)
-            self._update_native_value()
-            self.async_write_ha_state()
+                self._attr_native_value = parsed
 
-    def _update_native_value(self):
-        """Set native_value to the last timestamp or None."""
-        if self._timestamps:
-            self._attr_native_value = self._timestamps[-1]
-        else:
-            self._attr_native_value = None
-        self._attr_extra_state_attributes = {
-            "timestamps": [ts.isoformat() for ts in self._timestamps],
-        }
+    @property
+    def native_value(self):
+        """Last dose timestamp from coordinator dose_history."""
+        if self.coordinator.data and self.coordinator.data.dose_history:
+            return self.coordinator.data.dose_history[-1][0]
+        return None
 
     @callback
-    def _update_last_dose(self, timestamp, *args, **kwargs):
-        """Handle pill_taken signal with synchronized timestamp payload."""
-        self._timestamps.append(timestamp)
-        self._update_native_value()
-        self.async_write_ha_state()
-
-    @callback
-    def _undo_last_dose(self, *args, **kwargs):
-        """Handle pill_undone signal: remove the most recent timestamp."""
-        if self._timestamps:
-            self._timestamps.pop()
-        self._update_native_value()
-        self.async_write_ha_state()
-
-    @callback
-    def _reset_data(self, *args, **kwargs):
-        self._timestamps = []
-        self._update_native_value()
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data:
+            history = self.coordinator.data.dose_history
+            if history:
+                self._attr_native_value = history[-1][0]
+                # Prune timestamps to last 365 days and cap at 100 entries
+                now = dt_util.now()
+                cutoff = now - timedelta(days=_TIMESTAMPS_MAX_DAYS)
+                recent = [ts for ts, _ in history if ts >= cutoff][-_TIMESTAMPS_MAX_COUNT:]
+                self._attr_extra_state_attributes = {
+                    "timestamps": [ts.isoformat() for ts in recent],
+                }
+            else:
+                self._attr_native_value = None
+                self._attr_extra_state_attributes = {"timestamps": []}
         self.async_write_ha_state()

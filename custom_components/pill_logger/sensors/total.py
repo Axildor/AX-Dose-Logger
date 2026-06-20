@@ -1,63 +1,35 @@
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.core import callback
-from ..const import DOMAIN
+from ..entity import PillLoggerSensorEntity
 
-class PillTotalSensor(RestoreSensor):
+
+class PillTotalSensor(PillLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 0
-    should_poll = False
 
-    def __init__(self, name, entry_id):
-        self._med_name = name
-        self._attr_name = "Total Doses"
-        self._attr_unique_id = f"{entry_id}_total"
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "total"
+        self._attr_unique_id = f"{entry.entry_id}_total"
         self._attr_icon = "mdi:chart-line"
-        self._entry_id = entry_id
-        self._state = 0
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry_id)},
-            name=self._med_name,
-            manufacturer="Pill Logger",
-        )
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_taken_{self._entry_id}", self.increment)
-        )
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self.reset_data)
-        )
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_undone_{self._entry_id}", self.decrement)
-        )
+        # Restore last value for smooth UI transition; coordinator is
+        # authoritative so we override in _handle_coordinator_update.
         last_state = await self.async_get_last_sensor_data()
         if last_state and last_state.native_value is not None:
-            self._state = int(last_state.native_value)
+            self._attr_native_value = int(last_state.native_value)
 
     @property
     def native_value(self):
-        return self._state
+        """Total doses = length of coordinator dose_history."""
+        if self.coordinator.data:
+            return len(self.coordinator.data.dose_history)
+        return 0
 
     @callback
-    def increment(self, *args, **kwargs):
-        self._state += 1
-        self.async_write_ha_state()
-
-    @callback
-    def decrement(self, *args, **kwargs):
-        """Decrement total by 1 when a dose is undone (minimum 0)."""
-        if self._state > 0:
-            self._state -= 1
-        self.async_write_ha_state()
-
-    @callback
-    def reset_data(self, *args, **kwargs):
-        self._state = 0
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         self.async_write_ha_state()

@@ -11,21 +11,22 @@ medication's tracking type configuration:
 from datetime import date, datetime, timedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.event import async_track_time_change
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, get_dose_times
+from .coordinator import PillLoggerCoordinator
+from .data import PillLoggerConfigEntry
+from .entity import PillLoggerEntity
+from .sliding_window import is_on_day
 
 EVENT_DURATION = timedelta(hours=1)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: PillLoggerConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Pill Logger calendar entity from a config entry."""
@@ -35,45 +36,37 @@ async def async_setup_entry(
     if not enable_calendar:
         return
 
-    async_add_entities([PillCalendarEntity(entry)])
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    async_add_entities([PillCalendarEntity(entry, coordinator)])
 
 
-class PillCalendarEntity(CalendarEntity):
+class PillCalendarEntity(PillLoggerEntity, CalendarEntity):
     """Calendar entity that plots expected dose times for a medication."""
 
     _attr_has_entity_name = True
-    _attr_should_poll = False
     _attr_icon = "mdi:calendar-clock"
 
-    def __init__(self, entry: ConfigEntry) -> None:
+    def __init__(self, entry: PillLoggerConfigEntry, coordinator: PillLoggerCoordinator) -> None:
         """Initialize the calendar entity."""
-        self._entry_id = entry.entry_id
-        self._med_name = entry.data["medication_name"]
+        super().__init__(entry, coordinator)
         self._tracking_type = entry.data.get("tracking_type")
         self._attr_unique_id = f"{entry.entry_id}_calendar"
-        self._attr_name = "Calendar"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=self._med_name,
-            manufacturer="Pill Logger",
-        )
+        self._attr_translation_key = "calendar"
 
     async def async_added_to_hass(self) -> None:
-        """Set up alarms and daily refresh when entity is added to HA."""
+        """Set up when entity is added to HA."""
         await super().async_added_to_hass()
         # Trigger initial state evaluation so the CalendarEntity base class
         # can set up start/end alarms for the current event.
         self.async_write_ha_state()
-        # Refresh at midnight so new daily events are picked up.
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._midnight_update, hour=0, minute=0, second=0
-            )
-        )
 
     @callback
-    def _midnight_update(self, now: datetime) -> None:
-        """Refresh state at midnight to pick up new daily events."""
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator.
+
+        The 1-min coordinator tick covers midnight rollover — no
+        separate ``async_track_time_change`` timer needed.
+        """
         self.async_write_ha_state()
 
     # ------------------------------------------------------------------
@@ -173,7 +166,6 @@ class PillCalendarEntity(CalendarEntity):
 
         events: list[CalendarEvent] = []
         tz = dt_util.now().tzinfo
-        # Include the day before start_date to catch events that span midnight
         current = start_date.date() - timedelta(days=1)
         end = end_date.date() + timedelta(days=1)
         while current <= end:
@@ -203,23 +195,9 @@ class PillCalendarEntity(CalendarEntity):
         self, entry: ConfigEntry, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
         """Events on ON days at the configured dose_time."""
-        days_on = int(
-            entry.options.get("days_on", entry.data.get("days_on", 5))
-        )
-        days_off = int(
-            entry.options.get("days_off", entry.data.get("days_off", 2))
-        )
-        anchor_str = entry.options.get(
-            "cycle_anchor_date", entry.data.get("cycle_anchor_date")
-        )
         dose_time_str = entry.options.get(
             "dose_time", entry.data.get("dose_time", "08:00")
         )
-
-        try:
-            anchor_date = date.fromisoformat(anchor_str)
-        except (ValueError, TypeError):
-            anchor_date = date.today()
 
         try:
             dose_hour, dose_minute = int(dose_time_str.split(":")[0]), int(
@@ -228,19 +206,12 @@ class PillCalendarEntity(CalendarEntity):
         except (ValueError, AttributeError):
             dose_hour, dose_minute = 8, 0
 
-        cycle_length = days_on + days_off
-        if cycle_length <= 0:
-            cycle_length = 1
-
         events: list[CalendarEvent] = []
         tz = dt_util.now().tzinfo
-        # Include surrounding days for overlap safety
         current = start_date.date() - timedelta(days=1)
         end = end_date.date() + timedelta(days=1)
         while current <= end:
-            days_since_anchor = (current - anchor_date).days
-            position_in_cycle = days_since_anchor % cycle_length
-            if position_in_cycle < days_on:  # ON day
+            if is_on_day(entry, current, date.today()):  # ON day
                 event_start = datetime(
                     current.year,
                     current.month,

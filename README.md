@@ -33,7 +33,7 @@ Accidentally taking too much is easy to do, especially with medications that hav
 
 - **Pill Limit Tracking** — You set how many pills are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so the limit recovers one at a time. On Cyclic OFF days, the limit drops to 0 automatically.
 - **Overdose Warning** — When the pill limit hits 0, the Take button on your dashboard turns red and asks you to confirm before logging.
-- **Next Dose Countdown** — The Next Dose sensor tells you exactly when your next dose is available, so you can show live countdowns like "Wait: 2 hours" or "Available now" on your dashboard.
+- **Next Dose Countdown** — The Next Dose sensor tells you exactly when your next scheduled dose is, so you can show live countdowns like "in 2 hours" or "Available now" on your dashboard. For scheduled medications (Time of Day, Cyclic), the next dose always reflects your prescribed clock time — taking a dose late does not drift the schedule. The separate Pills Safe to Take sensor tells you whether it's actually safe to take now.
 
 ### Pharmacokinetics
 
@@ -65,7 +65,7 @@ Not sure if your medication is actually helping? Pill Logger can add 1–10 slid
 Pill Logger gives you a few different ways to look at your dosing history:
 
 - **Adherence Percentage** — Four rolling sensors (7, 14, 30, and 365 days) showing what percentage of scheduled doses you took on time. A dose counts as "on time" if it falls within ±grace period of the expected slot. For Regular Interval mode, adherence is anchored to your actual dosing schedule. Cyclic mode only counts ON days. As Needed medications report `Unavailable` since adherence doesn't really apply without a schedule.
-- **Rolling Averages** — Daily average doses over 7, 14, 30, and 365 days. For scheduled modes, averages use schedule-aligned counting with a grace period. As Needed mode uses a simple sliding window.
+- **Rolling Averages** — Day-level dose coverage over 7, 14, 30, and 365 days (PDC-aligned: the fraction of scheduled days in the window on which at least one dose was taken, 0.0–1.0). Windows are anchored to your first recorded dose, so setting up a medication before you start taking it doesn't penalize the averages. A dose taken at any time on a scheduled day counts that day as covered — a late-but-taken dose does not lower the average. Cyclic mode only counts ON days. Timing quality (on-time vs late) is reported separately by the Adherence Percentage sensors.
 - **Total Doses** — Cumulative lifetime dose counter.
 - **Last Dose** — Timestamp of your most recent dose.
 
@@ -82,6 +82,8 @@ There's a ready-made Blueprint you can import for push notifications with Take, 
 2. Paste: `https://raw.githubusercontent.com/adix992/Home-Assistant-Pill-Logger/main/blueprints/reminder.yaml`
 3. Create a new automation from the blueprint, pick your phone, and map your Pill Logger entities.
 
+> **Safety guard**: The blueprint has an optional "Pills Safe to Take Sensor" input. When mapped, the notification's **Taken** action will not auto-log a dose if you're at the pill limit — instead it sends a warning telling you to open the Pill Logger card to override. This keeps the notification from bypassing the rolling-window overdose protection.
+
 ---
 
 ## Building Automations
@@ -93,14 +95,15 @@ Each medication shows up as a **Device** in Home Assistant. Replace `ibuprofen` 
 | Sensor | Entity ID | What It Shows | Key Attributes |
 |--------|-----------|---------------|----------------|
 | Total Doses | `sensor.ibuprofen_total_doses` | Cumulative lifetime dose count | — |
+| Days Since First Dose | `sensor.ibuprofen_days_since_first_dose` | Integer days elapsed since the first recorded dose | `first_dose_timestamp`, `history_start_date` |
 | Last Dose | `sensor.ibuprofen_last_dose` | Timestamp of most recent dose | — |
-| Pills Safe to Take | `sensor.ibuprofen_pills_safe_to_take` | Remaining pills safe to take in the current window | `timestamps`, `time_window_hours` |
+| Pills Safe to Take | `sensor.ibuprofen_pills_safe_to_take` | Remaining pills safe to take in the current window | `timestamps`, `time_window_hours`, `window_expires_at` (when the limit resets; `null` if not at the limit) |
 | Amount in Body | `sensor.ibuprofen_amount_in_body` | Current drug amount in body (mg) — requires PK fields | `last_updated`, `gut_mass`, `ka`, `lag_time`, `dose_history` (IR); `gut_ir_mass`, `matrix_sr_mass`, `gut_sr_mass`, `ka`, `kr`, `lag_time`, `dose_history` (ER) |
 | Next Dose | `sensor.ibuprofen_next_dose` | Timestamp of next scheduled dose | `safe_to_take` (number of pills safe to take remaining now) |
-| 7-Day Average | `sensor.ibuprofen_avg_daily_doses_7_days` | Average daily doses over 7 days | `grace_hours` |
-| 14-Day Average | `sensor.ibuprofen_avg_daily_doses_14_days` | Average daily doses over 14 days | `grace_hours` |
-| 30-Day Average | `sensor.ibuprofen_avg_daily_doses_30_days` | Average daily doses over 30 days | `grace_hours` |
-| Yearly Average | `sensor.ibuprofen_avg_daily_doses_yearly` | Average daily doses over 365 days | `grace_hours` |
+| 7-Day Average | `sensor.ibuprofen_avg_daily_doses_7_days` | Day-level dose coverage over 7 days (0.0–1.0) | `covered_days`, `scheduled_days`, `effective_window_days` |
+| 14-Day Average | `sensor.ibuprofen_avg_daily_doses_14_days` | Day-level dose coverage over 14 days (0.0–1.0) | `covered_days`, `scheduled_days`, `effective_window_days` |
+| 30-Day Average | `sensor.ibuprofen_avg_daily_doses_30_days` | Day-level dose coverage over 30 days (0.0–1.0) | `covered_days`, `scheduled_days`, `effective_window_days` |
+| Yearly Average | `sensor.ibuprofen_avg_daily_doses_yearly` | Day-level dose coverage over 365 days (0.0–1.0) | `covered_days`, `scheduled_days`, `effective_window_days` |
 | 7-Day Adherence | `sensor.ibuprofen_adherence_7_days` | Adherence % over 7 days | `actual_doses`, `expected_doses`, `grace_hours` |
 | 14-Day Adherence | `sensor.ibuprofen_adherence_14_days` | Adherence % over 14 days | `actual_doses`, `expected_doses`, `grace_hours` |
 | 30-Day Adherence | `sensor.ibuprofen_adherence_30_days` | Adherence % over 30 days | `actual_doses`, `expected_doses`, `grace_hours` |
@@ -117,6 +120,8 @@ Each medication shows up as a **Device** in Home Assistant. Replace `ibuprofen` 
 | Take | `button.ibuprofen_take` | Log a dose |
 | Reset History | `button.ibuprofen_reset_history` | Wipe dose history (keeps inventory) |
 | Undo Dose | `button.ibuprofen_undo_dose` | Revert the most recent dose across all sensors and PK model |
+| Reset Adherence % | `button.ibuprofen_reset_adherence` | Clear adherence percentage history only — does NOT affect Amount in Body, dose count, or any other sensor |
+| Mark Last Adherence Taken | `button.ibuprofen_cover_last_missed` | Mark the most recent missed dose slot as taken for adherence calculation only — does NOT add a dose to the PK model or dose count |
 
 ### Numbers
 
@@ -196,9 +201,10 @@ Key entities and their attributes for template references:
 - `timestamps`: list of recent dose timestamps within the window
 - `time_window_hours`: configured rolling window size
 - `in_on_window`: (Cyclic only) whether currently in an ON period
+- `window_expires_at`: when the oldest in-window dose expires and the limit will increment (ISO datetime); `null` when not at the limit. This is the true "when can I safely take another" time, distinct from the Next Dose schedule.
 
 **Next Dose** (`sensor.ibuprofen_next_dose`)
-- State: datetime of next scheduled dose
+- State: datetime of next scheduled dose. For scheduled medications (Time of Day, Cyclic), this is always the next prescribed clock slot — taking a dose late does not drift the schedule. The safety gate (whether it's actually safe to take now) is the separate Pills Safe to Take sensor.
 - `safe_to_take`: number of pills safe to take right now
 
 **Amount in Body** (`sensor.ibuprofen_amount_in_body`)
@@ -560,7 +566,7 @@ cards:
 ```
 custom_components/pill_logger/
 ├── __init__.py          # Integration entrypoint, platform forwarding, reload handling
-├── button.py            # Take, Reset, Undo button entities
+├── button.py            # Take, Reset, Undo, Reset Adherence %, Mark Last Adherence Taken button entities
 ├── calendar.py          # Calendar entity for expected dose times
 ├── config_flow.py       # 4-step config wizard + 3-step options flow
 ├── const.py             # Domain, logger, effectiveness metrics, release types, PK defaults
@@ -591,8 +597,11 @@ flowchart TD
     A[Take Button] -->|pill_taken| B[All Sensors Update]
     C[Undo Button] -->|pill_undone| B
     D[Reset Button] -->|pill_reset| B
+    H[Reset Adherence Button] -->|pill_adherence_reset| I[Adherence Sensors Only]
+    J[Mark Last Adherence Button] -->|pill_adherence_override| I
     E[Concentration Sensor] -->|concentration_updated| F[Steady State Sensor]
     B --> G[State Written to HA]
+    I --> G
 ```
 
 All buttons fire dispatcher signals keyed by `entry_id`. Each sensor listens to the relevant signals and updates its state independently. The concentration sensor additionally broadcasts its current mass to the steady state sensor for real-time recalculation.
@@ -604,6 +613,8 @@ All buttons fire dispatcher signals keyed by `entry_id`. Each sensor listens to 
 | `pill_taken_{entry_id}` | Take Button | All sensors, inventory | Log a dose and trigger recalculation |
 | `pill_reset_{entry_id}` | Reset Button | All sensors, inventory | Clear all history and reset counters |
 | `pill_undone_{entry_id}` | Undo Button | All sensors, inventory | Revert the most recent dose |
+| `pill_adherence_reset_{entry_id}` | Reset Adherence % Button | Adherence sensors only | Clear adherence timestamps without affecting PK or other sensors |
+| `pill_adherence_override_{entry_id}` | Mark Last Adherence Taken Button | Adherence sensors only | Cover the most recent missed dose slot for adherence only |
 | `pill_add_stock_{entry_id}` | Refill Number | Inventory | Add a refill amount |
 | `concentration_updated_{entry_id}` | Concentration Sensor | Steady State Sensor | Push live drug mass for steady-state recalculation |
 
@@ -613,6 +624,7 @@ Home Assistant event bus events (for automations):
 |-------|---------|------|
 | `pill_logger_pill_taken` | Take Button | `medication_name`, `timestamp` |
 | `pill_logger_pill_undone` | Undo Button | `medication_name` |
+| `pill_logger_adherence_override` | Mark Last Adherence Taken Button | `entity_id` |
 
 ### Config Flow Architecture
 

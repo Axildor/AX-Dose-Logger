@@ -3,7 +3,7 @@ from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import callback
 from homeassistant.helpers import selector as sel
 from datetime import date
-from .const import DOMAIN, STANDARD_EFFECTIVENESS_METRICS, RELEASE_TYPES, PK_DEFAULTS, MAX_DOSES_PER_DAY, generate_default_dose_times
+from .const import DOMAIN, STANDARD_EFFECTIVENESS_METRICS, RELEASE_TYPES, STRENGTH_UNITS, PK_DEFAULTS, MAX_DOSES_PER_DAY, CURRENT_VERSION, generate_default_dose_times
 
 # Section key for adherence (still used as a section)
 _ADHERENCE_SECTION_KEY = "adherence"
@@ -22,12 +22,22 @@ _TIME_WINDOW_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=0.5, max=168, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
 ))
 _STRENGTH_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
-    min=0, max=9999, step=0.5, unit_of_measurement="mg", mode=sel.NumberSelectorMode.BOX
+    min=0, max=9999, step=0.5, mode=sel.NumberSelectorMode.BOX
 ))
+_STRENGTH_UNIT_SELECTOR = sel.SelectSelector(
+    sel.SelectSelectorConfig(
+        options=STRENGTH_UNITS,
+        mode=sel.SelectSelectorMode.DROPDOWN,
+        translation_key="strength_unit",
+    )
+)
 _HALF_LIFE_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=0, max=168, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
 ))
 _HOURS_TO_PEAK_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=72, step=0.1, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
+))
+_IR_HOURS_TO_PEAK_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=0, max=72, step=0.1, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
 ))
 _BIOAVAILABILITY_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
@@ -68,7 +78,7 @@ def _make_adherence_section(enable_default=True, grace_default=1):
 
 
 class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 7
+    VERSION = CURRENT_VERSION
 
     def __init__(self):
         self._data = {}
@@ -213,6 +223,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         pk_schema = {
             vol.Optional("strength", default=0): _STRENGTH_SELECTOR,
+            vol.Optional("strength_unit", default="mg"): _STRENGTH_UNIT_SELECTOR,
             vol.Optional("half_life", default=0): _HALF_LIFE_SELECTOR,
             vol.Optional("hours_to_peak", default=0): _HOURS_TO_PEAK_SELECTOR,
             vol.Optional("bioavailability", default=PK_DEFAULTS["bioavailability"]): _BIOAVAILABILITY_SELECTOR,
@@ -220,6 +231,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         if release_type == "Sustained Release":
+            pk_schema[vol.Optional("ir_hours_to_peak", default=PK_DEFAULTS["ir_hours_to_peak"])] = _IR_HOURS_TO_PEAK_SELECTOR
             pk_schema[vol.Optional("ir_fraction", default=PK_DEFAULTS["ir_fraction"])] = _IR_FRACTION_SELECTOR
             pk_schema[vol.Optional("zero_order_duration", default=PK_DEFAULTS["zero_order_duration"])] = _ZERO_ORDER_DURATION_SELECTOR
             pk_schema[vol.Optional("release_half_life", default=PK_DEFAULTS["release_half_life"])] = _RELEASE_HALF_LIFE_SELECTOR
@@ -344,6 +356,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
 
         pk_schema = {
             vol.Optional("strength", default=options.get("strength", data.get("strength", 0))): _STRENGTH_SELECTOR,
+            vol.Optional("strength_unit", default=options.get("strength_unit", data.get("strength_unit", "mg"))): _STRENGTH_UNIT_SELECTOR,
             vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0))): _HALF_LIFE_SELECTOR,
             vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0))): _HOURS_TO_PEAK_SELECTOR,
             vol.Optional("bioavailability", default=options.get("bioavailability", data.get("bioavailability", PK_DEFAULTS["bioavailability"]))): _BIOAVAILABILITY_SELECTOR,
@@ -351,6 +364,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         }
 
         if release_type == "Sustained Release":
+            pk_schema[vol.Optional("ir_hours_to_peak", default=options.get("ir_hours_to_peak", data.get("ir_hours_to_peak", PK_DEFAULTS["ir_hours_to_peak"])))] = _IR_HOURS_TO_PEAK_SELECTOR
             pk_schema[vol.Optional("ir_fraction", default=options.get("ir_fraction", data.get("ir_fraction", PK_DEFAULTS["ir_fraction"])))] = _IR_FRACTION_SELECTOR
             pk_schema[vol.Optional("zero_order_duration", default=options.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"])))] = _ZERO_ORDER_DURATION_SELECTOR
             pk_schema[vol.Optional("release_half_life", default=options.get("release_half_life", data.get("release_half_life", PK_DEFAULTS["release_half_life"])))] = _RELEASE_HALF_LIFE_SELECTOR
@@ -369,6 +383,10 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             # Force adherence off for As Needed — no scheduled doses to track
             if self._entry.data.get("tracking_type") == "As Needed":
                 self._data["enable_adherence"] = False
+            # OptionsFlow.async_create_entry REPLACES entry.options entirely
+            # (it does not merge). self._data accumulates all fields across the
+            # 3 steps (init → pk → effectiveness) via .update(), so the
+            # complete options dict is submitted here.
             return self.async_create_entry(title="", data=self._data)
 
         options = self._entry.options

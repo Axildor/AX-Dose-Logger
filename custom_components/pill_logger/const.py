@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "pill_logger"
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
+CURRENT_VERSION = 8
 
 STANDARD_EFFECTIVENESS_METRICS: dict[str, str] = {
     "pain": "Pain",
@@ -39,6 +39,7 @@ PK_DEFAULTS: dict[str, float] = {
     "zero_order_duration": 0,
     "release_half_life": 0,
     "lag_time": 0,
+    "ir_hours_to_peak": 1.0,
 }
 
 MAX_DOSES_PER_DAY = 18
@@ -103,3 +104,5 @@ def get_dose_times(entry: "ConfigEntry") -> list[tuple[int, int]]:
 def sanitize_key(name: str) -> str:
     """Convert a human-readable metric name into a safe entity key component."""
     return re.sub(r"[^a-z0-9]", "_", name.lower().strip())
+
+STRENGTH_UNITS: list[str] = ["µg", "mg", "g"]

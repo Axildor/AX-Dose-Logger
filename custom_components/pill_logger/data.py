@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
 
 
-type PillLoggerConfigEntry = ConfigEntry
+type PillLoggerConfigEntry = ConfigEntry[PillLoggerData]
 
 
 @dataclass

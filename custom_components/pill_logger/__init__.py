@@ -1,18 +1,51 @@
-import logging
-
 from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er
-from .const import DOMAIN
-
-_LOGGER = logging.getLogger(__name__)
+from .const import DOMAIN, CURRENT_VERSION, LOGGER
+from .coordinator import PillLoggerCoordinator
+from .data import PillLoggerConfigEntry
+from .services import async_setup_services, async_unload_services
+from .store import PillLoggerStore
+from .views import PillLoggerHistoryView
 
 PLATFORMS = ["sensor", "button", "number", "calendar"]
 
+# Options whose changes require entity add/remove (and thus a reload).
+# All other options (PK params, dose_time, pill_limit, etc.) are read
+# fresh by the coordinator and sensors on every update cycle, so they
+# don't need a reload.
+_STRUCTURAL_KEYS = ("enable_calendar", "enable_adherence", "tracking_type")
 
-async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+
+def _get_structural_options(entry: PillLoggerConfigEntry) -> dict:
+    """Return a snapshot of the structural options that affect entity creation.
+
+    Each key is resolved from ``entry.options`` with a fallback to
+    ``entry.data`` (matching the pattern used in sensor.py / calendar.py).
+    """
+    return {
+        "enable_calendar": entry.options.get(
+            "enable_calendar", entry.data.get("enable_calendar", True)
+        ),
+        "enable_adherence": entry.options.get(
+            "enable_adherence", entry.data.get("enable_adherence", True)
+        ),
+        "tracking_type": entry.data.get("tracking_type"),
+    }
+
+
+def _remove_entity(ent_reg: er.EntityRegistry, platform: str, unique_id: str) -> None:
+    """Remove an entity from the registry if it exists.
+
+    Prevents ghost "unavailable" entities after a feature is disabled.
+    """
+    entity_id = ent_reg.async_get_entity_id(platform, DOMAIN, unique_id)
+    if entity_id:
+        ent_reg.async_remove(entity_id)
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: PillLoggerConfigEntry) -> bool:
     """Migrate old entry to new version."""
-    _LOGGER.debug("Migrating from version %s", config_entry.version)
+    LOGGER.debug("Migrating from version %s", config_entry.version)
 
     new_data = {**config_entry.data}
     new_options = {**config_entry.options}
@@ -70,73 +103,122 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             new_options["enable_calendar"] = False
             new_options["enable_adherence"] = False
 
+    if config_entry.version <= 7:
+        # Version 8: Add strength_unit (default mg for existing entries)
+        new_data.setdefault("strength_unit", "mg")
+        new_options.setdefault("strength_unit", "mg")
+
     hass.config_entries.async_update_entry(
-        config_entry, data=new_data, options=new_options, version=7
+        config_entry, data=new_data, options=new_options, version=CURRENT_VERSION
     )
 
-    _LOGGER.info(
+    LOGGER.info(
         "Migration to version %s successful for %s",
-        7, config_entry.title,
+        CURRENT_VERSION, config_entry.title,
     )
 
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data
-    
+
+    # Initialize shared store (singleton)
+    if "_store" not in hass.data[DOMAIN]:
+        store = PillLoggerStore(hass)
+        await store.async_load()
+        hass.data[DOMAIN]["_store"] = store
+
+    # Register REST view (idempotent — HA ignores duplicate registrations)
+    hass.http.register_view(PillLoggerHistoryView())
+
+    # Create per-entry coordinator — single source of truth for dose history
+    store: PillLoggerStore = hass.data[DOMAIN]["_store"]
+    coordinator = PillLoggerCoordinator(hass, entry, store)
+    hass.data[DOMAIN][entry.entry_id] = {
+        "entry_data": entry.data,
+        "coordinator": coordinator,
+        # Snapshot of structural options for change detection in async_reload_entry.
+        # Only enable_calendar, enable_adherence, and tracking_type affect which
+        # entities are created; all other options are read fresh by the coordinator
+        # and sensors on every update cycle, so they don't need a reload.
+        "prev_structural": _get_structural_options(entry),
+    }
+
+    # First refresh loads dose history from the store
+    await coordinator.async_config_entry_first_refresh()
+
+    # Register domain-level services (idempotent — skips if already registered)
+    async_setup_services(hass)
+
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-    
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry, with entity cleanup for disabled features."""
+async def async_reload_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -> None:
+    """Reload config entry, but only when structural options change.
+
+    Compares ``enable_calendar``, ``enable_adherence``, and ``tracking_type``
+    before/after.  If none changed (e.g. a PK-only save), the coordinator and
+    sensors already read the new values on their next update cycle, so no
+    reload or entity-registry surgery is needed.
+
+    When a structural option *did* change, removes entities for newly-disabled
+    features to prevent ghost "unavailable" entities, then reloads the entry.
+    """
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+    prev = entry_data.get("prev_structural", {})
+    curr = _get_structural_options(entry)
+
+    # Detect which structural keys changed
+    changed = {k for k in _STRUCTURAL_KEYS if prev.get(k) != curr.get(k)}
+
+    if not changed:
+        # No structural change — coordinator and sensors will pick up the
+        # new option values on their next update cycle.  Skip reload entirely.
+        return
+
     ent_reg = er.async_get(hass)
 
-    enable_calendar = entry.options.get(
-        "enable_calendar", entry.data.get("enable_calendar", True)
-    )
-    if not enable_calendar:
-        # Remove the calendar entity from the entity registry to prevent
-        # an "unavailable" ghost entity after reload
-        entity_id = ent_reg.async_get_entity_id(
-            "calendar", DOMAIN, f"{entry.entry_id}_calendar"
-        )
-        if entity_id:
-            ent_reg.async_remove(entity_id)
+    # --- enable_calendar: True → False ---
+    if "enable_calendar" in changed and not curr["enable_calendar"]:
+        _remove_entity(ent_reg, "calendar", f"{entry.entry_id}_calendar")
 
-    # Steady state, calendar, and adherence are only meaningful for scheduled
-    # medications. Remove their entities for As Needed entries to prevent
-    # ghost "unavailable" entities.
-    tracking_type = entry.data.get("tracking_type")
-    if tracking_type == "As Needed":
-        ss_entity_id = ent_reg.async_get_entity_id(
-            "sensor", DOMAIN, f"{entry.entry_id}_steady_state"
-        )
-        if ss_entity_id:
-            ent_reg.async_remove(ss_entity_id)
-
-        # Remove calendar entity (no future events for PRN)
-        cal_entity_id = ent_reg.async_get_entity_id(
-            "calendar", DOMAIN, f"{entry.entry_id}_calendar"
-        )
-        if cal_entity_id:
-            ent_reg.async_remove(cal_entity_id)
-
-        # Remove adherence entities (undefined for PRN)
+    # --- enable_adherence: True → False ---
+    if "enable_adherence" in changed and not curr["enable_adherence"]:
+        # Remove adherence sensors (7, 14, 30, 365-day windows)
         for window in (7, 14, 30, 365):
-            adh_entity_id = ent_reg.async_get_entity_id(
-                "sensor", DOMAIN, f"{entry.entry_id}_adherence_{window}"
-            )
-            if adh_entity_id:
-                ent_reg.async_remove(adh_entity_id)
+            _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_adherence_{window}")
+        # Remove adherence tool buttons
+        for suffix in ("_reset_adherence", "_cover_last_missed"):
+            _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
+
+    # --- tracking_type: * → "As Needed" ---
+    # tracking_type is immutable via the options flow (set during initial
+    # config flow), so this branch is effectively dead code.  It's kept for
+    # safety in case a future reconfigure step allows changing tracking_type.
+    if "tracking_type" in changed and curr["tracking_type"] == "As Needed":
+        _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_steady_state")
+        _remove_entity(ent_reg, "calendar", f"{entry.entry_id}_calendar")
+        for window in (7, 14, 30, 365):
+            _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_adherence_{window}")
+        for suffix in ("_reset_adherence", "_cover_last_missed"):
+            _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
+
+    # Update the snapshot so the next options save has a fresh baseline
+    entry_data["prev_structural"] = curr
 
     await hass.config_entries.async_reload(entry.entry_id)
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
+        # Remove services when the last entry is unloaded
+        if not any(
+            isinstance(v, dict) and "coordinator" in v
+            for v in hass.data.get(DOMAIN, {}).values()
+        ):
+            async_unload_services(hass)
     return unload_ok

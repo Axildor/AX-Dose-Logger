@@ -7,9 +7,10 @@
     "-p", "0.0.0.0:8123:8123"
   ],
   "mounts": [
-    "source=${localWorkspaceFolder}/../lovelace-pill-logger-card,target=/workspaces/lovelace-pill-logger-card,type=bind"
+    "source=${localWorkspaceFolder}/../lovelace-pill-logger-card,target=/workspaces/lovelace-pill-logger-card,type=bind",
+    "source=${localWorkspaceFolder}/../lovelace-pill-logger-card/dist,target=/workspaces/Home-Assistant-Pill-Logger/config/www/pill-logger,type=bind"
   ],
-  "postCreateCommand": "apk update && apk add --no-cache nodejs npm yarn libc6-compat github-cli",
+  "postCreateCommand": "apk update && apk add --no-cache nodejs npm libc6-compat github-cli && npm install -g corepack && corepack enable && export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 && cd /workspaces/lovelace-pill-logger-card && corepack prepare yarn@stable --activate && yarn install",
   "customizations": {
     "vscode": {
       "extensions": [

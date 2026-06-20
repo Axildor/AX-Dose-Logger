@@ -1,159 +1,81 @@
-from datetime import timedelta, date
+from datetime import timedelta
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
-from ..const import DOMAIN
+from ..entity import PillLoggerSensorEntity
+from ..sliding_window import get_time_window, is_on_day
 
-class PillLimitSensor(RestoreSensor):
+# Cap for timestamps attribute: prune older than 365 days, keep last 100
+_TIMESTAMPS_MAX_DAYS = 365
+_TIMESTAMPS_MAX_COUNT = 100
+
+
+class PillLimitSensor(PillLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 0
-    should_poll = False
 
-    def __init__(self, entry):
-        med_name = entry.data["medication_name"]
-        self._med_name = med_name
-        self._attr_name = "Pills Safe to Take"
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "pills_safe_to_take"
         self._attr_unique_id = f"{entry.entry_id}_pills_safe_to_take"
         self._attr_icon = "mdi:pill"
-        self._entry_id = entry.entry_id
         self._tracking_type = entry.data.get("tracking_type")
-        self._timestamps = []
         self._attr_extra_state_attributes = {"timestamps": []}
         self._attr_native_value = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_taken_{self._entry_id}", self.pill_taken)
-        )
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_reset_{self._entry_id}", self.reset_data)
-        )
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_undone_{self._entry_id}", self.pill_undone)
-        )
-
-        self.async_on_remove(
-            async_track_time_interval(
-                self.hass, self._on_interval, timedelta(minutes=1)
-            )
-        )
-
+        # Legacy restore for smooth UI transition; coordinator is
+        # authoritative so _handle_coordinator_update overrides.
         last_state_obj = await self.async_get_last_state()
         if last_state_obj and "timestamps" in last_state_obj.attributes:
-            saved_timestamps = last_state_obj.attributes["timestamps"]
-            for ts_str in saved_timestamps:
-                dt = dt_util.parse_datetime(ts_str)
-                if dt:
-                    self._timestamps.append(dt)
             self._update_state()
             self.async_write_ha_state()
 
     @callback
-    def pill_taken(self, timestamp, *args, **kwargs):
-        """Handle pill_taken signal with synchronized timestamp payload."""
-        self._timestamps.append(timestamp)
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator (dose event or 1-min tick)."""
         self._update_state()
         self.async_write_ha_state()
 
-    @callback
-    def pill_undone(self, *args, **kwargs):
-        """Handle pill_undone signal: remove the most recent timestamp."""
-        if self._timestamps:
-            self._timestamps.pop()
-        self._update_state()
-        self.async_write_ha_state()
-
-    @callback
-    def reset_data(self, *args, **kwargs):
-        self._timestamps = []
-        self._update_state()
-        self.async_write_ha_state()
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry_id)},
-            name=self._med_name,
-            manufacturer="Pill Logger",
-        )
-
-    @callback
-    def _on_interval(self, now):
-        self._update_state()
-        self.async_write_ha_state()
-
-    def _get_time_window(self, entry):
-        """Get time_window_hours with mode-specific fallbacks.
-
-        For Time of Day mode with multiple daily doses, the default 24h window
-        naturally supports multi-dose regimens (e.g. BID with pill_limit=2
-        means max 2 pills in any 24h window).
-        """
-        if self._tracking_type == "Regular Interval":
-            # Fall back to hours_between_doses if time_window_hours not explicitly set
-            return entry.options.get(
-                "time_window_hours",
-                entry.data.get(
-                    "time_window_hours",
-                    entry.options.get(
-                        "hours_between_doses",
-                        entry.data.get("hours_between_doses", 8)
-                    )
-                )
-            )
-        elif self._tracking_type == "As Needed":
-            return entry.options.get(
-                "time_window_hours",
-                entry.data.get("time_window_hours", 8)
-            )
-        else:
-            # Time of Day and Cyclic default to 24h
-            return entry.options.get(
-                "time_window_hours",
-                entry.data.get("time_window_hours", 24)
-            )
+    def _get_timestamps(self) -> list:
+        """Read dose timestamps from the coordinator."""
+        if self.coordinator.data:
+            return [ts for ts, _ in self.coordinator.data.dose_history]
+        return []
 
     def _update_state(self):
         now = dt_util.now()
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", entry.data.get("max_pills_allowed", 1)))
-        time_window = self._get_time_window(entry)
+        max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", 1))
+        time_window = get_time_window(entry, self._tracking_type)
+        timestamps = self._get_timestamps()
 
         # Cyclic OFF days: force pill_limit to 0 regardless of window
-        if self._tracking_type == "Cyclic/Calendar Pattern":
-            days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
-            days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
-            anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
-            try:
-                anchor_date = date.fromisoformat(anchor_str)
-            except (ValueError, TypeError):
-                anchor_date = now.date()
-            cycle_length = days_on + days_off
-            if cycle_length <= 0:
-                cycle_length = 1
-            days_since_anchor = (now.date() - anchor_date).days
-            position_in_cycle = days_since_anchor % cycle_length
-            if position_in_cycle >= days_on:
-                # Currently in an OFF window — no pills allowed
-                self._attr_native_value = 0
-                self._attr_extra_state_attributes = {
-                    "timestamps": [ts.isoformat() for ts in self._timestamps],
-                    "time_window_hours": time_window,
-                    "in_on_window": False,
-                }
-                return
+        if self._tracking_type == "Cyclic/Calendar Pattern" and not is_on_day(entry, now.date(), now.date()):
+            self._attr_native_value = 0
+            # Prune timestamps to last 365 days and cap at 100 entries
+            cutoff = now - timedelta(days=_TIMESTAMPS_MAX_DAYS)
+            recent = [ts for ts in timestamps if ts >= cutoff][-_TIMESTAMPS_MAX_COUNT:]
+            self._attr_extra_state_attributes = {
+                "timestamps": [ts.isoformat() for ts in recent],
+                "time_window_hours": time_window,
+                "in_on_window": False,
+            }
+            return
 
         # Unified sliding window for ALL modes
         cutoff = now - timedelta(hours=time_window)
-        self._timestamps = [ts for ts in self._timestamps if ts >= cutoff]
-        self._attr_native_value = max(0, max_pills - len(self._timestamps))
+        valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
+        self._attr_native_value = max(0, max_pills - len(valid_timestamps))
+
+        window_expires_at = None
+        if max_pills > 0 and len(valid_timestamps) >= max_pills and valid_timestamps:
+            window_expires_at = (valid_timestamps[0] + timedelta(hours=time_window)).isoformat()
 
         self._attr_extra_state_attributes = {
-            "timestamps": [ts.isoformat() for ts in self._timestamps],
+            "timestamps": [ts.isoformat() for ts in valid_timestamps],
             "time_window_hours": time_window,
+            "window_expires_at": window_expires_at,
         }
