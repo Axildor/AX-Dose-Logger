@@ -1,24 +1,28 @@
-# 💊 Pill Logger
+# 💊 AX Dose Logger
 
 A fully local Home Assistant integration for tracking medications — when you took them, when your next dose is, and whether it's safe to take another. It runs entirely on your instance with no cloud dependency.
 
-If you want to go deeper, Pill Logger can also model how much medication is actually in your body over time using pharmacokinetic engines for both instant-release and sustained-release formulations, track how well your meds are working with custom sliders, and send you mobile reminders when it's time to take a dose.
+If you want to go deeper, AX Dose Logger can also model how much medication is actually in your body over time using pharmacokinetic engines for both instant-release and sustained-release formulations, track how well your meds are working with custom sliders, and send you mobile reminders when it's time to take a dose.
 
 > ⚠️ **Medical disclaimer:** This integration is for informational and home automation purposes only. It is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.
 
 ---
 
-## Using Pill Logger
+## Using AX Dose Logger
 
 ### Getting Started
 
 1. **Install** — In HACS, go to ⋮ → Custom Repositories, paste this repository URL, choose **Integration** as the category, then download and restart Home Assistant.
-2. **Add a medication** — Head to Settings → Devices & Services → Add Integration and search for **Pill Logger**. The config flow walks you through it in four steps.
-3. **Add to your dashboard** — See the [dashboard example](#dashboard-example) below for a ready-made card layout.
+2. **Add a medication** — Head to Settings → Devices & Services → Add Integration and search for **AX Dose Logger**. The config flow walks you through it in four steps.
+
+<!-- SCREENSHOT: The 4-step AX Dose Logger config flow — capture step 1 (name + tracking type + release type) or a composite of all 4 steps -->
+![Config flow](screenshots/config-flow.png)
+
+3. **Add to your dashboard** — Install the dedicated [AX Dose Logger Card](#dashboard-card) and add it to your dashboard. No template YAML required.
 
 ### How It Works
 
-Pill Logger supports four ways to track a medication, depending on how you take it:
+AX Dose Logger supports four ways to track a medication, depending on how you take it:
 
 | Mode | When to Use It | What Happens |
 |------|---------------|--------------|
@@ -29,15 +33,19 @@ Pill Logger supports four ways to track a medication, depending on how you take 
 
 ### Staying Safe
 
-Accidentally taking too much is easy to do, especially with medications that have a wide dosing window. Pill Logger helps prevent that:
+Accidentally taking too much is easy to do, especially with medications that have a wide dosing window. AX Dose Logger helps prevent that:
 
 - **Pill Limit Tracking** — You set how many pills are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so the limit recovers one at a time. On Cyclic OFF days, the limit drops to 0 automatically.
-- **Overdose Warning** — When the pill limit hits 0, the Take button on your dashboard turns red and asks you to confirm before logging.
+- **Overdose Warning** — When the pill limit hits 0, the Take button on the dedicated AX Dose Logger Card turns red and asks you to confirm before logging.
+
+<!-- SCREENSHOT: Daily pane with pill limit at 0 — Take button red with the confirmation dialog visible -->
+![Overdose warning](screenshots/overdose-warning.png)
+
 - **Next Dose Countdown** — The Next Dose sensor tells you exactly when your next scheduled dose is, so you can show live countdowns like "in 2 hours" or "Available now" on your dashboard. For scheduled medications (Time of Day, Cyclic), the next dose always reflects your prescribed clock time — taking a dose late does not drift the schedule. The separate Pills Safe to Take sensor tells you whether it's actually safe to take now.
 
 ### Pharmacokinetics
 
-If you want to understand what's happening in your body between doses, Pill Logger can optionally model the **amount of medication in your system over time** using pharmacokinetic models. When enabled, it creates sensors based on your tracking type:
+If you want to understand what's happening in your body between doses, AX Dose Logger can optionally model the **amount of medication in your system over time** using pharmacokinetic models. When enabled, it creates sensors based on your tracking type:
 
 - **Amount in Body** — Shows current drug amount (mg), updated every 2 minutes, accounting for absorption and elimination. Available for all tracking types.
 - **Steady State** — Shows how many days remain until you reach 90% steady state, along with the theoretical maximum and your current percentage. **Only available for scheduled medications** (Regular Interval, Time of Day, Cyclic). Not available for As Needed since steady state requires a fixed dosing interval.
@@ -55,14 +63,14 @@ Leave all PK values at 0 to disable concentration tracking.
 
 ### Tracking How Well It Works
 
-Not sure if your medication is actually helping? Pill Logger can add 1–10 sliders so you can rate how you feel after each dose:
+Not sure if your medication is actually helping? AX Dose Logger can add 1–10 sliders so you can rate how you feel after each dose:
 
 - **Standard metrics**: Pain, Mood, Nausea, Fatigue
 - **Custom metrics**: Add your own (e.g. "brain fog", "joint stiffness") — each one gets its own slider
 
 ### At a Glance
 
-Pill Logger gives you a few different ways to look at your dosing history:
+AX Dose Logger gives you a few different ways to look at your dosing history:
 
 - **Adherence Percentage** — Four rolling sensors (7, 14, 30, and 365 days) showing what percentage of scheduled doses you took on time. A dose counts as "on time" if it falls within ±grace period of the expected slot. For Regular Interval mode, adherence is anchored to your actual dosing schedule. Cyclic mode only counts ON days. As Needed medications report `Unavailable` since adherence doesn't really apply without a schedule.
 - **Rolling Averages** — Day-level dose coverage over 7, 14, 30, and 365 days (PDC-aligned: the fraction of scheduled days in the window on which at least one dose was taken, 0.0–1.0). Windows are anchored to your first recorded dose, so setting up a medication before you start taking it doesn't penalize the averages. A dose taken at any time on a scheduled day counts that day as covered — a late-but-taken dose does not lower the average. Cyclic mode only counts ON days. Timing quality (on-time vs late) is reported separately by the Adherence Percentage sensors.
@@ -71,7 +79,11 @@ Pill Logger gives you a few different ways to look at your dosing history:
 
 ### Inventory & Undo
 
-- **Smart Inventory** — Tracks how many pills you have left. Double-tap the inventory card on your dashboard to open the refill dialog, enter the new box amount, and it automatically adds to your total.
+- **Smart Inventory** — Tracks how many pills you have left. Double-tap the inventory tile on the AX Dose Logger Card to open the refill dialog, enter the new box amount, and it automatically adds to your total.
+
+<!-- SCREENSHOT: Double-tap on the inventory tile showing the refill input dialog -->
+![Refill dialog](screenshots/refill-dialog.png)
+
 - **Undo Last Dose** — Pressed Take by accident? The Undo button reverts the most recent dose across all sensors, counters, and the PK model — restoring inventory, removing the timestamp, and recalculating the concentration curve from dose history.
 
 ### Reminders
@@ -79,10 +91,115 @@ Pill Logger gives you a few different ways to look at your dosing history:
 There's a ready-made Blueprint you can import for push notifications with Take, Skip, and Snooze actions:
 
 1. Go to Settings → Automations → Blueprints → Import Blueprint
-2. Paste: `https://raw.githubusercontent.com/adix992/Home-Assistant-Pill-Logger/main/blueprints/reminder.yaml`
-3. Create a new automation from the blueprint, pick your phone, and map your Pill Logger entities.
+2. Paste: `https://raw.githubusercontent.com/Axildor/AX-Dose-Logger/main/blueprints/reminder.yaml`
+3. Create a new automation from the blueprint, pick your phone, and map your AX Dose Logger entities.
 
-> **Safety guard**: The blueprint has an optional "Pills Safe to Take Sensor" input. When mapped, the notification's **Taken** action will not auto-log a dose if you're at the pill limit — instead it sends a warning telling you to open the Pill Logger card to override. This keeps the notification from bypassing the rolling-window overdose protection.
+> **Safety guard**: The blueprint has an optional "Pills Safe to Take Sensor" input. When mapped, the notification's **Taken** action will not auto-log a dose if you're at the pill limit — instead it sends a warning telling you to open the AX Dose Logger card to override. This keeps the notification from bypassing the rolling-window overdose protection.
+
+---
+
+## Dashboard Card
+
+AX Dose Logger has a dedicated Lovelace card that surfaces everything the integration produces — no template YAML, no Mushroom/Card-Mod dependencies. It's a separate repository, installed via HACS as a **Dashboard** card.
+
+> **Note:** The card repository link below is a placeholder — the dedicated card integration is not live yet.
+
+**Install:** `https://github.com/Axildor/AX-Dose-Logger-Card` (HACS → Custom Repositories → Dashboard category)
+
+Once installed, add it to your dashboard via the visual editor (pick your medication device) or with simple YAML:
+
+```yaml
+type: custom:ax-dose-logger-card
+device_id: <your medication device ID>
+```
+
+The card has four panes, selectable via tabs at the bottom:
+
+### 📅 Daily
+
+<!-- SCREENSHOT: Card showing the Daily pane — medication name, Take Pill button with next-dose countdown, pills safe to take, last dose, inventory count, custom chips -->
+![Daily pane](screenshots/daily-pane.png)
+
+- Take Pill button with next-dose countdown
+- Pills safe to take indicator
+- Last dose timestamp
+- Inventory count (double-tap to refill)
+- Custom chips for any related entities
+
+### 📊 Graphs
+
+<!-- SCREENSHOT: Card showing the Graphs pane — daily-dose bar graph with timescale selector + amount-in-body line graph with timeframe selector -->
+![Graphs pane](screenshots/graphs-pane.png)
+
+- Bar graph of daily doses with selectable timescales (14D, 30D, 60D)
+- Amount-in-body line graph with selectable timeframes (12H, 48H, 7D, 14D, 30D)
+
+### 📈 Stats
+
+<!-- SCREENSHOT: Card showing the Stats pane — rolling average boxes (7/14/30/365 days), adherence percentage boxes, total doses, days since first dose -->
+![Stats pane](screenshots/stats-pane.png)
+
+- Rolling averages (7, 14, 30, 365 days)
+- Adherence percentages (7, 14, 30, 365 days)
+- Total doses and days since first dose
+
+### 🔧 Tools
+
+<!-- SCREENSHOT: Card showing the Tools pane — Reset Adherence %, Mark Last Adherence Taken, Reset History, Undo Last Dose buttons -->
+![Tools pane](screenshots/tools-pane.png)
+
+- Reset adherence percentage
+- Mark last missed dose as taken
+- Reset dose history
+- Undo last dose
+
+For full card configuration options (color schemes, column layouts, chip customization, graph toggles), see the card repository's README.
+
+---
+
+## Entity States & Attributes
+
+> This section is for advanced users who want to build custom templates beyond the dedicated AX Dose Logger Card. The card handles all of this automatically — you only need these details if you're hand-rolling your own Lovelace templates.
+
+Key entities and their attributes for template references:
+
+**Pills Safe to Take** (`sensor.ibuprofen_pills_safe_to_take`)
+- State: number of pills safe to take remaining (integer)
+- `timestamps`: list of recent dose timestamps within the window
+- `time_window_hours`: configured rolling window size
+- `in_on_window`: (Cyclic only) whether currently in an ON period
+- `window_expires_at`: when the oldest in-window dose expires and the limit will increment (ISO datetime); `null` when not at the limit. This is the true "when can I safely take another" time, distinct from the Next Dose schedule.
+
+**Next Dose** (`sensor.ibuprofen_next_dose`)
+- State: datetime of next scheduled dose. For scheduled medications (Time of Day, Cyclic), this is always the next prescribed clock slot — taking a dose late does not drift the schedule. The safety gate (whether it's actually safe to take now) is the separate Pills Safe to Take sensor.
+- `safe_to_take`: number of pills safe to take right now
+
+**Amount in Body** (`sensor.ibuprofen_amount_in_body`)
+- State: current drug amount in mg (float, 1 decimal)
+- *Instant Release attributes:*
+  - `gut_mass`: drug remaining in gut compartment (mg)
+  - `ka`: absorption rate constant (h⁻¹)
+  - `lag_time`: configured lag time (min)
+  - `dose_history`: list of `[timestamp, strength]` pairs
+- *Sustained Release attributes:*
+  - `gut_ir_mass`: drug in IR gut compartment (mg)
+  - `matrix_sr_mass`: drug remaining in SR matrix (mg)
+  - `gut_sr_mass`: drug in SR gut compartment (mg)
+  - `ka`: absorption rate constant (h⁻¹)
+  - `kr`: SR release rate constant (h⁻¹)
+  - `lag_time`: configured lag time (min)
+  - `dose_history`: list of `[timestamp, strength]` pairs
+
+**Steady State** (`sensor.ibuprofen_days_to_steady_state`)
+- State: days remaining to 90% steady state (float, 1 decimal), or `0.0` if reached
+- `theoretical_max_mg`: predicted maximum at steady state
+- `current_percentage`: current achievement as a percentage string (e.g. "52.3%")
+
+**Adherence** (`sensor.ibuprofen_adherence_7_days`, etc.)
+- State: adherence percentage (integer, clamped at 100%)
+- `actual_doses`: number of on-time doses in the window
+- `expected_doses`: number of expected doses in the window
+- `grace_hours`: configured grace period
 
 ---
 
@@ -139,12 +256,13 @@ Each medication shows up as a **Device** in Home Assistant. Replace `ibuprofen` 
 
 ### Events
 
-Pill Logger fires events on the Home Assistant event bus that you can use in automations:
+AX Dose Logger fires events on the Home Assistant event bus that you can use in automations:
 
 | Event | When It Fires | Event Data |
 |-------|--------------|------------|
-| `pill_logger_pill_taken` | Any Take button is pressed | `medication_name`, `timestamp` |
-| `pill_logger_pill_undone` | Any Undo button is pressed | `medication_name` |
+| `ax_dose_logger_dose_taken` | Any Take button is pressed | `medication_name`, `timestamp` |
+| `ax_dose_logger_dose_undone` | Any Undo button is pressed | `medication_name` |
+| `ax_dose_logger_adherence_override` | Mark Last Adherence Taken button is pressed | `entity_id` |
 
 ### Automation Examples
 
@@ -153,7 +271,7 @@ Pill Logger fires events on the Home Assistant event bus that you can use in aut
 automation:
   - trigger:
       - platform: event
-        event_type: pill_logger_pill_taken
+        event_type: ax_dose_logger_dose_taken
         event_data:
           medication_name: Ibuprofen
     action:
@@ -190,388 +308,19 @@ automation:
 
 ---
 
-## Dashboard Cards & Templates
-
-### Entity States & Attributes
-
-Key entities and their attributes for template references:
-
-**Pills Safe to Take** (`sensor.ibuprofen_pills_safe_to_take`)
-- State: number of pills safe to take remaining (integer)
-- `timestamps`: list of recent dose timestamps within the window
-- `time_window_hours`: configured rolling window size
-- `in_on_window`: (Cyclic only) whether currently in an ON period
-- `window_expires_at`: when the oldest in-window dose expires and the limit will increment (ISO datetime); `null` when not at the limit. This is the true "when can I safely take another" time, distinct from the Next Dose schedule.
-
-**Next Dose** (`sensor.ibuprofen_next_dose`)
-- State: datetime of next scheduled dose. For scheduled medications (Time of Day, Cyclic), this is always the next prescribed clock slot — taking a dose late does not drift the schedule. The safety gate (whether it's actually safe to take now) is the separate Pills Safe to Take sensor.
-- `safe_to_take`: number of pills safe to take right now
-
-**Amount in Body** (`sensor.ibuprofen_amount_in_body`)
-- State: current drug amount in mg (float, 1 decimal)
-- *Instant Release attributes:*
-  - `gut_mass`: drug remaining in gut compartment (mg)
-  - `ka`: absorption rate constant (h⁻¹)
-  - `lag_time`: configured lag time (min)
-  - `dose_history`: list of `[timestamp, strength]` pairs
-- *Sustained Release attributes:*
-  - `gut_ir_mass`: drug in IR gut compartment (mg)
-  - `matrix_sr_mass`: drug remaining in SR matrix (mg)
-  - `gut_sr_mass`: drug in SR gut compartment (mg)
-  - `ka`: absorption rate constant (h⁻¹)
-  - `kr`: SR release rate constant (h⁻¹)
-  - `lag_time`: configured lag time (min)
-  - `dose_history`: list of `[timestamp, strength]` pairs
-
-**Steady State** (`sensor.ibuprofen_days_to_steady_state`)
-- State: days remaining to 90% steady state (float, 1 decimal), or `0.0` if reached
-- `theoretical_max_mg`: predicted maximum at steady state
-- `current_percentage`: current achievement as a percentage string (e.g. "52.3%")
-
-**Adherence** (`sensor.ibuprofen_adherence_7_days`, etc.)
-- State: adherence percentage (integer, clamped at 100%)
-- `actual_doses`: number of on-time doses in the window
-- `expected_doses`: number of expected doses in the window
-- `grace_hours`: configured grace period
-
-### Dashboard Example
-
-Requires [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom), [Vertical Stack In Card](https://github.com/ofekashery/vertical-stack-in-card), and [Card-Mod](https://github.com/thomasloven/lovelace-card-mod) installed via HACS.
-
-Replace **`YOUR_MEDICATION`** with your medication's entity name (e.g. `ibuprofen`).
-
-**💡 How to refill:** Double-click the "Left" card to open the refill dialog, enter the new box amount, and close it to instantly add to your inventory.
-
-```yaml
-type: custom:vertical-stack-in-card
-cards:
-  - type: custom:mushroom-template-card
-    entity: sensor.YOUR_MEDICATION_next_dose
-    primary: YOUR_MEDICATION
-    secondary: >-
-      {% set next = states('sensor.YOUR_MEDICATION_next_dose') | as_datetime(None) %}
-      {% if next == None or next <= now() %}
-        Available now
-      {% else %}
-        {% set total_seconds = (next - now()).total_seconds() %}
-        {% set hours = (total_seconds // 3600) | int %}
-        {% set minutes = ((total_seconds % 3600) // 60) | int %}
-        Wait: {% if hours > 0 %}{{ hours }} hours {% endif %}{{ minutes }} minutes
-      {% endif %}
-    card_mod:
-      style: |
-        ha-card {
-          zoom: 1.2;
-        }
-  - type: horizontal-stack
-    cards:
-      - type: vertical-stack
-        cards:
-          - type: conditional
-            conditions:
-              - condition: numeric_state
-                entity: sensor.YOUR_MEDICATION_pills_safe_to_take
-                above: 0
-            card:
-              type: custom:mushroom-template-card
-              primary: Take Pill
-              secondary: |-
-                {% set last_dose = states('sensor.YOUR_MEDICATION_last_dose') %}
-                {% if last_dose not in ['unknown', 'unavailable', 'None', ''] %}
-                  {% set total_seconds = (now() - as_datetime(last_dose)).total_seconds() %}
-                  {% set hours = (total_seconds // 3600) | int %}
-                  {% set minutes = ((total_seconds % 3600) // 60) | int %}
-                  {% if hours > 0 %}{{ hours }} hours {% endif %}{{ minutes }} minutes ago
-                {% else %}
-                  Never ago
-                {% endif %}
-              icon: mdi:pill
-              icon_color: blue
-              layout: vertical
-              tap_action:
-                action: call-service
-                service: button.press
-                target:
-                  entity_id: button.YOUR_MEDICATION_take
-              card_mod:
-                style: |
-                  ha-card {
-                    height: 120px !important;
-                    display: flex;
-                  }
-                  ha-card:hover {
-                    background: rgba(var(--rgb-blue), 0.1);
-                    transition: background 0.2s ease;
-                  }
-                  ha-card:active {
-                    transform: scale(0.95);
-                    animation: pulse 0.3s ease;
-                  }
-                  @keyframes pulse {
-                    0% { box-shadow: 0 0 0 0 rgba(var(--rgb-blue), 0.7); }
-                    70% { box-shadow: 0 0 0 10px rgba(var(--rgb-blue), 0); }
-                    100% { box-shadow: 0 0 0 0 rgba(var(--rgb-blue), 0); }
-                  }
-          - type: conditional
-            conditions:
-              - condition: state
-                entity: sensor.YOUR_MEDICATION_pills_safe_to_take
-                state: unknown
-            card:
-              type: custom:mushroom-template-card
-              primary: Take Pill
-              secondary: |-
-                {% set last_dose = states('sensor.YOUR_MEDICATION_last_dose') %}
-                {% if last_dose not in ['unknown', 'unavailable', 'None', ''] %}
-                  {% set total_seconds = (now() - as_datetime(last_dose)).total_seconds() %}
-                  {% set hours = (total_seconds // 3600) | int %}
-                  {% set minutes = ((total_seconds % 3600) // 60) | int %}
-                  {% if hours > 0 %}{{ hours }} hours {% endif %}{{ minutes }} minutes ago
-                {% else %}
-                  Never ago
-                {% endif %}
-              icon: mdi:pill
-              icon_color: blue
-              layout: vertical
-              tap_action:
-                action: call-service
-                service: button.press
-                target:
-                  entity_id: button.YOUR_MEDICATION_take
-              card_mod:
-                style: |
-                  ha-card {
-                    height: 120px !important;
-                    display: flex;
-                  }
-                  ha-card:hover {
-                    background: rgba(var(--rgb-blue), 0.1);
-                    transition: background 0.2s ease;
-                  }
-                  ha-card:active {
-                    transform: scale(0.95);
-                    animation: pulse 0.3s ease;
-                  }
-                  mushroom-shape-icon {
-                    --icon-main-color: var(--rgb-blue) !important;
-                    --icon-size: 40px !important;
-                  }
-                  @keyframes pulse {
-                    0% { box-shadow: 0 0 0 0 rgba(var(--rgb-blue), 0.7); }
-                    70% { box-shadow: 0 0 0 10px rgba(var(--rgb-blue), 0); }
-                    100% { box-shadow: 0 0 0 0 rgba(var(--rgb-blue), 0); }
-                  }
-          - type: conditional
-            conditions:
-              - condition: numeric_state
-                entity: sensor.YOUR_MEDICATION_pills_safe_to_take
-                below: 1
-            card:
-              type: custom:mushroom-template-card
-              primary: LIMIT REACHED
-              secondary: |-
-                {% set last_dose = states('sensor.YOUR_MEDICATION_last_dose') %}
-                {% if last_dose not in ['unknown', 'unavailable', 'None', ''] %}
-                  {% set total_seconds = (now() - as_datetime(last_dose)).total_seconds() %}
-                  {% set hours = (total_seconds // 3600) | int %}
-                  {% set minutes = ((total_seconds % 3600) // 60) | int %}
-                  {% if hours > 0 %}{{ hours }} hours {% endif %}{{ minutes }} minutes ago
-                {% else %}
-                  Never ago
-                {% endif %}
-              icon: mdi:alert
-              icon_color: red
-              layout: vertical
-              tap_action:
-                action: call-service
-                service: button.press
-                target:
-                  entity_id: button.YOUR_MEDICATION_take
-                confirmation:
-                  text: "WARNING: 0 pills safe to take. Override?"
-              card_mod:
-                style: >
-                  ha-card {
-                    height: 120px !important;
-                    display: flex;
-                  }
-                  ha-state-icon {
-                    display: none !important;
-                  }
-                  ha-card::after {
-                    content: "";
-                    position: absolute;
-                    top: 0px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    width: 70px;
-                    height: 70px;
-                    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23F44336' d='M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z'/%3E%3C/svg%3E");
-                    background-repeat: no-repeat;
-                    background-position: center;
-                    background-size: 50px 50px;
-                    pointer-events: none;
-                  }
-                  ha-card:hover {
-                    background: rgba(var(--rgb-red), 0.1);
-                  }
-                  ha-card:active {
-                    transform: scale(0.95);
-                    animation: pulse-red 0.3s ease;
-                  }
-                  mushroom-shape-icon {
-                    --icon-size: 60px !important;
-                    --shape-color: rgba(var(--rgb-red), 0.2) !important;
-                    --shape-outline-color: rgba(var(--rgb-red), 0.5) !important;
-                  }
-                  @keyframes pulse-red {
-                    0% { box-shadow: 0 0 0 0 rgba(var(--rgb-red), 0.7); }
-                    70% { box-shadow: 0 0 0 10px rgba(var(--rgb-red), 0); }
-                    100% { box-shadow: 0 0 0 0 rgba(var(--rgb-red), 0); }
-                  }
-      - type: vertical-stack
-        cards:
-          - type: custom:mushroom-template-card
-            entity: sensor.YOUR_MEDICATION_pills_safe_to_take
-            primary: Can take
-            secondary: "{{ states('sensor.YOUR_MEDICATION_pills_safe_to_take') }}"
-            icon: mdi:pill
-            icon_color: blue
-            tap_action:
-              action: none
-          - type: custom:mushroom-template-card
-            entity: number.YOUR_MEDICATION_pills_left
-            primary: Left
-            secondary: "{{ states('number.YOUR_MEDICATION_pills_left') }}"
-            icon: mdi:pill
-            icon_color: blue
-            tap_action:
-              action: none
-            double_tap_action:
-              action: more-info
-              entity: number.YOUR_MEDICATION_add_refill
-            card_mod:
-              style: |
-                ha-card:hover {
-                  cursor: pointer;
-                  background: rgba(var(--rgb-blue), 0.05);
-                }
-  - type: conditional
-    conditions:
-      - condition: numeric_state
-        entity: sensor.YOUR_MEDICATION_amount_in_body
-        above: 0
-    card:
-      type: custom:mushroom-template-card
-      entity: sensor.YOUR_MEDICATION_amount_in_body
-      primary: Amount in body
-      secondary: "{{ states('sensor.YOUR_MEDICATION_amount_in_body') }} mg"
-      icon: mdi:chart-bell-curve
-      icon_color: purple
-      tap_action:
-        action: more-info
-  # Steady State card — only appears for scheduled medications (Regular Interval, Time of Day, Cyclic).
-  # As Needed medications do not have a steady state entity.
-  - type: conditional
-    conditions:
-      - condition: state
-        entity: sensor.YOUR_MEDICATION_days_to_steady_state
-        state_not: unknown
-    card:
-      type: custom:mushroom-template-card
-      entity: sensor.YOUR_MEDICATION_days_to_steady_state
-      primary: Steady State
-      secondary: >-
-        {% set ss = states('sensor.YOUR_MEDICATION_days_to_steady_state') %}
-        {% if ss == '0.0' or ss == '0' %}
-          Reached ✓
-        {% else %}
-          {{ ss }} days remaining
-        {% endif %}
-      icon: mdi:chart-timeline-variant
-      icon_color: teal
-      tap_action:
-        action: more-info
-  - type: custom:mushroom-chips-card
-    alignment: center
-    chips:
-      - type: template
-        content: "7d Avg: {{ states('sensor.YOUR_MEDICATION_avg_daily_doses_7_days') }}"
-        icon: mdi:chart-line
-      - type: template
-        content: "14d Avg: {{ states('sensor.YOUR_MEDICATION_avg_daily_doses_14_days') }}"
-        icon: mdi:chart-line
-      - type: template
-        content: "30d Avg: {{ states('sensor.YOUR_MEDICATION_avg_daily_doses_30_days') }}"
-        icon: mdi:chart-line
-      - type: template
-        content: "Year Avg: {{ states('sensor.YOUR_MEDICATION_avg_daily_doses_yearly') }}"
-        icon: mdi:chart-line
-      - type: template
-        content: "7d: {{ states('sensor.YOUR_MEDICATION_adherence_7_days') }}%"
-        icon: mdi:check-decagram
-      - type: template
-        content: "14d: {{ states('sensor.YOUR_MEDICATION_adherence_14_days') }}%"
-        icon: mdi:check-decagram
-      - type: template
-        content: "30d: {{ states('sensor.YOUR_MEDICATION_adherence_30_days') }}%"
-        icon: mdi:check-decagram
-      - type: template
-        content: "Total: {{ states('sensor.YOUR_MEDICATION_total_doses') }}"
-        icon: mdi:counter
-```
-
-### Template Snippets
-
-**Next dose countdown:**
-```yaml
-{% set next = states('sensor.ibuprofen_next_dose') | as_datetime(None) %}
-{% if next == None or next <= now() %}Available now{% else %}
-{% set s = (next - now()).total_seconds() %}
-{% set h = (s // 3600) | int %}{{ h }}h {{ ((s % 3600) // 60) | int }}m{% endif %}
-```
-
-**Time since last dose:**
-```yaml
-{% set last = states('sensor.ibuprofen_last_dose') %}
-{% if last not in ['unknown','unavailable','None',''] %}
-{% set s = (now() - as_datetime(last)).total_seconds() %}
-{{ (s // 3600) | int }}h {{ ((s % 3600) // 60) | int }}m ago
-{% else %}Never{% endif %}
-```
-
-**Pill limit conditional:**
-```yaml
-{% set safe = states('sensor.ibuprofen_pills_safe_to_take') | int %}
-{% if safe > 0 %}{{ safe }} pill{{ 's' if safe > 1 }} available{% else %}⚠️ Limit reached{% endif %}
-```
-
-**Concentration display:**
-```yaml
-{{ states('sensor.ibuprofen_amount_in_body') }} mg in body
-```
-
-**Steady state display** (scheduled medications only — not available for As Needed):
-```yaml
-{% set ss = states('sensor.ibuprofen_days_to_steady_state') %}
-{% if ss == '0.0' or ss == '0' %}Steady state reached ✓{% else %}{{ ss }} days to steady state{% endif %}
-```
-
----
-
 ## Contributing
 
 ### Project Structure
 
 ```
-custom_components/pill_logger/
+custom_components/ax_dose_logger/
 ├── __init__.py          # Integration entrypoint, platform forwarding, reload handling
 ├── button.py            # Take, Reset, Undo, Reset Adherence %, Mark Last Adherence Taken button entities
 ├── calendar.py          # Calendar entity for expected dose times
 ├── config_flow.py       # 4-step config wizard + 3-step options flow
 ├── const.py             # Domain, logger, effectiveness metrics, release types, PK defaults
-├── data.py              # Type aliases (PillLoggerConfigEntry, PillLoggerData)
-├── entity.py            # Base PillLoggerEntity class
+├── data.py              # Type aliases (AxDoseLoggerConfigEntry, AxDoseLoggerData)
+├── entity.py            # Base AxDoseLoggerEntity class
 ├── manifest.json        # HACS metadata (domain, version, codeowners)
 ├── number.py            # Inventory, refill, and effectiveness slider entities
 ├── sensor.py            # Sensor platform orchestrator (creates all sensor instances)
@@ -594,11 +343,11 @@ custom_components/pill_logger/
 
 ```mermaid
 flowchart TD
-    A[Take Button] -->|pill_taken| B[All Sensors Update]
-    C[Undo Button] -->|pill_undone| B
-    D[Reset Button] -->|pill_reset| B
-    H[Reset Adherence Button] -->|pill_adherence_reset| I[Adherence Sensors Only]
-    J[Mark Last Adherence Button] -->|pill_adherence_override| I
+    A[Take Button] -->|dose_taken| B[All Sensors Update]
+    C[Undo Button] -->|dose_undone| B
+    D[Reset Button] -->|dose_reset| B
+    H[Reset Adherence Button] -->|adherence_reset| I[Adherence Sensors Only]
+    J[Mark Last Adherence Button] -->|adherence_override| I
     E[Concentration Sensor] -->|concentration_updated| F[Steady State Sensor]
     B --> G[State Written to HA]
     I --> G
@@ -622,9 +371,9 @@ Home Assistant event bus events (for automations):
 
 | Event | Fired By | Data |
 |-------|---------|------|
-| `pill_logger_pill_taken` | Take Button | `medication_name`, `timestamp` |
-| `pill_logger_pill_undone` | Undo Button | `medication_name` |
-| `pill_logger_adherence_override` | Mark Last Adherence Taken Button | `entity_id` |
+| `ax_dose_logger_dose_taken` | Take Button | `medication_name`, `timestamp` |
+| `ax_dose_logger_dose_undone` | Undo Button | `medication_name` |
+| `ax_dose_logger_adherence_override` | Mark Last Adherence Taken Button | `entity_id` |
 
 ### Config Flow Architecture
 
@@ -712,7 +461,7 @@ Home Assistant event bus events (for automations):
 **Common fields (all release types):**
 
 | Field | Range | Description | Default |
-|-------|-------|-------------|---------|
+|-------|------|-------------|---------|
 | Dose Strength | 0–9999 mg | Amount of medication per dose. Set to 0 if not tracking concentration. | 0 |
 | Elimination Half-Life | 0–168 h | Time for the body to eliminate half the drug. Set to 0 if not tracking concentration. | 0 |
 | Time to Peak Concentration | 0–72 h | Hours after taking until concentration peaks. Set to 0 for immediate-release medications. | 0 |
@@ -722,7 +471,7 @@ Home Assistant event bus events (for automations):
 **Sustained Release fields** (only shown when Release Type is Sustained Release):
 
 | Field | Range | Description | Default |
-|-------|-------|-------------|---------|
+|-------|------|-------------|---------|
 | Initial Release | 0–100 % | Percentage of the dose released immediately (IR fraction). For Panadol Extend, this is ~39%. | 100 |
 | Sustained Release Duration | 0–72 h | Duration of the zero-order (constant-rate) release phase. For Panadol Extend, this is ~4.5 h. | 0 |
 | Release Half-Life | 0–168 h | Half-life of the first-order release from the SR matrix after the zero-order phase ends. For Panadol Extend, this is ~2.5 h. | 0 |
@@ -757,15 +506,15 @@ Click **Configure** on the integration entry to change settings without recreati
 
 ## Pharmacokinetics Reference
 
-This section covers the complete mathematical methodology behind Pill Logger's pharmacokinetic models. All calculations are transparent and evidence-based, using standard compartmental frameworks from clinical pharmacokinetics.
+This section covers the complete mathematical methodology behind AX Dose Logger's pharmacokinetic models. All calculations are transparent and evidence-based, using standard compartmental frameworks from clinical pharmacokinetics.
 
 ### Instant Release: The Two-Compartment Model
 
-When you take a standard (instant-release) pill, the drug doesn't instantly appear in your bloodstream. It must first be absorbed from the gastrointestinal tract. Pill Logger models this as two compartments:
+When you take a standard (instant-release) pill, the drug doesn't instantly appear in your bloodstream. It must first be absorbed from the gastrointestinal tract. AX Dose Logger models this as two compartments:
 
 ```
 ┌─────────┐    absorption (kₐ)    ┌─────────┐    elimination (kₑ)    ┌─────┐
-│   Gut   │ ───────────────────▶ │  Body   │ ──────────────────────▶ │ Out │
+│   Gut   │ ───────────────────▶ │  Body   │ ──────���───────────────▶ │ Out │
 │  (mg)   │                       │  (mg)   │                         │     │
 └─────────┘                       └─────────┘                         └─────┘
 ```
@@ -793,7 +542,7 @@ The absorption rate constant **kₐ** cannot be solved in closed form from t_max
 
 > **t_max = ln(kₐ / kₑ) / (kₐ − kₑ)**
 
-Pill Logger solves this equation using a binary search over kₐ ∈ [0.0001, 20.0] with 50 iterations, which converges to within 0.001% accuracy.
+AX Dose Logger solves this equation using a binary search over kₐ ∈ [0.0001, 20.0] with 50 iterations, which converges to within 0.001% accuracy.
 
 #### The Bateman Equation
 
@@ -825,7 +574,7 @@ The gut compartment is bypassed entirely (G = 0 at all times).
 
 ### Sustained Release: The Four-Compartment Hybrid Model
 
-For extended-release medications (e.g., Panadol Extend 665 mg), the drug is released in two phases: an initial burst for quick onset, followed by a sustained release that maintains therapeutic levels. Pill Logger models this with four compartments:
+For extended-release medications (e.g., Panadol Extend 665 mg), the drug is released in two phases: an initial burst for quick onset, followed by a sustained release that maintains therapeutic levels. AX Dose Logger models this with four compartments:
 
 ```
                     ┌──────────────┐
@@ -890,7 +639,7 @@ Both the IR and ER models are **linear**, so the total drug amount at any time e
 
 > C_total(t) = Σᵢ Cᵢ(t − tᵢ)
 
-This is **mathematically exact** — Pill Logger stores the complete dose history and recalculates from scratch on every update (including the periodic 2-minute decay updates), eliminating floating-point drift entirely. When you undo a dose, the last entry is removed and the entire model is recalculated from the remaining history.
+This is **mathematically exact** — AX Dose Logger stores the complete dose history and recalculates from scratch on every update (including the periodic 2-minute decay updates), eliminating floating-point drift entirely. When you undo a dose, the last entry is removed and the entire model is recalculated from the remaining history.
 
 #### Lag Time
 

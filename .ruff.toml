@@ -1,6 +1,7 @@
 # The contents of this file is based on https://github.com/home-assistant/core/blob/dev/pyproject.toml
 
 target-version = "py314"
+line-length = 120
 
 [lint]
 select = [
@@ -13,6 +14,53 @@ ignore = [
     "D212", # multi-line-summary-first-line (incompatible with formatter)
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
+    "TC001", # Move application import into a type-checking block
+    "TC002", # Move third-party import into a type-checking block
+    "TC003", # Move standard library import into a type-checking block
+    "PLR2004", # Magic value used in comparison
+    "PLR0912", # Too many branches
+    "PLR0915", # Too many statements
+    "C901", # Function is too complex
+    "ANN001", # Missing type annotation for function argument
+    "ANN002", # Missing type annotation for *args
+    "ANN003", # Missing type annotation for **kwargs
+    "ANN201", # Missing return type annotation for public function
+    "ANN202", # Missing return type annotation for private function
+    "ANN204", # Missing return type annotation for special method
+    "ANN205", # Missing return type annotation for static method
+    "D100", # Missing docstring in public module
+    "D101", # Missing docstring in public class
+    "D102", # Missing docstring in public method
+    "D103", # Missing docstring in public function
+    "D104", # Missing docstring in public package
+    "D107", # Missing docstring in __init__
+    "D205", # 1 blank line required between summary line and description
+    "D401", # First line of docstring should be in imperative mood
+    "TID252", # Relative imports from parent modules are banned
+    "N806", # Non-lowercase variable in function
+    "SLF001", # Private member accessed
+    "S101", # Use of assert detected
+    "ARG002", # Unused method argument
+    "ARG005", # Unused lambda argument
+    "SIM102", # Use of a nested if statement
+    "SIM105", # Use contextlib.suppress
+    "SIM108", # Use ternary operator
+    "PTH100", # Use pathlib.Path
+    "DTZ001", # Use of datetime without tzinfo
+    "DTZ003", # Use of datetime.utcnow
+    "DTZ011", # Use of datetime.date.today
+    "RUF002", # Docstring markup
+    "RUF003", # Comment markup
+    "RUF012", # Mutable class variable
+    "EXE001", # Shebang present
+    "E701", # Multiple statements on one line
+    "E402", # Module level import not at top of file
+    "FBT002", # Boolean default positional argument
+    "PLC0415", # Import outside top-level
+    "PLW0108", # Lambda may be unnecessary
+    "FURB162", # Use of deprecated function
+    "F841", # Unused local variable
+    "E501", # Line too long
 ]
 
 [lint.flake8-pytest-style]
@@ -23,3 +71,6 @@ keep-runtime-typing = true
 
 [lint.mccabe]
 max-complexity = 25
+
+[lint.per-file-ignores]
+"scripts/*" = ["T201"] # Allow print statements in test/verification scripts

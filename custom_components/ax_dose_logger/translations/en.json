@@ -1,0 +1,474 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a Medication",
+        "description": "*This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.*\n\nName your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
+        "data": {
+          "medication_name": "Medication Name",
+          "tracking_type": "Tracking Type",
+          "release_type": "Release Type"
+        }
+      },
+      "regular_interval": {
+        "title": "Regular Interval",
+        "description": "Set up dosing at fixed intervals — e.g. every 8 hours.",
+        "data": {
+          "initial_stock": "Inventory",
+          "hours_between_doses": "Dose Interval",
+          "pill_limit": "Pill Limit",
+          "time_window_hours": "Time Window",
+          "enable_calendar": "Calendar Entity"
+        },
+        "data_description": {
+          "initial_stock": "Number of pills currently available.",
+          "hours_between_doses": "Minimum hours between consecutive doses.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+        }
+      },
+      "time_of_day": {
+        "title": "Time of Day",
+        "description": "Set up dosing at specific times each day — e.g. twice daily at 8 AM and 8 PM.",
+        "data": {
+          "initial_stock": "Inventory",
+          "doses_per_day": "How Many Times per Day",
+          "pill_limit": "Pill Limit",
+          "time_window_hours": "Time Window",
+          "enable_calendar": "Calendar Entity"
+        },
+        "data_description": {
+          "initial_stock": "Number of pills currently available.",
+          "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. You'll set the exact times on the next screen.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+        }
+      },
+      "time_of_day_times": {
+        "title": "Dose Times",
+        "description": "Set the time for each daily dose. Times are automatically sorted after saving.",
+        "data": {
+          "dose_time_1": "Dose Time 1",
+          "dose_time_2": "Dose Time 2",
+          "dose_time_3": "Dose Time 3",
+          "dose_time_4": "Dose Time 4",
+          "dose_time_5": "Dose Time 5",
+          "dose_time_6": "Dose Time 6",
+          "dose_time_7": "Dose Time 7",
+          "dose_time_8": "Dose Time 8",
+          "dose_time_9": "Dose Time 9",
+          "dose_time_10": "Dose Time 10",
+          "dose_time_11": "Dose Time 11",
+          "dose_time_12": "Dose Time 12",
+          "dose_time_13": "Dose Time 13",
+          "dose_time_14": "Dose Time 14",
+          "dose_time_15": "Dose Time 15",
+          "dose_time_16": "Dose Time 16",
+          "dose_time_17": "Dose Time 17",
+          "dose_time_18": "Dose Time 18"
+        },
+        "data_description": {
+          "dose_time_1": "Time for the first daily dose.",
+          "dose_time_2": "Time for the second daily dose.",
+          "dose_time_3": "Time for the third daily dose.",
+          "dose_time_4": "Time for the fourth daily dose.",
+          "dose_time_5": "Time for the fifth daily dose.",
+          "dose_time_6": "Time for the sixth daily dose.",
+          "dose_time_7": "Time for the seventh daily dose.",
+          "dose_time_8": "Time for the eighth daily dose.",
+          "dose_time_9": "Time for the ninth daily dose.",
+          "dose_time_10": "Time for the tenth daily dose.",
+          "dose_time_11": "Time for the eleventh daily dose.",
+          "dose_time_12": "Time for the twelfth daily dose.",
+          "dose_time_13": "Time for the thirteenth daily dose.",
+          "dose_time_14": "Time for the fourteenth daily dose.",
+          "dose_time_15": "Time for the fifteenth daily dose.",
+          "dose_time_16": "Time for the sixteenth daily dose.",
+          "dose_time_17": "Time for the seventeenth daily dose.",
+          "dose_time_18": "Time for the eighteenth daily dose."
+        }
+      },
+      "as_needed": {
+        "title": "As Needed",
+        "description": "Set up on-demand dosing with a safety limit. Calendar and adherence tracking are not available for as-needed medications.",
+        "data": {
+          "initial_stock": "Inventory",
+          "pill_limit": "Pill Limit",
+          "time_window_hours": "Time Window"
+        },
+        "data_description": {
+          "initial_stock": "Number of pills currently available.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours."
+        }
+      },
+      "cyclic": {
+        "title": "Cyclic/Calendar Pattern",
+        "description": "Set up a cycling schedule — e.g. 5 days on, 2 days off.",
+        "data": {
+          "initial_stock": "Inventory",
+          "days_on": "Days On",
+          "days_off": "Days Off",
+          "cycle_anchor_date": "Cycle Start Date",
+          "dose_time": "Dose Time",
+          "pill_limit": "Pill Limit",
+          "time_window_hours": "Time Window",
+          "enable_calendar": "Calendar Entity"
+        },
+        "data_description": {
+          "initial_stock": "Number of pills currently available.",
+          "days_on": "Number of active days in the cycle.",
+          "days_off": "Number of rest days in the cycle.",
+          "cycle_anchor_date": "Start date of the on/off cycle.",
+          "dose_time": "Time of day to take on active days.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 1 pill in 24 hours.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+        }
+      },
+      "pk": {
+        "title": "Pharmacokinetics",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n**Search Terms** — Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values:\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n\n**Advanced Pharmacokinetics (if applicable):**\n\n* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]\n* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]\n* Release Half-Life (Post-Zero-Order Dissolution only)",
+        "data": {
+          "strength": "Dose Strength",
+          "strength_unit": "Dose Strength Unit",
+          "half_life": "Elimination Half-Life",
+          "hours_to_peak": "Time to Peak Concentration",
+          "bioavailability": "Bioavailability",
+          "ir_hours_to_peak": "Immediate Release Time to Peak",
+          "ir_fraction": "Initial Release"
+        },
+        "data_description": {
+          "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
+          "strength_unit": "Unit for the dose strength value. Also sets the unit shown on the Amount in Body sensor and the card.",
+          "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
+          "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
+          "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
+          "ir_hours_to_peak": "Time for the immediate-release fraction to reach peak concentration [IR Tmax]. Search for the Tmax of the standard/instant version of the drug. Default is 1.0h.",
+          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once."
+        },
+        "sections": {
+          "advanced_pk": {
+            "name": "Advanced Pharmacokinetics (Niche Formulations)",
+            "description": "Specialized dissolution parameters for enteric-coated, osmotic pump, and complex zero-order formulations. Leave all values at 0 if unsure.",
+            "data": {
+              "lag_time": "Lag Time (Enteric-Coated/Delayed Release only) [Tlag]",
+              "zero_order_duration": "Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]",
+              "release_half_life": "Release Half-Life (Post-Zero-Order Dissolution only)"
+            },
+            "data_description": {
+              "lag_time": "Minutes before the medication begins releasing. Used strictly for specialized enteric-coated tablets designed to bypass stomach acid. Leave at 0 if unsure — most drugs start releasing immediately.",
+              "zero_order_duration": "The physical time the pill matrix mechanically releases drug in the gut. Do NOT use the marketing 'Duration of Action' (e.g., 8 hours). If you cannot find the clinical dissolution time, leave this at 0 and the math engine will safely handle the curve using Tmax.",
+              "release_half_life": "Time for the remaining drug to be released after a mechanical osmotic pump finishes its zero-order delivery. Exclusively for highly complex zero-order formulations. Leave at 0 if unsure."
+            }
+          }
+        }
+      },
+      "effectiveness": {
+        "title": "Metrics Tracker & Adherence",
+        "description": "Select which symptoms to track and configure adherence settings. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "data": {
+          "metric_pain": "Pain",
+          "metric_mood": "Mood",
+          "metric_nausea": "Nausea",
+          "metric_fatigue": "Fatigue",
+          "custom_metrics": "Custom Metrics"
+        },
+        "data_description": {
+          "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
+        },
+        "sections": {
+          "adherence": {
+            "name": "Adherence Tracking",
+            "description": "Monitor how consistently doses are taken on schedule.",
+            "data": {
+              "enable_adherence": "Track Dose Adherence",
+              "adherence_grace_hours": "On-Time Window"
+            },
+            "data_description": {
+              "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
+              "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on."
+            }
+          }
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Schedule & Dosing",
+        "description": "Adjust the schedule and safety limits. Pharmacokinetic and effectiveness settings are on the next pages.",
+        "data": {
+          "hours_between_doses": "Dose Interval",
+          "doses_per_day": "How Many Times per Day",
+          "dose_time_1": "Dose Time 1",
+          "dose_time_2": "Dose Time 2",
+          "dose_time_3": "Dose Time 3",
+          "dose_time_4": "Dose Time 4",
+          "dose_time_5": "Dose Time 5",
+          "dose_time_6": "Dose Time 6",
+          "dose_time_7": "Dose Time 7",
+          "dose_time_8": "Dose Time 8",
+          "dose_time_9": "Dose Time 9",
+          "dose_time_10": "Dose Time 10",
+          "dose_time_11": "Dose Time 11",
+          "dose_time_12": "Dose Time 12",
+          "dose_time_13": "Dose Time 13",
+          "dose_time_14": "Dose Time 14",
+          "dose_time_15": "Dose Time 15",
+          "dose_time_16": "Dose Time 16",
+          "dose_time_17": "Dose Time 17",
+          "dose_time_18": "Dose Time 18",
+          "time_window_hours": "Time Window",
+          "days_on": "Days On",
+          "days_off": "Days Off",
+          "cycle_anchor_date": "Cycle Start Date",
+          "dose_time": "Dose Time",
+          "pill_limit": "Pill Limit",
+          "enable_calendar": "Calendar Entity"
+        },
+        "data_description": {
+          "hours_between_doses": "Minimum hours between consecutive doses.",
+          "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. Save and re-enter options to change the number of time fields.",
+          "dose_time_1": "Time for the first daily dose.",
+          "dose_time_2": "Time for the second daily dose.",
+          "dose_time_3": "Time for the third daily dose.",
+          "dose_time_4": "Time for the fourth daily dose.",
+          "dose_time_5": "Time for the fifth daily dose.",
+          "dose_time_6": "Time for the sixth daily dose.",
+          "dose_time_7": "Time for the seventh daily dose.",
+          "dose_time_8": "Time for the eighth daily dose.",
+          "dose_time_9": "Time for the ninth daily dose.",
+          "dose_time_10": "Time for the tenth daily dose.",
+          "dose_time_11": "Time for the eleventh daily dose.",
+          "dose_time_12": "Time for the twelfth daily dose.",
+          "dose_time_13": "Time for the thirteenth daily dose.",
+          "dose_time_14": "Time for the fourteenth daily dose.",
+          "dose_time_15": "Time for the fifteenth daily dose.",
+          "dose_time_16": "Time for the sixteenth daily dose.",
+          "dose_time_17": "Time for the seventeenth daily dose.",
+          "dose_time_18": "Time for the eighteenth daily dose.",
+          "time_window_hours": "Rolling window for the pill limit.",
+          "days_on": "Number of active days in the cycle.",
+          "days_off": "Number of rest days in the cycle.",
+          "cycle_anchor_date": "Start date of the on/off cycle.",
+          "dose_time": "Time of day to take on active days.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity."
+        }
+      },
+      "pk": {
+        "title": "Pharmacokinetics",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n**Search Terms** — Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values:\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n\n**Advanced Pharmacokinetics (if applicable):**\n\n* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]\n* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]\n* Release Half-Life (Post-Zero-Order Dissolution only)",
+        "data": {
+          "strength": "Dose Strength",
+          "strength_unit": "Dose Strength Unit",
+          "half_life": "Elimination Half-Life",
+          "hours_to_peak": "Time to Peak Concentration",
+          "bioavailability": "Bioavailability",
+          "ir_hours_to_peak": "Immediate Release Time to Peak",
+          "ir_fraction": "Initial Release"
+        },
+        "data_description": {
+          "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
+          "strength_unit": "Unit for the dose strength value. Also sets the unit shown on the Amount in Body sensor and the card.",
+          "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
+          "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
+          "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
+          "ir_hours_to_peak": "Time for the immediate-release fraction to reach peak concentration [IR Tmax]. Search for the Tmax of the standard/instant version of the drug. Default is 1.0h.",
+          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once."
+        },
+        "sections": {
+          "advanced_pk": {
+            "name": "Advanced Pharmacokinetics (Niche Formulations)",
+            "description": "Specialized dissolution parameters for enteric-coated, osmotic pump, and complex zero-order formulations. Leave all values at 0 if unsure.",
+            "data": {
+              "lag_time": "Lag Time (Enteric-Coated/Delayed Release only) [Tlag]",
+              "zero_order_duration": "Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]",
+              "release_half_life": "Release Half-Life (Post-Zero-Order Dissolution only)"
+            },
+            "data_description": {
+              "lag_time": "Minutes before the medication begins releasing. Used strictly for specialized enteric-coated tablets designed to bypass stomach acid. Leave at 0 if unsure — most drugs start releasing immediately.",
+              "zero_order_duration": "The physical time the pill matrix mechanically releases drug in the gut. Do NOT use the marketing 'Duration of Action' (e.g., 8 hours). If you cannot find the clinical dissolution time, leave this at 0 and the math engine will safely handle the curve using Tmax.",
+              "release_half_life": "Time for the remaining drug to be released after a mechanical osmotic pump finishes its zero-order delivery. Exclusively for highly complex zero-order formulations. Leave at 0 if unsure."
+            }
+          }
+        }
+      },
+      "effectiveness": {
+        "title": "Metrics Tracker & Adherence",
+        "description": "Select which symptoms to track and configure adherence settings. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "data": {
+          "metric_pain": "Pain",
+          "metric_mood": "Mood",
+          "metric_nausea": "Nausea",
+          "metric_fatigue": "Fatigue",
+          "custom_metrics": "Custom Metrics"
+        },
+        "data_description": {
+          "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
+        },
+        "sections": {
+          "adherence": {
+            "name": "Adherence Tracking",
+            "description": "Monitor how consistently doses are taken on schedule.",
+            "data": {
+              "enable_adherence": "Track Dose Adherence",
+              "adherence_grace_hours": "On-Time Window"
+            },
+            "data_description": {
+              "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
+              "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on."
+            }
+          }
+        }
+      }
+    }
+  },
+  "selector": {
+    "tracking_type": {
+      "options": {
+        "regular_interval": "Regular Interval — fixed hours between doses",
+        "time_of_day": "Time of Day — one or more times daily at set times",
+        "as_needed": "As Needed — on-demand with a safety limit",
+        "cyclic": "Cyclic — on/off day patterns"
+      }
+    },
+    "release_type": {
+      "options": {
+        "instant_release": "Instant Release — most drugs, don't change if unsure",
+        "sustained_release": "Sustained Release — extended-release or bi-layer tablets"
+      }
+    },
+    "strength_unit": {
+      "options": {
+        "mcg": "mcg — micrograms",
+        "mg": "mg — milligrams (default)",
+        "g": "g — grams"
+      }
+    }
+  },
+  "services": {
+    "take_dose": {
+      "name": "Take Dose",
+      "description": "Logs a dose for the selected medication. Updates all sensors, the PK concentration model, and pill inventory.",
+      "fields": {
+        "entry_id": {
+          "name": "Medication",
+          "description": "The medication to log the dose for."
+        },
+        "timestamp": {
+          "name": "Timestamp",
+          "description": "Optional custom timestamp for the dose (defaults to now). Use to backfill past doses."
+        }
+      }
+    },
+    "undo_dose": {
+      "name": "Undo Dose",
+      "description": "Reverts the most recently logged dose for the selected medication.",
+      "fields": {
+        "entry_id": {
+          "name": "Medication",
+          "description": "The medication to undo the last dose for."
+        }
+      }
+    },
+    "reset": {
+      "name": "Reset History",
+      "description": "Clears all dose history for the selected medication. This affects all sensors, PK concentration, and adherence tracking.",
+      "fields": {
+        "entry_id": {
+          "name": "Medication",
+          "description": "The medication to reset."
+        }
+      }
+    },
+    "adherence_reset": {
+      "name": "Reset Adherence",
+      "description": "Clears adherence tracking state only (no impact on dose count, PK concentration, or pill inventory).",
+      "fields": {
+        "entry_id": {
+          "name": "Medication",
+          "description": "The medication to reset adherence for."
+        }
+      }
+    },
+    "adherence_override": {
+      "name": "Mark Last Adherence Taken",
+      "description": "Marks the most recent missed adherence slot as taken for the selected medication. Raises the adherence percentage without affecting the PK model, dose count, or any other sensor.",
+      "fields": {
+        "entry_id": {
+          "name": "Medication",
+          "description": "The medication to mark the missed slot for."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total": {
+        "name": "Total Doses"
+      },
+      "last_dose": {
+        "name": "Last Dose"
+      },
+      "pills_safe_to_take": {
+        "name": "Pills Safe to Take"
+      },
+      "amount_in_body": {
+        "name": "Amount in body"
+      },
+      "next_dose": {
+        "name": "Next Dose"
+      },
+      "avg_daily_doses": {
+        "name": "Avg Daily Doses ({window} Days)"
+      },
+      "days_to_steady_state": {
+        "name": "Days to Steady State"
+      },
+      "strength": {
+        "name": "Strength"
+      },
+      "days_since_first_dose": {
+        "name": "Days Since First Dose"
+      },
+      "adherence": {
+        "name": "Adherence ({window} Days)"
+      }
+    },
+    "button": {
+      "take": {
+        "name": "Take"
+      },
+      "reset_history": {
+        "name": "Reset History"
+      },
+      "undo_dose": {
+        "name": "Undo Dose"
+      },
+      "reset_adherence": {
+        "name": "Reset Adherence %"
+      },
+      "cover_last_missed": {
+        "name": "Mark Last Adherence Taken"
+      }
+    },
+    "number": {
+      "pills_left": {
+        "name": "Pills Left"
+      },
+      "add_refill": {
+        "name": "Add Refill"
+      }
+    },
+    "calendar": {
+      "calendar": {
+        "name": "Calendar"
+      }
+    }
+  }
+}

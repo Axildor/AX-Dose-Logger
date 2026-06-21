@@ -1,5 +1,5 @@
 {
-    "name": "ludeeus/pill_logger",
+    "name": "axildor/ax_dose_logger",
     "image": "mcr.microsoft.com/devcontainers/base:debian",
     "postCreateCommand": "scripts/setup",
     "forwardPorts": [

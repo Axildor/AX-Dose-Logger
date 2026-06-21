@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Verify the FIXED concentration.py produces a continuous, mass-conserving curve.
+"""
+Verify the FIXED concentration.py produces a continuous, mass-conserving curve.
 
 Extracts the _recalculate_er math by stubbing the HA dependencies and calling
 the real method with the user's parameters.
 """
-import math
 import os
 import sys
-from datetime import datetime, timedelta
 
 # Stub HA modules so we can import the sensor
 import types
+from datetime import datetime, timedelta
 
 # homeassistant.util.dt must be importable as `import homeassistant.util.dt as dt_util`
 ha = types.ModuleType("homeassistant")
@@ -64,20 +64,21 @@ sys.modules["homeassistant.const"] = ha_const
 pkg = types.ModuleType("custom_components")
 pkg.__path__ = [os.path.abspath("custom_components")]
 sys.modules["custom_components"] = pkg
-pl = types.ModuleType("custom_components.pill_logger")
-pl.__path__ = [os.path.abspath("custom_components/pill_logger")]
-sys.modules["custom_components.pill_logger"] = pl
-const_mod = types.ModuleType("custom_components.pill_logger.const")
-const_mod.DOMAIN = "pill_logger"
+pl = types.ModuleType("custom_components.ax_dose_logger")
+pl.__path__ = [os.path.abspath("custom_components/ax_dose_logger")]
+sys.modules["custom_components.ax_dose_logger"] = pl
+const_mod = types.ModuleType("custom_components.ax_dose_logger.const")
+const_mod.DOMAIN = "ax_dose_logger"
 const_mod.PK_DEFAULTS = {"bioavailability":100,"ir_fraction":100,"zero_order_duration":0,"release_half_life":0,"lag_time":0,"ir_hours_to_peak":1.0}
-sys.modules["custom_components.pill_logger.const"] = const_mod
-sensors_pkg = types.ModuleType("custom_components.pill_logger.sensors")
-sensors_pkg.__path__ = [os.path.abspath("custom_components/pill_logger/sensors")]
-sys.modules["custom_components.pill_logger.sensors"] = sensors_pkg
+sys.modules["custom_components.ax_dose_logger.const"] = const_mod
+sensors_pkg = types.ModuleType("custom_components.ax_dose_logger.sensors")
+sensors_pkg.__path__ = [os.path.abspath("custom_components/ax_dose_logger/sensors")]
+sys.modules["custom_components.ax_dose_logger.sensors"] = sensors_pkg
 
 # Now import the real sensor
 sys.path.insert(0, ".")
-from custom_components.pill_logger.sensors.concentration import PillConcentrationSensor
+from custom_components.ax_dose_logger.sensors.concentration import PillConcentrationSensor
+
 
 # Build a fake entry
 class FakeEntry:
@@ -99,7 +100,7 @@ print("=== Fixed concentration.py: ER curve (user params) ===")
 print("t_hours, body, gut_ir, matrix_sr, gut_sr, total_in_system")
 prev = None
 max_jump = 0.0
-for i in range(0, 721):  # 0 to 12h in 1-min steps
+for i in range(721):  # 0 to 12h in 1-min steps
     t_h = i / 60.0
     now = dose_time + timedelta(hours=t_h)
     sensor._recalculate_er(now=now)

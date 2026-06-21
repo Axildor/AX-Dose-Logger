@@ -1,0 +1,12 @@
+{
+  "domain": "ax_dose_logger",
+  "name": "AX Dose Logger",
+  "codeowners": ["@Axildor"],
+  "config_flow": true,
+  "dependencies": ["http"],
+  "documentation": "https://github.com/Axildor/AX-Dose-Logger",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/Axildor/AX-Dose-Logger/issues",
+  "loggers": ["ax_dose_logger"],
+  "version": "3.0.0"
+}

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Verify the extracted PKModel produces a continuous, mass-conserving curve.
+"""
+Verify the extracted PKModel produces a continuous, mass-conserving curve.
 
-This script imports :mod:`custom_components.pill_logger.pk_model` directly —
+This script imports :mod:`custom_components.ax_dose_logger.pk_model` directly —
 no Home Assistant stubbing is required because the module is pure math.
 
 It ports the three assertions from the legacy ``scripts/verify_fix.py`` and
@@ -22,7 +23,7 @@ from datetime import datetime, timedelta
 
 # Make the custom_components package importable without HA.
 sys.path.insert(0, os.path.abspath("custom_components"))
-from pill_logger.pk_model import PKModel, PKParams  # noqa: E402
+from ax_dose_logger.pk_model import PKModel, PKParams
 
 # ---------------------------------------------------------------------------
 # ER model parameters (same as the legacy verify_fix.py user config)
@@ -63,7 +64,7 @@ def test_er_continuity():
     print("t_hours, body, gut_ir, matrix_sr, gut_sr, total_in_system")
     prev = None
     max_jump = 0.0
-    for i in range(0, 721):  # 0 to 12h in 1-min steps
+    for i in range(721):  # 0 to 12h in 1-min steps
         t_h = i / 60.0
         now = DOSE_TIME + timedelta(hours=t_h)
         r = PKModel.compute(ER_PARAMS, dose_history, now)
