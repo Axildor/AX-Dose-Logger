@@ -1,8 +1,8 @@
 """
 Custom REST endpoint exposing dose history to the frontend.
 
-Provides /api/pill_logger/history/{device_id} which returns the
-authoritative, pruned dose_history array from PillLoggerStore.
+Provides /api/ax_dose_logger/history/{device_id} which returns the
+authoritative, pruned dose_history array from AxDoseLoggerStore.
 """
 
 from aiohttp import web
@@ -12,18 +12,18 @@ from homeassistant.helpers import device_registry as dr
 from .const import DOMAIN
 
 
-class PillLoggerHistoryView(HomeAssistantView):
+class AxDoseLoggerHistoryView(HomeAssistantView):
     """
     Expose dose history via custom REST endpoint.
 
-    URL: /api/pill_logger/history/{device_id}
+    URL: /api/ax_dose_logger/history/{device_id}
     Method: GET
     Auth: Bearer token (requires_auth = True)
     Response: JSON array [[iso_timestamp, strength], ...]
     """
 
-    url = "/api/pill_logger/history/{device_id}"
-    name = "api:pill_logger:history"
+    url = "/api/ax_dose_logger/history/{device_id}"
+    name = "api:ax_dose_logger:history"
     requires_auth = True
 
     async def get(self, request: web.Request, device_id: str) -> web.Response:
@@ -42,7 +42,7 @@ class PillLoggerHistoryView(HomeAssistantView):
             return self.json([])
 
         # Use the first config entry for this device.
-        # Pill Logger creates one device per config entry (one medication per
+        # AX Dose Logger creates one device per config entry (one medication per
         # device), so device.config_entries always has exactly one member.
         # If multi-entry devices are ever supported, this must be revisited.
         entry_id = next(iter(device.config_entries))

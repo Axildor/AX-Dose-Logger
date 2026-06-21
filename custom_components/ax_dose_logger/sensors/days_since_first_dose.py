@@ -2,10 +2,10 @@ import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 
 
-class PillDaysSinceFirstDoseSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillDaysSinceFirstDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 0

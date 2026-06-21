@@ -1,5 +1,5 @@
 """
-PillLoggerCoordinator — single source of truth for dose history.
+AxDoseLoggerCoordinator — single source of truth for dose history.
 
 Owns the authoritative ``dose_history`` list, debounced store saves, and a
 single 1-minute refresh interval.  Entities become ``CoordinatorEntity``
@@ -29,9 +29,9 @@ from .pk_model import PKModel, PKParams, PKResult
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
 
-    from .store import PillLoggerStore
+    from .store import AxDoseLoggerStore
 
-__all__ = ["PillLoggerCoordinator", "PillLoggerCoordinatorData"]
+__all__ = ["AxDoseLoggerCoordinator", "AxDoseLoggerCoordinatorData"]
 
 # Debounce window for store saves (seconds).  Rapid doses within this
 # window coalesce into a single disk write.
@@ -39,7 +39,7 @@ _SAVE_DEBOUNCE_SECONDS = 5.0
 
 
 @dataclass
-class PillLoggerCoordinatorData:
+class AxDoseLoggerCoordinatorData:
     """
     Snapshot of all derived state that entities read from the coordinator.
 
@@ -59,7 +59,7 @@ class PillLoggerCoordinatorData:
     adherence_reset_time: datetime | None = None
 
 
-class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
+class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]):
     """
     Coordinator that owns dose history and drives all entity updates.
 
@@ -74,13 +74,13 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
-        store: PillLoggerStore,
+        store: AxDoseLoggerStore,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
             LOGGER,
-            name=f"Pill Logger ({entry.title})",
+            name=f"AX Dose Logger ({entry.title})",
             config_entry=entry,
             update_interval=timedelta(minutes=1),
             always_update=True,
@@ -108,12 +108,12 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
                     continue
 
         last_dose = dose_history[-1][0] if dose_history else None
-        self.data = PillLoggerCoordinatorData(
+        self.data = AxDoseLoggerCoordinatorData(
             dose_history=dose_history,
             last_dose_time=last_dose,
         )
         LOGGER.debug(
-            "PillLoggerCoordinator setup for %s: %d doses loaded",
+            "AxDoseLoggerCoordinator setup for %s: %d doses loaded",
             self._entry.entry_id,
             len(dose_history),
         )
@@ -121,7 +121,7 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
     # ------------------------------------------------------------------
     # Periodic refresh — called every 1 minute by the coordinator timer
     # ------------------------------------------------------------------
-    async def _async_update_data(self) -> PillLoggerCoordinatorData:
+    async def _async_update_data(self) -> AxDoseLoggerCoordinatorData:
         """
         Recompute derived state (PK concentration) on every tick.
 
@@ -147,7 +147,7 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
         # ``_handle_coordinator_update``.
         midnight_rolled = self._check_midnight(now)
 
-        return PillLoggerCoordinatorData(
+        return AxDoseLoggerCoordinatorData(
             dose_history=data.dose_history,
             last_dose_time=data.last_dose_time,
             concentration=concentration,
@@ -211,7 +211,7 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
         async_dispatcher_send(self.hass, f"pill_taken_{self._entry.entry_id}", timestamp)
         # Fire HA bus event for frontend / automations
         self.hass.bus.async_fire(
-            "pill_logger_pill_taken",
+            "ax_dose_logger_dose_taken",
             {"entry_id": self._entry.entry_id, "timestamp": timestamp.isoformat()},
         )
 
@@ -230,7 +230,7 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_undone_{self._entry.entry_id}")
         self.hass.bus.async_fire(
-            "pill_logger_pill_undone",
+            "ax_dose_logger_dose_undone",
             {"entry_id": self._entry.entry_id},
         )
 
@@ -266,7 +266,7 @@ class PillLoggerCoordinator(DataUpdateCoordinator[PillLoggerCoordinatorData]):
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_adherence_override_{self._entry.entry_id}")
         self.hass.bus.async_fire(
-            "pill_logger_adherence_override",
+            "ax_dose_logger_adherence_override",
             {"entry_id": self._entry.entry_id},
         )
 

@@ -5,7 +5,7 @@ from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 
 from ..const import TRACKING_CYCLIC
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 from ..sliding_window import get_time_window, is_on_day
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
@@ -13,7 +13,7 @@ _TIMESTAMPS_MAX_DAYS = 365
 _TIMESTAMPS_MAX_COUNT = 100
 
 
-class PillLimitSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillLimitSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 0

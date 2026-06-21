@@ -24,8 +24,9 @@ from .const import (
     generate_default_dose_times,
 )
 
-# Section key for adherence (still used as a section)
+# Section keys for collapsible UI sections
 _ADHERENCE_SECTION_KEY = "adherence"
+_ADVANCED_PK_SECTION_KEY = "advanced_pk"
 
 # Reusable selector configs — BOX mode for all numeric fields
 _STOCK_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
@@ -96,7 +97,26 @@ def _make_adherence_section(enable_default=True, grace_default=1):
     )
 
 
-class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+def _make_advanced_pk_section(lag_default, zero_order_default=None, release_half_life_default=None):
+    """Create a collapsed Advanced Pharmacokinetics section.
+
+    Always includes lag_time. Conditionally includes zero_order_duration and
+    release_half_life when their defaults are not None (i.e. for ER medications).
+    """
+    advanced_schema = {
+        vol.Optional("lag_time", default=lag_default): _LAG_TIME_SELECTOR,
+    }
+    if zero_order_default is not None:
+        advanced_schema[vol.Optional("zero_order_duration", default=zero_order_default)] = _ZERO_ORDER_DURATION_SELECTOR
+    if release_half_life_default is not None:
+        advanced_schema[vol.Optional("release_half_life", default=release_half_life_default)] = _RELEASE_HALF_LIFE_SELECTOR
+    return data_entry_flow.section(
+        vol.Schema(advanced_schema),
+        data_entry_flow.SectionConfig(collapsed=True),
+    )
+
+
+class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = CURRENT_VERSION
 
     def __init__(self):
@@ -146,7 +166,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("hours_between_doses", default=8): _HOURS_BETWEEN_SELECTOR,
                 vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
-                vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
+                vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
             }),
         )
 
@@ -163,7 +183,7 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("doses_per_day", default=1): _DOSES_PER_DAY_SELECTOR,
                 vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
-                vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
+                vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
             }),
         )
 
@@ -227,13 +247,16 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("dose_time", default="08:00"): sel.TimeSelector(),
                 vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
-                vol.Optional("enable_calendar", default=True): sel.BooleanSelector(),
+                vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
             }),
         )
 
     async def async_step_pk(self, user_input=None):
         """Step 3: Pharmacokinetic parameters for concentration tracking."""
         if user_input is not None:
+            # Flatten the collapsed Advanced PK section into the top-level data
+            advanced_data = user_input.pop(_ADVANCED_PK_SECTION_KEY, {})
+            user_input.update(advanced_data)
             self._data.update(user_input)
             return await self.async_step_effectiveness()
 
@@ -245,14 +268,22 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional("half_life", default=0): _HALF_LIFE_SELECTOR,
             vol.Optional("hours_to_peak", default=0): _HOURS_TO_PEAK_SELECTOR,
             vol.Optional("bioavailability", default=PK_DEFAULTS["bioavailability"]): _BIOAVAILABILITY_SELECTOR,
-            vol.Optional("lag_time", default=PK_DEFAULTS["lag_time"]): _LAG_TIME_SELECTOR,
         }
 
         if release_type == RELEASE_SUSTAINED:
             pk_schema[vol.Optional("ir_hours_to_peak", default=PK_DEFAULTS["ir_hours_to_peak"])] = _IR_HOURS_TO_PEAK_SELECTOR
             pk_schema[vol.Optional("ir_fraction", default=PK_DEFAULTS["ir_fraction"])] = _IR_FRACTION_SELECTOR
-            pk_schema[vol.Optional("zero_order_duration", default=PK_DEFAULTS["zero_order_duration"])] = _ZERO_ORDER_DURATION_SELECTOR
-            pk_schema[vol.Optional("release_half_life", default=PK_DEFAULTS["release_half_life"])] = _RELEASE_HALF_LIFE_SELECTOR
+            # Advanced section: lag_time (always) + ER-only zero_order_duration & release_half_life
+            pk_schema[vol.Required(_ADVANCED_PK_SECTION_KEY)] = _make_advanced_pk_section(
+                lag_default=PK_DEFAULTS["lag_time"],
+                zero_order_default=PK_DEFAULTS["zero_order_duration"],
+                release_half_life_default=PK_DEFAULTS["release_half_life"],
+            )
+        else:
+            # Advanced section: lag_time only (IR medications)
+            pk_schema[vol.Required(_ADVANCED_PK_SECTION_KEY)] = _make_advanced_pk_section(
+                lag_default=PK_DEFAULTS["lag_time"],
+            )
 
         return self.async_show_form(
             step_id="pk",
@@ -291,10 +322,10 @@ class PillLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return PillLoggerOptionsFlowHandler(config_entry)
+        return AxDoseLoggerOptionsFlowHandler(config_entry)
 
 
-class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
+class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry):
         self._entry = config_entry
         self._data = {}
@@ -355,7 +386,7 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Calendar toggle — only for scheduled tracking types (not As Needed)
         if tracking_type != TRACKING_AS_NEEDED:
-            main_schema[vol.Optional("enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", True)))] = sel.BooleanSelector()
+            main_schema[vol.Optional("enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", False)))] = sel.BooleanSelector()
 
         return self.async_show_form(
             step_id="init",
@@ -365,6 +396,9 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_pk(self, user_input=None):
         """Step 2: Pharmacokinetic parameters."""
         if user_input is not None:
+            # Flatten the collapsed Advanced PK section into the top-level data
+            advanced_data = user_input.pop(_ADVANCED_PK_SECTION_KEY, {})
+            user_input.update(advanced_data)
             self._data.update(user_input)
             return await self.async_step_effectiveness()
 
@@ -378,14 +412,22 @@ class PillLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0))): _HALF_LIFE_SELECTOR,
             vol.Optional("hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0))): _HOURS_TO_PEAK_SELECTOR,
             vol.Optional("bioavailability", default=options.get("bioavailability", data.get("bioavailability", PK_DEFAULTS["bioavailability"]))): _BIOAVAILABILITY_SELECTOR,
-            vol.Optional("lag_time", default=options.get("lag_time", data.get("lag_time", PK_DEFAULTS["lag_time"]))): _LAG_TIME_SELECTOR,
         }
 
         if release_type == RELEASE_SUSTAINED:
             pk_schema[vol.Optional("ir_hours_to_peak", default=options.get("ir_hours_to_peak", data.get("ir_hours_to_peak", PK_DEFAULTS["ir_hours_to_peak"])))] = _IR_HOURS_TO_PEAK_SELECTOR
             pk_schema[vol.Optional("ir_fraction", default=options.get("ir_fraction", data.get("ir_fraction", PK_DEFAULTS["ir_fraction"])))] = _IR_FRACTION_SELECTOR
-            pk_schema[vol.Optional("zero_order_duration", default=options.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"])))] = _ZERO_ORDER_DURATION_SELECTOR
-            pk_schema[vol.Optional("release_half_life", default=options.get("release_half_life", data.get("release_half_life", PK_DEFAULTS["release_half_life"])))] = _RELEASE_HALF_LIFE_SELECTOR
+            # Advanced section: lag_time (always) + ER-only zero_order_duration & release_half_life
+            pk_schema[vol.Required(_ADVANCED_PK_SECTION_KEY)] = _make_advanced_pk_section(
+                lag_default=options.get("lag_time", data.get("lag_time", PK_DEFAULTS["lag_time"])),
+                zero_order_default=options.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"])),
+                release_half_life_default=options.get("release_half_life", data.get("release_half_life", PK_DEFAULTS["release_half_life"])),
+            )
+        else:
+            # Advanced section: lag_time only (IR medications)
+            pk_schema[vol.Required(_ADVANCED_PK_SECTION_KEY)] = _make_advanced_pk_section(
+                lag_default=options.get("lag_time", data.get("lag_time", PK_DEFAULTS["lag_time"])),
+            )
 
         return self.async_show_form(
             step_id="pk",

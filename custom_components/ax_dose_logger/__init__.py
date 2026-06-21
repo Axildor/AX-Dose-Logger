@@ -2,11 +2,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .const import CURRENT_VERSION, DOMAIN, LOGGER, RELEASE_INSTANT, TRACKING_AS_NEEDED
-from .coordinator import PillLoggerCoordinator
-from .data import PillLoggerConfigEntry
+from .coordinator import AxDoseLoggerCoordinator
+from .data import AxDoseLoggerConfigEntry
 from .services import async_setup_services, async_unload_services
-from .store import PillLoggerStore
-from .views import PillLoggerHistoryView
+from .store import AxDoseLoggerStore
+from .views import AxDoseLoggerHistoryView
 
 PLATFORMS = ["sensor", "button", "number", "calendar"]
 
@@ -31,7 +31,7 @@ _RELEASE_TYPE_MIGRATION = {
 }
 
 
-def _get_structural_options(entry: PillLoggerConfigEntry) -> dict:
+def _get_structural_options(entry: AxDoseLoggerConfigEntry) -> dict:
     """
     Return a snapshot of the structural options that affect entity creation.
 
@@ -60,7 +60,7 @@ def _remove_entity(ent_reg: er.EntityRegistry, platform: str, unique_id: str) ->
         ent_reg.async_remove(entity_id)
 
 
-async def async_migrate_entry(hass: HomeAssistant, config_entry: PillLoggerConfigEntry) -> bool:
+async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerConfigEntry) -> bool:
     """Migrate old entry to new version."""
     LOGGER.debug("Migrating from version %s", config_entry.version)
 
@@ -155,21 +155,21 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: PillLoggerConfi
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     # Initialize shared store (singleton)
     if "_store" not in hass.data[DOMAIN]:
-        store = PillLoggerStore(hass)
+        store = AxDoseLoggerStore(hass)
         await store.async_load()
         hass.data[DOMAIN]["_store"] = store
 
     # Register REST view (idempotent — HA ignores duplicate registrations)
-    hass.http.register_view(PillLoggerHistoryView())
+    hass.http.register_view(AxDoseLoggerHistoryView())
 
     # Create per-entry coordinator — single source of truth for dose history
-    store: PillLoggerStore = hass.data[DOMAIN]["_store"]
-    coordinator = PillLoggerCoordinator(hass, entry, store)
+    store: AxDoseLoggerStore = hass.data[DOMAIN]["_store"]
+    coordinator = AxDoseLoggerCoordinator(hass, entry, store)
     hass.data[DOMAIN][entry.entry_id] = {
         "entry_data": entry.data,
         "coordinator": coordinator,
@@ -191,7 +191,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
-async def async_reload_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -> None:
+async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> None:
     """
     Reload config entry, but only when structural options change.
 
@@ -247,7 +247,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) 
 
     await hass.config_entries.async_reload(entry.entry_id)
 
-async def async_unload_entry(hass: HomeAssistant, entry: PillLoggerConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)

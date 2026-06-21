@@ -2,7 +2,7 @@
 """
 Verify the extracted PKModel produces a continuous, mass-conserving curve.
 
-This script imports :mod:`custom_components.pill_logger.pk_model` directly —
+This script imports :mod:`custom_components.ax_dose_logger.pk_model` directly —
 no Home Assistant stubbing is required because the module is pure math.
 
 It ports the three assertions from the legacy ``scripts/verify_fix.py`` and
@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 
 # Make the custom_components package importable without HA.
 sys.path.insert(0, os.path.abspath("custom_components"))
-from pill_logger.pk_model import PKModel, PKParams
+from ax_dose_logger.pk_model import PKModel, PKParams
 
 # ---------------------------------------------------------------------------
 # ER model parameters (same as the legacy verify_fix.py user config)

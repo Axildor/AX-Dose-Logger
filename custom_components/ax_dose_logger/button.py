@@ -5,19 +5,19 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, TRACKING_AS_NEEDED
-from .coordinator import PillLoggerCoordinator
-from .data import PillLoggerConfigEntry
-from .entity import PillLoggerEntity
+from .coordinator import AxDoseLoggerCoordinator
+from .data import AxDoseLoggerConfigEntry
+from .entity import AxDoseLoggerEntity
 
 
-def _get_coordinator(hass: HomeAssistant, entry_id: str) -> PillLoggerCoordinator:
+def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordinator:
     """Retrieve the coordinator for this config entry from hass.data."""
     return hass.data[DOMAIN][entry_id]["coordinator"]
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: PillLoggerConfigEntry,
+    entry: AxDoseLoggerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     tracking_type = entry.data.get("tracking_type")
@@ -35,7 +35,7 @@ async def async_setup_entry(
         entities.append(PillAdherenceCoverButton(entry, coordinator))
     async_add_entities(entities)
 
-class PillTakeButton(PillLoggerEntity, ButtonEntity):
+class PillTakeButton(AxDoseLoggerEntity, ButtonEntity):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator):
@@ -56,7 +56,7 @@ class PillTakeButton(PillLoggerEntity, ButtonEntity):
         coordinator = _get_coordinator(self.hass, self._entry_id)
         await coordinator.async_take_dose(now)
 
-class PillResetButton(PillLoggerEntity, ButtonEntity):
+class PillResetButton(AxDoseLoggerEntity, ButtonEntity):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator):
@@ -71,7 +71,7 @@ class PillResetButton(PillLoggerEntity, ButtonEntity):
         coordinator = _get_coordinator(self.hass, self._entry_id)
         await coordinator.async_reset()
 
-class PillUndoButton(PillLoggerEntity, ButtonEntity):
+class PillUndoButton(AxDoseLoggerEntity, ButtonEntity):
     """Button entity that reverts the most recently logged dose."""
 
     _attr_has_entity_name = True
@@ -88,7 +88,7 @@ class PillUndoButton(PillLoggerEntity, ButtonEntity):
         await coordinator.async_undo_dose()
 
 
-class PillAdherenceResetButton(PillLoggerEntity, ButtonEntity):
+class PillAdherenceResetButton(AxDoseLoggerEntity, ButtonEntity):
     """Button entity that clears adherence history only (no PK / dose count impact)."""
 
     _attr_has_entity_name = True
@@ -106,7 +106,7 @@ class PillAdherenceResetButton(PillLoggerEntity, ButtonEntity):
         await coordinator.async_adherence_reset()
 
 
-class PillAdherenceCoverButton(PillLoggerEntity, ButtonEntity):
+class PillAdherenceCoverButton(AxDoseLoggerEntity, ButtonEntity):
     """Button entity that marks the most recent missed dose slot as taken for adherence only."""
 
     _attr_has_entity_name = True

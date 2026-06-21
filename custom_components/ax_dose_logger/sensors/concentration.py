@@ -5,11 +5,11 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback
 
 from ..const import PK_DEFAULTS, RELEASE_INSTANT, RELEASE_SUSTAINED
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 from ..pk_model import PKParams
 
 
-class PillConcentrationSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator):

@@ -1,5 +1,5 @@
 """
-Calendar platform for the Pill Logger integration.
+Calendar platform for the AX Dose Logger integration.
 
 Generates calendar events representing expected dose times based on the
 medication's tracking type configuration:
@@ -24,9 +24,9 @@ from .const import (
     TRACKING_TIME_OF_DAY,
     get_dose_times,
 )
-from .coordinator import PillLoggerCoordinator
-from .data import PillLoggerConfigEntry
-from .entity import PillLoggerEntity
+from .coordinator import AxDoseLoggerCoordinator
+from .data import AxDoseLoggerConfigEntry
+from .entity import AxDoseLoggerEntity
 from .sliding_window import is_on_day
 
 EVENT_DURATION = timedelta(hours=1)
@@ -34,10 +34,10 @@ EVENT_DURATION = timedelta(hours=1)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: PillLoggerConfigEntry,
+    entry: AxDoseLoggerConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the Pill Logger calendar entity from a config entry."""
+    """Set up the AX Dose Logger calendar entity from a config entry."""
     enable_calendar = entry.options.get(
         "enable_calendar", entry.data.get("enable_calendar", True)
     )
@@ -48,13 +48,13 @@ async def async_setup_entry(
     async_add_entities([PillCalendarEntity(entry, coordinator)])
 
 
-class PillCalendarEntity(PillLoggerEntity, CalendarEntity):
+class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
     """Calendar entity that plots expected dose times for a medication."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:calendar-clock"
 
-    def __init__(self, entry: PillLoggerConfigEntry, coordinator: PillLoggerCoordinator) -> None:
+    def __init__(self, entry: AxDoseLoggerConfigEntry, coordinator: AxDoseLoggerCoordinator) -> None:
         """Initialize the calendar entity."""
         super().__init__(entry, coordinator)
         self._tracking_type = entry.data.get("tracking_type")

@@ -4,14 +4,14 @@ import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
 from homeassistant.core import callback
 
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
 _TIMESTAMPS_MAX_DAYS = 365
 _TIMESTAMPS_MAX_COUNT = 100
 
 
-class PillLastDoseSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillLastDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator):

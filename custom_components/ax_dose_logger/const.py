@@ -1,4 +1,4 @@
-"""Constants for pill_logger."""
+"""Constants for ax_dose_logger."""
 
 import re
 from logging import Logger, getLogger
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 LOGGER: Logger = getLogger(__package__)
 
-DOMAIN = "pill_logger"
+DOMAIN = "ax_dose_logger"
 CURRENT_VERSION = 9
 
 # --- Tracking type constants ---

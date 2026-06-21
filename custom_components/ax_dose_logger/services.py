@@ -1,16 +1,16 @@
 """
-Services for the Pill Logger integration.
+Services for the AX Dose Logger integration.
 
 Exposes the coordinator's dose-management API as HA services so users
 can log doses, undo, reset, and manage adherence from automations,
 scripts, and dashboards.
 
 Services:
-    - ``pill_logger.take_dose``      — log a dose (optional custom timestamp)
-    - ``pill_logger.undo_dose``      — revert the most recent dose
-    - ``pill_logger.reset``          — clear all dose history
-    - ``pill_logger.adherence_reset``  — clear adherence state only
-    - ``pill_logger.adherence_override`` — mark last missed slot as taken
+    - ``ax_dose_logger.take_dose``      — log a dose (optional custom timestamp)
+    - ``ax_dose_logger.undo_dose``      — revert the most recent dose
+    - ``ax_dose_logger.reset``          — clear all dose history
+    - ``ax_dose_logger.adherence_reset``  — clear adherence state only
+    - ``ax_dose_logger.adherence_override`` — mark last missed slot as taken
 
 All services require an ``entry_id`` field (selected via
 ``ConfigEntrySelector``) to identify which medication to act on.
@@ -26,7 +26,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import selector, service
 
 from .const import DOMAIN
-from .coordinator import PillLoggerCoordinator
+from .coordinator import AxDoseLoggerCoordinator
 
 # Service names
 SERVICE_TAKE_DOSE: Final = "take_dose"
@@ -56,7 +56,7 @@ SERVICE_TAKE_DOSE_SCHEMA = SERVICE_BASE_SCHEMA.extend(
 )
 
 
-def _get_coordinator(hass: HomeAssistant, entry_id: str) -> PillLoggerCoordinator:
+def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordinator:
     """
     Retrieve the coordinator for the given config entry.
 
@@ -103,7 +103,7 @@ async def _async_adherence_override(call: ServiceCall) -> None:
 
 def async_setup_services(hass: HomeAssistant) -> None:
     """
-    Register all pill_logger services.
+    Register all ax_dose_logger services.
 
     Called once from ``async_setup_entry``. Services are domain-level
     (not per-entry), so they are registered only if not already registered
@@ -136,7 +136,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
 
 def async_unload_services(hass: HomeAssistant) -> None:
     """
-    Remove all pill_logger services.
+    Remove all ax_dose_logger services.
 
     Called when the last config entry is unloaded.
     """

@@ -4,10 +4,10 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 
 
-class PillStrengthSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillStrengthSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator):

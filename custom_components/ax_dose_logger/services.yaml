@@ -1,4 +1,4 @@
-# Service field definitions for the pill_logger integration.
+# Service field definitions for the ax_dose_logger integration.
 #
 # Services are registered in code (services.py) with voluptuous schemas,
 # but Home Assistant also requires this file to populate the service UI
@@ -11,7 +11,7 @@ take_dose:
       required: true
       selector:
         config_entry:
-          integration: pill_logger
+          integration: ax_dose_logger
     timestamp:
       required: false
       selector:
@@ -23,7 +23,7 @@ undo_dose:
       required: true
       selector:
         config_entry:
-          integration: pill_logger
+          integration: ax_dose_logger
 
 reset:
   fields:
@@ -31,7 +31,7 @@ reset:
       required: true
       selector:
         config_entry:
-          integration: pill_logger
+          integration: ax_dose_logger
 
 adherence_reset:
   fields:
@@ -39,7 +39,7 @@ adherence_reset:
       required: true
       selector:
         config_entry:
-          integration: pill_logger
+          integration: ax_dose_logger
 
 adherence_override:
   fields:
@@ -47,4 +47,4 @@ adherence_override:
       required: true
       selector:
         config_entry:
-          integration: pill_logger
+          integration: ax_dose_logger

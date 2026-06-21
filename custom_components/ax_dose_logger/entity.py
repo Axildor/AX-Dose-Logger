@@ -1,4 +1,4 @@
-"""Base entity class for pill_logger integration."""
+"""Base entity class for ax_dose_logger integration."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import PillLoggerCoordinator
+from .coordinator import AxDoseLoggerCoordinator
 
 
-class PillLoggerEntity(CoordinatorEntity[PillLoggerCoordinator]):
+class AxDoseLoggerEntity(CoordinatorEntity[AxDoseLoggerCoordinator]):
     """
-    Base entity class for Pill Logger integration.
+    Base entity class for AX Dose Logger integration.
 
     Extends ``CoordinatorEntity`` so all entities receive coordinator
     updates.  The coordinator is the single source of truth for dose
@@ -29,7 +29,7 @@ class PillLoggerEntity(CoordinatorEntity[PillLoggerCoordinator]):
     def __init__(
         self,
         entry: ConfigEntry,
-        coordinator: PillLoggerCoordinator,
+        coordinator: AxDoseLoggerCoordinator,
     ) -> None:
         """Initialize the entity from a config entry and coordinator."""
         super().__init__(coordinator)
@@ -38,18 +38,18 @@ class PillLoggerEntity(CoordinatorEntity[PillLoggerCoordinator]):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=self._med_name,
-            manufacturer="Pill Logger",
+            manufacturer="AX Dose Logger",
         )
 
 
-class PillLoggerSensorEntity(PillLoggerEntity):
+class AxDoseLoggerSensorEntity(AxDoseLoggerEntity):
     """
-    Base class for Pill Logger sensor entities.
+    Base class for AX Dose Logger sensor entities.
 
-    Inherits device_info and entry parsing from PillLoggerEntity.
+    Inherits device_info and entry parsing from AxDoseLoggerEntity.
     Sensor classes should use multiple inheritance with RestoreSensor:
 
-        class PillXxxSensor(PillLoggerSensorEntity, RestoreSensor):
+        class PillXxxSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
     The MRO ensures super().async_added_to_hass() chains through
     CoordinatorEntity (which adds the coordinator listener) and then

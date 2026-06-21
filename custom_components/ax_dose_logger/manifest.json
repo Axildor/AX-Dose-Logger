@@ -1,12 +1,12 @@
 {
-  "domain": "pill_logger",
-  "name": "Pill Logger",
-  "codeowners": ["@adix992"],
+  "domain": "ax_dose_logger",
+  "name": "AX Dose Logger",
+  "codeowners": ["@Axildor"],
   "config_flow": true,
   "dependencies": ["http"],
-  "documentation": "https://github.com/adix992/Home-Assistant-Pill-Logger",
+  "documentation": "https://github.com/Axildor/AX-Dose-Logger",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/adix992/Home-Assistant-Pill-Logger/issues",
-  "loggers": ["pill_logger"],
-  "version": "2.0.0"
+  "issue_tracker": "https://github.com/Axildor/AX-Dose-Logger/issues",
+  "loggers": ["ax_dose_logger"],
+  "version": "3.0.0"
 }

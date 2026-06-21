@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Add a Medication",
-        "description": "Name your medication and choose a tracking mode. Your choice determines which schedule settings appear next.\n\nThis tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.",
+        "description": "*This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.*\n\nName your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
         "data": {
           "medication_name": "Medication Name",
           "tracking_type": "Tracking Type",
@@ -130,18 +130,15 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed. Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values.",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n**Search Terms** — Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values:\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n\n**Advanced Pharmacokinetics (if applicable):**\n\n* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]\n* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]\n* Release Half-Life (Post-Zero-Order Dissolution only)",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
           "half_life": "Elimination Half-Life",
           "hours_to_peak": "Time to Peak Concentration",
           "bioavailability": "Bioavailability",
-          "lag_time": "Lag Time",
           "ir_hours_to_peak": "Immediate Release Time to Peak",
-          "ir_fraction": "Initial Release",
-          "zero_order_duration": "Sustained Release Duration",
-          "release_half_life": "Release Half-Life"
+          "ir_fraction": "Initial Release"
         },
         "data_description": {
           "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
@@ -149,11 +146,24 @@
           "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
           "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
           "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
-          "lag_time": "Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery.",
           "ir_hours_to_peak": "Time for the immediate-release fraction to reach peak concentration [IR Tmax]. Search for the Tmax of the standard/instant version of the drug. Default is 1.0h.",
-          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once.",
-          "zero_order_duration": "Hours the sustained-release phase delivers drug at a constant rate [Duration of Action]. Only for sustained-release medications.",
-          "release_half_life": "Time for the remaining drug to be released after the sustained phase ends (dissolution half-life). Only for sustained-release medications."
+          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once."
+        },
+        "sections": {
+          "advanced_pk": {
+            "name": "Advanced Pharmacokinetics (Niche Formulations)",
+            "description": "Specialized dissolution parameters for enteric-coated, osmotic pump, and complex zero-order formulations. Leave all values at 0 if unsure.",
+            "data": {
+              "lag_time": "Lag Time (Enteric-Coated/Delayed Release only) [Tlag]",
+              "zero_order_duration": "Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]",
+              "release_half_life": "Release Half-Life (Post-Zero-Order Dissolution only)"
+            },
+            "data_description": {
+              "lag_time": "Minutes before the medication begins releasing. Used strictly for specialized enteric-coated tablets designed to bypass stomach acid. Leave at 0 if unsure — most drugs start releasing immediately.",
+              "zero_order_duration": "The physical time the pill matrix mechanically releases drug in the gut. Do NOT use the marketing 'Duration of Action' (e.g., 8 hours). If you cannot find the clinical dissolution time, leave this at 0 and the math engine will safely handle the curve using Tmax.",
+              "release_half_life": "Time for the remaining drug to be released after a mechanical osmotic pump finishes its zero-order delivery. Exclusively for highly complex zero-order formulations. Leave at 0 if unsure."
+            }
+          }
         }
       },
       "effectiveness": {
@@ -252,18 +262,15 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed. Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values.",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n**Search Terms** — Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values:\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n\n**Advanced Pharmacokinetics (if applicable):**\n\n* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]\n* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]\n* Release Half-Life (Post-Zero-Order Dissolution only)",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
           "half_life": "Elimination Half-Life",
           "hours_to_peak": "Time to Peak Concentration",
           "bioavailability": "Bioavailability",
-          "lag_time": "Lag Time",
           "ir_hours_to_peak": "Immediate Release Time to Peak",
-          "ir_fraction": "Initial Release",
-          "zero_order_duration": "Sustained Release Duration",
-          "release_half_life": "Release Half-Life"
+          "ir_fraction": "Initial Release"
         },
         "data_description": {
           "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
@@ -271,11 +278,24 @@
           "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
           "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
           "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
-          "lag_time": "Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery.",
           "ir_hours_to_peak": "Time for the immediate-release fraction to reach peak concentration [IR Tmax]. Search for the Tmax of the standard/instant version of the drug. Default is 1.0h.",
-          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once.",
-          "zero_order_duration": "Hours the sustained-release phase delivers drug at a constant rate [Duration of Action]. Only for sustained-release medications.",
-          "release_half_life": "Time for the remaining drug to be released after the sustained phase ends (dissolution half-life). Only for sustained-release medications."
+          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once."
+        },
+        "sections": {
+          "advanced_pk": {
+            "name": "Advanced Pharmacokinetics (Niche Formulations)",
+            "description": "Specialized dissolution parameters for enteric-coated, osmotic pump, and complex zero-order formulations. Leave all values at 0 if unsure.",
+            "data": {
+              "lag_time": "Lag Time (Enteric-Coated/Delayed Release only) [Tlag]",
+              "zero_order_duration": "Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]",
+              "release_half_life": "Release Half-Life (Post-Zero-Order Dissolution only)"
+            },
+            "data_description": {
+              "lag_time": "Minutes before the medication begins releasing. Used strictly for specialized enteric-coated tablets designed to bypass stomach acid. Leave at 0 if unsure — most drugs start releasing immediately.",
+              "zero_order_duration": "The physical time the pill matrix mechanically releases drug in the gut. Do NOT use the marketing 'Duration of Action' (e.g., 8 hours). If you cannot find the clinical dissolution time, leave this at 0 and the math engine will safely handle the curve using Tmax.",
+              "release_half_life": "Time for the remaining drug to be released after a mechanical osmotic pump finishes its zero-order delivery. Exclusively for highly complex zero-order formulations. Leave at 0 if unsure."
+            }
+          }
         }
       },
       "effectiveness": {

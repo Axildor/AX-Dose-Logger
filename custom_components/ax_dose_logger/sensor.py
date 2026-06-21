@@ -2,7 +2,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, TRACKING_AS_NEEDED
-from .data import PillLoggerConfigEntry
+from .data import AxDoseLoggerConfigEntry
 from .sensors.adherence import PillAdherenceSensor
 from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.concentration import PillConcentrationSensor
@@ -17,7 +17,7 @@ from .sensors.total import PillTotalSensor
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: PillLoggerConfigEntry,
+    entry: AxDoseLoggerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     tracking_type = entry.data.get("tracking_type")

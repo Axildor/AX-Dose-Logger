@@ -1,4 +1,4 @@
-"""Custom types for pill_logger."""
+"""Custom types for ax_dose_logger."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
 
 
-type PillLoggerConfigEntry = ConfigEntry[PillLoggerData]
+type AxDoseLoggerConfigEntry = ConfigEntry[AxDoseLoggerData]
 
 
 @dataclass
-class PillLoggerData:
-    """Data for the Pill Logger integration."""
+class AxDoseLoggerData:
+    """Data for the AX Dose Logger integration."""
 

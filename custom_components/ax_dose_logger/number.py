@@ -14,13 +14,13 @@ from .const import (
     STANDARD_EFFECTIVENESS_METRICS,
     sanitize_key,
 )
-from .data import PillLoggerConfigEntry
-from .entity import PillLoggerEntity
+from .data import AxDoseLoggerConfigEntry
+from .entity import AxDoseLoggerEntity
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: PillLoggerConfigEntry,
+    entry: AxDoseLoggerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
@@ -52,7 +52,7 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
-class PillStockNumber(PillLoggerEntity, RestoreNumber):
+class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator, initial_stock):
@@ -111,7 +111,7 @@ class PillStockNumber(PillLoggerEntity, RestoreNumber):
         self._attr_native_value += amount
         self.async_write_ha_state()
 
-class PillAddStockNumber(PillLoggerEntity, NumberEntity):
+class PillAddStockNumber(AxDoseLoggerEntity, NumberEntity):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator):
@@ -159,7 +159,7 @@ class PillAddStockNumber(PillLoggerEntity, NumberEntity):
         self._reset_timer = None
         self.async_write_ha_state()
 
-class PillEffectivenessSlider(PillLoggerEntity, RestoreNumber):
+class PillEffectivenessSlider(AxDoseLoggerEntity, RestoreNumber):
     """Number entity representing a 1-10 subjective effectiveness metric for a medication."""
 
     _attr_has_entity_name = True

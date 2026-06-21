@@ -11,7 +11,7 @@ from ..const import (
     TRACKING_TIME_OF_DAY,
     get_dose_times,
 )
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 from ..sliding_window import compute_safe_to_take, is_on_day
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
@@ -19,7 +19,7 @@ _TIMESTAMPS_MAX_DAYS = 365
 _TIMESTAMPS_MAX_COUNT = 100
 
 
-class PillNextDoseSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator):

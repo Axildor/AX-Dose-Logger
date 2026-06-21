@@ -9,4 +9,4 @@ homeassistant:
 logger:
   default: info
   logs:
-    custom_components.pill_logger: debug
+    custom_components.ax_dose_logger: debug

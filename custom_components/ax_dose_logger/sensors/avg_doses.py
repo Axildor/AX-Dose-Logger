@@ -24,7 +24,7 @@ from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 
 from ..const import TRACKING_CYCLIC
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 from ..sliding_window import is_on_day
 
 
@@ -41,7 +41,7 @@ def _local_date(dt: datetime) -> date:
     return dt.date()
 
 
-class PillAvgDosesSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillAvgDosesSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     """
     Rolling day-coverage average sensor (PDC-aligned).
 

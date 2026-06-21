@@ -14,7 +14,7 @@ from ..const import (
     TRACKING_TIME_OF_DAY,
     get_dose_times,
 )
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 from ..schedule import get_next_dose_time
 from ..sliding_window import is_on_day
 
@@ -23,7 +23,7 @@ _TIMESTAMPS_MAX_DAYS = 365
 _TIMESTAMPS_MAX_COUNT = 100
 
 
-class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     """
     Sensor that calculates rolling adherence percentage over a configurable window.
 
@@ -45,7 +45,7 @@ class PillAdherenceSensor(PillLoggerSensorEntity, RestoreSensor):
 
         Args:
             entry: The config entry object.
-            coordinator: The PillLoggerCoordinator (single source of truth).
+            coordinator: The AxDoseLoggerCoordinator (single source of truth).
             window_days: Fixed trailing window size (7, 14, 30, or 365).
 
         """

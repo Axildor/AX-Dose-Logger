@@ -5,10 +5,10 @@ from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 
 from ..const import PK_DEFAULTS, get_dose_times
-from ..entity import PillLoggerSensorEntity
+from ..entity import AxDoseLoggerSensorEntity
 
 
-class PillSteadyStateSensor(PillLoggerSensorEntity, RestoreSensor):
+class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     _attr_has_entity_name = True
 
     def __init__(self, entry, coordinator):
