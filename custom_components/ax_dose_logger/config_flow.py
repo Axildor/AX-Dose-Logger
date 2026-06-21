@@ -84,6 +84,17 @@ _ADHERENCE_GRACE_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
 _DOSES_PER_DAY_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=1, max=MAX_DOSES_PER_DAY, step=1, unit_of_measurement="times/day", mode=sel.NumberSelectorMode.BOX
 ))
+_TRACKED_SYMPTOMS_SELECTOR = sel.SelectSelector(
+    sel.SelectSelectorConfig(
+        options=[
+            {"value": key, "label": label}
+            for key, label in STANDARD_EFFECTIVENESS_METRICS.items()
+        ],
+        multiple=True,
+        mode=sel.SelectSelectorMode.LIST,
+        translation_key="tracked_symptoms",
+    )
+)
 
 
 def _make_adherence_section(enable_default=True, grace_default=1):
@@ -305,8 +316,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         default_adherence = tracking_type != TRACKING_AS_NEEDED
 
         fields = {}
-        for key in STANDARD_EFFECTIVENESS_METRICS:
-            fields[vol.Optional(f"metric_{key}", default=False)] = sel.BooleanSelector()
+        fields[vol.Optional("tracked_symptoms", default=[])] = _TRACKED_SYMPTOMS_SELECTOR
         fields[vol.Optional("custom_metrics", default="")] = sel.TextSelector()
         # Only show adherence section for scheduled tracking types
         if tracking_type != TRACKING_AS_NEEDED:
@@ -454,9 +464,15 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         tracking_type = data.get("tracking_type")
 
         fields = {}
-        for key in STANDARD_EFFECTIVENESS_METRICS:
-            opt_key = f"metric_{key}"
-            fields[vol.Optional(opt_key, default=options.get(opt_key, data.get(opt_key, False)))] = sel.BooleanSelector()
+        # Read tracked_symptoms from options/data; fall back to migrating
+        # legacy metric_* booleans for not-yet-migrated v9 entries.
+        existing_tracked = options.get("tracked_symptoms", data.get("tracked_symptoms"))
+        if existing_tracked is None:
+            existing_tracked = [
+                key for key in STANDARD_EFFECTIVENESS_METRICS
+                if options.get(f"metric_{key}", data.get(f"metric_{key}", False))
+            ]
+        fields[vol.Optional("tracked_symptoms", default=existing_tracked)] = _TRACKED_SYMPTOMS_SELECTOR
         fields[vol.Optional("custom_metrics", default=options.get("custom_metrics", data.get("custom_metrics", "")))] = sel.TextSelector()
 
         # Only show adherence section for scheduled tracking types

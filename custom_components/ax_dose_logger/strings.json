@@ -130,7 +130,7 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n**Search Terms** — Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values:\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n\n**Advanced Pharmacokinetics (if applicable):**\n\n* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]\n* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]\n* Release Half-Life (Post-Zero-Order Dissolution only)",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n[Pharmacokinetics Search Guide](https://github.com/Axildor/AX-Dose-Logger#pharmacokinetics-search-guide)",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
@@ -167,16 +167,14 @@
         }
       },
       "effectiveness": {
-        "title": "Metrics Tracker & Adherence",
-        "description": "Select which symptoms to track and configure adherence settings. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "title": "Symptom & Adherence Tracking",
+        "description": "Select which symptoms to track and configure adherence settings. Each enabled item adds a daily-locked 0–10 slider — set it once per day, reset at midnight. Unset days show as unknown (no false data).",
         "data": {
-          "metric_pain": "Pain",
-          "metric_mood": "Mood",
-          "metric_nausea": "Nausea",
-          "metric_fatigue": "Fatigue",
+          "tracked_symptoms": "Tracked Symptoms",
           "custom_metrics": "Custom Metrics"
         },
         "data_description": {
+          "tracked_symptoms": "Select which metrics to track alongside your doses.",
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
         },
         "sections": {
@@ -262,7 +260,7 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n**Search Terms** — Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values:\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n\n**Advanced Pharmacokinetics (if applicable):**\n\n* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]\n* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]\n* Release Half-Life (Post-Zero-Order Dissolution only)",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n[Pharmacokinetics Search Guide](https://github.com/Axildor/AX-Dose-Logger#pharmacokinetics-search-guide)",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
@@ -299,16 +297,14 @@
         }
       },
       "effectiveness": {
-        "title": "Metrics Tracker & Adherence",
-        "description": "Select which symptoms to track and configure adherence settings. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "title": "Symptom & Adherence Tracking",
+        "description": "Select which symptoms to track and configure adherence settings. Each enabled item adds a daily-locked 0–10 slider — set it once per day, reset at midnight. Unset days show as unknown (no false data).",
         "data": {
-          "metric_pain": "Pain",
-          "metric_mood": "Mood",
-          "metric_nausea": "Nausea",
-          "metric_fatigue": "Fatigue",
+          "tracked_symptoms": "Tracked Symptoms",
           "custom_metrics": "Custom Metrics"
         },
         "data_description": {
+          "tracked_symptoms": "Select which metrics to track alongside your doses.",
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
         },
         "sections": {
@@ -348,6 +344,14 @@
         "mcg": "mcg — micrograms",
         "mg": "mg — milligrams (default)",
         "g": "g — grams"
+      }
+    },
+    "tracked_symptoms": {
+      "options": {
+        "pain": "Pain",
+        "mood": "Mood",
+        "nausea": "Nausea",
+        "fatigue": "Fatigue"
       }
     }
   },
@@ -405,6 +409,24 @@
           "description": "The medication to mark the missed slot for."
         }
       }
+    },
+    "set_metric": {
+      "name": "Set Daily Tracking Value",
+      "description": "Sets a daily-locked tracking value (0–10) for the selected medication. Each item can only be set once per day unless override is true.",
+      "fields": {
+        "entity_id": {
+          "name": "Tracking Entity",
+          "description": "The effectiveness tracking entity to set the value for."
+        },
+        "value": {
+          "name": "Value",
+          "description": "The metric value from 0 to 10."
+        },
+        "override": {
+          "name": "Override",
+          "description": "Set to true to change a metric that has already been logged today. Defaults to false."
+        }
+      }
     }
   },
   "entity": {
@@ -423,6 +445,9 @@
       },
       "next_dose": {
         "name": "Next Dose"
+      },
+      "overdue": {
+        "name": "Overdue"
       },
       "avg_daily_doses": {
         "name": "Avg Daily Doses ({window} Days)"

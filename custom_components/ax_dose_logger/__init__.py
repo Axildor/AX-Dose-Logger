@@ -1,7 +1,7 @@
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .const import CURRENT_VERSION, DOMAIN, LOGGER, RELEASE_INSTANT, TRACKING_AS_NEEDED
+from .const import CURRENT_VERSION, DOMAIN, LOGGER, RELEASE_INSTANT, STANDARD_EFFECTIVENESS_METRICS, TRACKING_AS_NEEDED
 from .coordinator import AxDoseLoggerCoordinator
 from .data import AxDoseLoggerConfigEntry
 from .services import async_setup_services, async_unload_services
@@ -14,7 +14,7 @@ PLATFORMS = ["sensor", "button", "number", "calendar"]
 # All other options (PK params, dose_time, pill_limit, etc.) are read
 # fresh by the coordinator and sensors on every update cycle, so they
 # don't need a reload.
-_STRUCTURAL_KEYS = ("enable_calendar", "enable_adherence", "tracking_type")
+_STRUCTURAL_KEYS = ("enable_calendar", "enable_adherence", "tracking_type", "tracked_symptoms")
 
 # Migration mapping for tracking_type (v8 title-case → v9 snake_case)
 _TRACKING_TYPE_MIGRATION = {
@@ -46,6 +46,9 @@ def _get_structural_options(entry: AxDoseLoggerConfigEntry) -> dict:
             "enable_adherence", entry.data.get("enable_adherence", True)
         ),
         "tracking_type": entry.data.get("tracking_type"),
+        "tracked_symptoms": entry.options.get(
+            "tracked_symptoms", entry.data.get("tracked_symptoms", [])
+        ),
     }
 
 
@@ -143,6 +146,27 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
         if new_options.get("strength_unit") == "µg":
             new_options["strength_unit"] = "mcg"
 
+    if config_entry.version <= 9:
+        # Version 10: Convert metric_* booleans → tracked_symptoms list
+        tracked: list[str] = []
+        for key in STANDARD_EFFECTIVENESS_METRICS:
+            if new_data.get(f"metric_{key}") or new_options.get(f"metric_{key}"):
+                tracked.append(key)
+        new_data["tracked_symptoms"] = tracked
+        new_options["tracked_symptoms"] = tracked
+        # Remove old boolean keys
+        for key in STANDARD_EFFECTIVENESS_METRICS:
+            new_data.pop(f"metric_{key}", None)
+            new_options.pop(f"metric_{key}", None)
+
+    if config_entry.version <= 10:
+        # Version 11: Daily-locked effectiveness metrics.
+        # No config entry data shape change — metric values are stored in
+        # a separate storage key (ax_dose_logger_metrics), not in config
+        # entry data/options.  This bump exists so HA knows the entry has
+        # been processed by the new code.
+        pass
+
     hass.config_entries.async_update_entry(
         config_entry, data=new_data, options=new_options, version=CURRENT_VERSION
     )
@@ -236,11 +260,22 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
     # safety in case a future reconfigure step allows changing tracking_type.
     if "tracking_type" in changed and curr["tracking_type"] == TRACKING_AS_NEEDED:
         _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_steady_state")
+        _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_overdue")
         _remove_entity(ent_reg, "calendar", f"{entry.entry_id}_calendar")
         for window in (7, 14, 30, 365):
             _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_adherence_{window}")
         for suffix in ("_reset_adherence", "_cover_last_missed"):
             _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
+
+    # --- tracked_symptoms: metric removed ---
+    # When a symptom is unchecked, remove its PillEffectivenessSlider entity
+    # to prevent ghost "unavailable" entities. Newly-added symptoms are
+    # created by the reload (number platform setup runs fresh).
+    if "tracked_symptoms" in changed:
+        prev_tracked = set(prev.get("tracked_symptoms", []))
+        curr_tracked = set(curr.get("tracked_symptoms", []))
+        for key in prev_tracked - curr_tracked:
+            _remove_entity(ent_reg, "number", f"{entry.entry_id}_eff_{key}")
 
     # Update the snapshot so the next options save has a fresh baseline
     entry_data["prev_structural"] = curr

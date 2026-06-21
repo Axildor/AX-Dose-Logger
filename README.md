@@ -61,12 +61,31 @@ Leave all PK values at 0 to disable concentration tracking.
 
 [See the full pharmacokinetics reference ↓](#pharmacokinetics-reference) for the mathematical formulas, worked examples, and scientific methodology.
 
+## Pharmacokinetics Search Guide
+
+The PK configuration panel asks for several clinical parameters. Search the web for your medication's **Clinical Pharmacology** or **Product Information** sheet to find these values:
+
+**Core parameters:**
+
+* Elimination Half-Life [t1/2]
+* Time to Peak Concentration [Tmax]
+* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)
+* Bioavailability [%]
+* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*
+
+**Advanced Pharmacokinetics (if applicable):**
+
+* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]
+* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]
+* Release Half-Life (Post-Zero-Order Dissolution only)
+
 ### Tracking How Well It Works
 
-Not sure if your medication is actually helping? AX Dose Logger can add 1–10 sliders so you can rate how you feel after each dose:
+Not sure if your medication is actually helping? AX Dose Logger can add 0–10 daily-locked sliders so you can rate how you feel each day:
 
-- **Standard metrics**: Pain, Mood, Nausea, Fatigue
-- **Custom metrics**: Add your own (e.g. "brain fog", "joint stiffness") — each one gets its own slider
+- **Standard symptoms**: Pain, Mood, Nausea, Fatigue
+- **Custom symptoms**: Add your own (e.g. "brain fog", "joint stiffness") — each one gets its own slider
+- **Daily-locked**: Each slider can only be set once per calendar day. If you try to change it, you'll get a warning with an option to override. Sliders reset to **unknown** at midnight — unset days are not imputed to 0 or any default, following FDA Patient-Reported Outcome (PRO) guidance that missing data must remain missing.
 
 ### At a Glance
 
@@ -246,7 +265,7 @@ Each medication shows up as a **Device** in Home Assistant. Replace `ibuprofen` 
 |--------|-----------|-------|-------------|
 | Pills Left | `number.ibuprofen_pills_left` | 0–9999 | Current inventory count |
 | Add Refill | `number.ibuprofen_add_refill` | 0–∞ | Refill input (auto-resets to 0 after adding) |
-| Effectiveness | `number.ibuprofen_{metric}_effectiveness` | 1–10 | Per-metric subjective rating slider |
+| Effectiveness | `number.ibuprofen_{metric}_effectiveness` | 0–10 | Daily-locked per-metric rating slider (unknown until set, resets at midnight) |
 
 ### Calendar
 
@@ -478,15 +497,12 @@ Home Assistant event bus events (for automations):
 
 > Leave Dose Strength and Elimination Half-Life at 0 if you don't need concentration tracking. The Amount in Body sensor will report `0` when PK fields are not configured. The Steady State sensor is only created for scheduled medications (Regular Interval, Time of Day, Cyclic) — it is not available for As Needed medications.
 
-### Step 4: Metrics & Adherence
+### Step 4: Symptom & Adherence Tracking
 
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
-| Pain | Toggle | Enable a 1–10 slider for pain | Off |
-| Mood | Toggle | Enable a 1–10 slider for mood | Off |
-| Nausea | Toggle | Enable a 1–10 slider for nausea | Off |
-| Fatigue | Toggle | Enable a 1–10 slider for fatigue | Off |
-| Custom Metrics | Text | Separate multiple with commas (e.g. brain fog, joint stiffness). A 1–10 slider is created for each. | — |
+| Tracked Symptoms | Multi-select | Check which symptoms to track (Pain, Mood, Nausea, Fatigue). Each gets a daily-locked 0–10 slider. | None |
+| Custom Symptoms | Text | Separate multiple with commas (e.g. brain fog, joint stiffness). A daily-locked 0–10 slider is created for each. | — |
 | Track Dose Adherence | Toggle | Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. | On (Off for As Needed) |
 | On-Time Window | 0.5–24 h | How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. | 1 |
 
@@ -498,7 +514,7 @@ Click **Configure** on the integration entry to change settings without recreati
 
 **Step 2: Pharmacokinetics** (same as Step 3 above)
 
-**Step 3: Metrics & Adherence** (same as Step 4 above)
+**Step 3: Symptom & Adherence Tracking** (same as Step 4 above)
 
 > **Note:** The medication name, tracking type, and release type can't be changed after creation.
 

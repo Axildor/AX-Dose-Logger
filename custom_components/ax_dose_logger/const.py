@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "ax_dose_logger"
-CURRENT_VERSION = 9
+CURRENT_VERSION = 11
 
 # --- Tracking type constants ---
 TRACKING_REGULAR_INTERVAL = "regular_interval"
@@ -56,6 +56,10 @@ EFFECTIVENESS_METRIC_ICONS: dict[str, str] = {
 }
 
 DEFAULT_METRIC_ICON = "mdi:chart-line"
+
+# --- Daily-locked metric constants ---
+METRIC_SLIDER_DEFAULT = 0  # Slider UI position default (leftmost/neutral)
+METRIC_STORE_KEY = "ax_dose_logger_metrics"  # Separate storage key for daily metric values
 
 PK_DEFAULTS: dict[str, float] = {
     "bioavailability": 100,
