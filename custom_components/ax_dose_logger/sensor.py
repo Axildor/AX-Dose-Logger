@@ -9,6 +9,7 @@ from .sensors.concentration import PillConcentrationSensor
 from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
 from .sensors.last_dose import PillLastDoseSensor
 from .sensors.next_dose import PillNextDoseSensor
+from .sensors.overdue import PillOverdueSensor
 from .sensors.pill_limit import PillLimitSensor
 from .sensors.steady_state import PillSteadyStateSensor
 from .sensors.strength import PillStrengthSensor
@@ -31,9 +32,11 @@ async def async_setup_entry(
     entities.append(PillAvgDosesSensor(entry, coordinator, 14))
     entities.append(PillAvgDosesSensor(entry, coordinator, 30))
     entities.append(PillAvgDosesSensor(entry, coordinator, 365))
-    # Steady state is only meaningful for scheduled medications (requires a fixed dosing interval τ)
+    # Steady state and overdue are only meaningful for scheduled medications
+    # (steady state requires a fixed dosing interval τ; overdue requires a schedule)
     if tracking_type != TRACKING_AS_NEEDED:
         entities.append(PillSteadyStateSensor(entry, coordinator))
+        entities.append(PillOverdueSensor(entry, coordinator))
     entities.append(PillStrengthSensor(entry, coordinator))
     entities.append(PillDaysSinceFirstDoseSensor(entry, coordinator))
     enable_adherence = entry.options.get(

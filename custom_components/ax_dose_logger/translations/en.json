@@ -130,7 +130,7 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n**Search Terms** — Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values:\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n\n**Advanced Pharmacokinetics (if applicable):**\n\n* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]\n* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]\n* Release Half-Life (Post-Zero-Order Dissolution only)",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n[Pharmacokinetics Search Guide](https://github.com/Axildor/AX-Dose-Logger#pharmacokinetics-search-guide)",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
@@ -167,16 +167,14 @@
         }
       },
       "effectiveness": {
-        "title": "Metrics Tracker & Adherence",
-        "description": "Select which symptoms to track and configure adherence settings. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "title": "Symptom & Adherence Tracking",
+        "description": "Select which symptoms to track and configure adherence settings. Each enabled item adds a daily-locked 0–10 slider — set it once per day, reset at midnight. Unset days show as unknown (no false data).",
         "data": {
-          "metric_pain": "Pain",
-          "metric_mood": "Mood",
-          "metric_nausea": "Nausea",
-          "metric_fatigue": "Fatigue",
+          "tracked_symptoms": "Tracked Symptoms",
           "custom_metrics": "Custom Metrics"
         },
         "data_description": {
+          "tracked_symptoms": "Select which metrics to track alongside your doses.",
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
         },
         "sections": {
@@ -200,8 +198,9 @@
     "step": {
       "init": {
         "title": "Schedule & Dosing",
-        "description": "Adjust the schedule and safety limits. Pharmacokinetic and effectiveness settings are on the next pages.",
+        "description": "Adjust the schedule and safety limits. Pharmacokinetic and effectiveness settings are on the next pages.\n\nChanges apply automatically on the next refresh cycle (within about a minute) — no need to reload the device.\n\nTo change how this medication is tracked (e.g. from Regular Interval to Cyclic), pick a different Tracking Type below. You'll be asked to configure the new schedule on the next page; dose history and effectiveness logs are preserved.",
         "data": {
+          "tracking_type": "Tracking Type",
           "hours_between_doses": "Dose Interval",
           "doses_per_day": "How Many Times per Day",
           "dose_time_1": "Dose Time 1",
@@ -257,12 +256,64 @@
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity.",
+          "tracking_type": "How this medication is scheduled."
+        }
+      },
+      "schedule": {
+        "title": "New Schedule",
+        "description": "You changed the tracking type. Configure the schedule for the new type below. Dose history and effectiveness logs are preserved — only the schedule changes.",
+        "data": {
+          "tracking_type": "Tracking Type",
+          "hours_between_doses": "Dose Interval",
+          "doses_per_day": "How Many Times per Day",
+          "time_window_hours": "Time Window",
+          "days_on": "Days On",
+          "days_off": "Days Off",
+          "cycle_anchor_date": "Cycle Start Date",
+          "dose_time": "Dose Time",
+          "pill_limit": "Pill Limit",
+          "enable_calendar": "Calendar Entity"
+        },
+        "data_description": {
+          "hours_between_doses": "Minimum hours between consecutive doses.",
+          "doses_per_day": "How many times per day you take this medication.",
+          "time_window_hours": "Rolling window for the pill limit.",
+          "days_on": "Number of active days in the cycle.",
+          "days_off": "Number of rest days in the cycle.",
+          "cycle_anchor_date": "Start date of the on/off cycle.",
+          "dose_time": "Time of day to take on active days.",
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+        }
+      },
+      "schedule_times": {
+        "title": "Dose Times",
+        "description": "Set the time for each daily dose.",
+        "data": {
+          "dose_time_1": "Dose Time 1",
+          "dose_time_2": "Dose Time 2",
+          "dose_time_3": "Dose Time 3",
+          "dose_time_4": "Dose Time 4",
+          "dose_time_5": "Dose Time 5",
+          "dose_time_6": "Dose Time 6",
+          "dose_time_7": "Dose Time 7",
+          "dose_time_8": "Dose Time 8",
+          "dose_time_9": "Dose Time 9",
+          "dose_time_10": "Dose Time 10",
+          "dose_time_11": "Dose Time 11",
+          "dose_time_12": "Dose Time 12",
+          "dose_time_13": "Dose Time 13",
+          "dose_time_14": "Dose Time 14",
+          "dose_time_15": "Dose Time 15",
+          "dose_time_16": "Dose Time 16",
+          "dose_time_17": "Dose Time 17",
+          "dose_time_18": "Dose Time 18"
         }
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n**Search Terms** — Search the web for your medication's 'Clinical Pharmacology' or 'Product Information' sheet to find these values:\n\n* Elimination Half-Life [t1/2]\n* Time to Peak Concentration [Tmax]\n* Immediate Release Time to Peak [IR Tmax] (Search for the Tmax of the standard/instant version of the drug)\n* Bioavailability [%]\n* Initial Release [%] *(Note: If your label shows a milligram split, divide the instant-release mg by the total pill mg)*\n\n**Advanced Pharmacokinetics (if applicable):**\n\n* Lag Time (Enteric-Coated/Delayed Release only) [Tlag]\n* Sustained Release Duration (Osmotic/OROS pumps only) [Dissolution Time]\n* Release Half-Life (Post-Zero-Order Dissolution only)",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n[Pharmacokinetics Search Guide](https://github.com/Axildor/AX-Dose-Logger#pharmacokinetics-search-guide)",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
@@ -299,16 +350,14 @@
         }
       },
       "effectiveness": {
-        "title": "Metrics Tracker & Adherence",
-        "description": "Select which symptoms to track and configure adherence settings. Each enabled metric adds a 1–10 slider to rate how you feel after each dose.",
+        "title": "Symptom & Adherence Tracking",
+        "description": "Select which symptoms to track and configure adherence settings. Each enabled item adds a daily-locked 0–10 slider — set it once per day, reset at midnight. Unset days show as unknown (no false data).",
         "data": {
-          "metric_pain": "Pain",
-          "metric_mood": "Mood",
-          "metric_nausea": "Nausea",
-          "metric_fatigue": "Fatigue",
+          "tracked_symptoms": "Tracked Symptoms",
           "custom_metrics": "Custom Metrics"
         },
         "data_description": {
+          "tracked_symptoms": "Select which metrics to track alongside your doses.",
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
         },
         "sections": {
@@ -348,6 +397,14 @@
         "mcg": "mcg — micrograms",
         "mg": "mg — milligrams (default)",
         "g": "g — grams"
+      }
+    },
+    "tracked_symptoms": {
+      "options": {
+        "pain": "Pain",
+        "mood": "Mood",
+        "nausea": "Nausea",
+        "fatigue": "Fatigue"
       }
     }
   },
@@ -405,6 +462,24 @@
           "description": "The medication to mark the missed slot for."
         }
       }
+    },
+    "set_metric": {
+      "name": "Set Daily Tracking Value",
+      "description": "Sets a daily-locked tracking value (0–10) for the selected medication. Each item can only be set once per day unless override is true.",
+      "fields": {
+        "entity_id": {
+          "name": "Tracking Entity",
+          "description": "The effectiveness tracking entity to set the value for."
+        },
+        "value": {
+          "name": "Value",
+          "description": "The metric value from 0 to 10."
+        },
+        "override": {
+          "name": "Override",
+          "description": "Set to true to change a metric that has already been logged today. Defaults to false."
+        }
+      }
     }
   },
   "entity": {
@@ -423,6 +498,9 @@
       },
       "next_dose": {
         "name": "Next Dose"
+      },
+      "overdue": {
+        "name": "Overdue"
       },
       "avg_daily_doses": {
         "name": "Avg Daily Doses ({window} Days)"

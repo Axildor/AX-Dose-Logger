@@ -1,10 +1,10 @@
 """
-AxDoseLoggerCoordinator — single source of truth for dose history.
+AxDoseLoggerCoordinator — single source of truth for dose history and daily metrics.
 
-Owns the authoritative ``dose_history`` list, debounced store saves, and a
-single 1-minute refresh interval.  Entities become ``CoordinatorEntity``
-subscribers and read ``coordinator.data`` instead of maintaining their own
-copies of dose history and listening to dispatcher signals.
+Owns the authoritative ``dose_history`` list, ``metric_values`` dict, debounced
+store saves, and a 1-minute refresh interval.  Entities become
+``CoordinatorEntity`` subscribers and read ``coordinator.data`` instead of
+maintaining their own copies of dose history and listening to dispatcher signals.
 
 During the 1D-1 → 1D-3 transition the coordinator still fires the legacy
 dispatcher signals so that not-yet-migrated sensors continue to work.
@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import homeassistant.util.dt as dt_util
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -48,6 +49,11 @@ class AxDoseLoggerCoordinatorData:
     ``pk_result`` are recomputed on every refresh so the concentration
     sensor and steady-state sensor can read them directly instead of
     via inter-sensor dispatcher signals.
+
+    ``metric_values`` stores daily-locked effectiveness metric values.
+    Format: { metric_key: { "date": "YYYY-MM-DD", "value": float } }
+    Only metrics logged today are kept; stale entries from previous days
+    are filtered out on load and cleared at midnight.
     """
 
     dose_history: list[tuple[datetime, float]] = field(default_factory=list)
@@ -57,6 +63,8 @@ class AxDoseLoggerCoordinatorData:
     # Adherence-specific state (does not affect dose_history)
     adherence_overrides: list[datetime] = field(default_factory=list)
     adherence_reset_time: datetime | None = None
+    # Daily-locked metric values: { metric_key: { "date": "YYYY-MM-DD", "value": float } }
+    metric_values: dict[str, dict] = field(default_factory=dict)
 
 
 class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]):
@@ -91,10 +99,10 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self._last_midnight_check: datetime | None = None
 
     # ------------------------------------------------------------------
-    # Setup — load dose history from store on first refresh
+    # Setup — load dose history and metrics from store on first refresh
     # ------------------------------------------------------------------
     async def _async_setup(self) -> None:
-        """Load dose history from the store into the coordinator."""
+        """Load dose history and metric values from the store into the coordinator."""
         dose_history: list[tuple[datetime, float]] = []
         stored = self._store.get_history(self._entry.entry_id)
         if stored:
@@ -108,27 +116,42 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
                     continue
 
         last_dose = dose_history[-1][0] if dose_history else None
+
+        # Load metric values and filter to today only
+        raw_metrics = self._store.get_metrics(self._entry.entry_id)
+        today = dt_util.now().date().isoformat()
+        metric_values: dict[str, dict] = {}
+        for key, entry in raw_metrics.items():
+            if isinstance(entry, dict) and entry.get("date") == today:
+                metric_values[key] = entry
+
         self.data = AxDoseLoggerCoordinatorData(
             dose_history=dose_history,
             last_dose_time=last_dose,
+            metric_values=metric_values,
         )
         LOGGER.debug(
-            "AxDoseLoggerCoordinator setup for %s: %d doses loaded",
+            "AxDoseLoggerCoordinator setup for %s: %d doses loaded, %d metrics for today",
             self._entry.entry_id,
             len(dose_history),
+            len(metric_values),
         )
 
     # ------------------------------------------------------------------
-    # Periodic refresh — called every 1 minute by the coordinator timer
+    # Data recomputation — shared by periodic tick and push updates
     # ------------------------------------------------------------------
-    async def _async_update_data(self) -> AxDoseLoggerCoordinatorData:
+    def _recompute_data(self) -> AxDoseLoggerCoordinatorData:
         """
-        Recompute derived state (PK concentration) on every tick.
+        Build a fresh coordinator data snapshot with recomputed PK.
 
-        This is called both by the 1-minute interval and by
-        ``async_request_refresh`` after a dose event.  The dose_history
-        list is already up-to-date (mutated by the ``async_*`` API
-        methods), so this method only recomputes the derived fields.
+        Called by both the 1-minute periodic tick (via
+        ``_async_update_data``) and push-based dose events (via
+        ``_push_update``).  The dose_history list is already up-to-date
+        (mutated by the ``async_*`` API methods), so this method only
+        recomputes the derived fields (concentration, PK result).
+
+        On midnight rollover, metric_values are cleared to reset all
+        daily-locked sliders to ``unknown``.
         """
         data = self.data
         now = dt_util.now()
@@ -147,6 +170,16 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         # ``_handle_coordinator_update``.
         midnight_rolled = self._check_midnight(now)
 
+        # On midnight rollover, clear all daily-locked metric values
+        # so sliders reset to ``unknown`` for the new day.
+        metric_values = data.metric_values
+        if midnight_rolled:
+            metric_values = {}
+            LOGGER.debug(
+                "Midnight rollover: cleared metric values for %s",
+                self._entry.entry_id,
+            )
+
         return AxDoseLoggerCoordinatorData(
             dose_history=data.dose_history,
             last_dose_time=data.last_dose_time,
@@ -154,7 +187,24 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             pk_result=pk_result,
             adherence_overrides=data.adherence_overrides,
             adherence_reset_time=data.adherence_reset_time,
+            metric_values=metric_values,
         )
+
+    def _push_update(self) -> None:
+        """Recompute PK and notify listeners instantly (no debounce delay).
+
+        Used by push-based dose events (take, undo, reset, adherence)
+        to ensure sensor state updates are visible immediately on the
+        card, bypassing the 10-second debounce of async_request_refresh.
+        """
+        self.async_set_updated_data(self._recompute_data())
+
+    # ------------------------------------------------------------------
+    # Periodic refresh — called every 1 minute by the coordinator timer
+    # ------------------------------------------------------------------
+    async def _async_update_data(self) -> AxDoseLoggerCoordinatorData:
+        """Recompute derived state (PK concentration) on every tick."""
+        return self._recompute_data()
 
     def _check_midnight(self, now: datetime) -> bool:
         """Return True if midnight has passed since the last check."""
@@ -215,7 +265,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             {"entry_id": self._entry.entry_id, "timestamp": timestamp.isoformat()},
         )
 
-        await self.async_request_refresh()
+        self._push_update()
 
     async def async_undo_dose(self) -> None:
         """Remove the most recent dose and trigger an immediate refresh."""
@@ -234,7 +284,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             {"entry_id": self._entry.entry_id},
         )
 
-        await self.async_request_refresh()
+        self._push_update()
 
     async def async_reset(self) -> None:
         """Clear all dose history and trigger an immediate refresh."""
@@ -247,7 +297,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_reset_{self._entry.entry_id}")
 
-        await self.async_request_refresh()
+        self._push_update()
 
     async def async_adherence_reset(self) -> None:
         """Clear adherence-specific state only (no dose history impact)."""
@@ -257,7 +307,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_adherence_reset_{self._entry.entry_id}")
 
-        await self.async_request_refresh()
+        self._push_update()
 
     async def async_adherence_override(self) -> None:
         """Mark the most recent missed adherence slot as covered."""
@@ -270,7 +320,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             {"entry_id": self._entry.entry_id},
         )
 
-        await self.async_request_refresh()
+        self._push_update()
 
     async def async_add_stock(self, amount: float) -> None:
         """
@@ -284,10 +334,56 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         )
 
     # ------------------------------------------------------------------
+    # Daily-locked metric API
+    # ------------------------------------------------------------------
+    async def async_set_metric(
+        self, metric_key: str, value: float, override: bool = False
+    ) -> None:
+        """
+        Set a daily-locked effectiveness metric value.
+
+        Enforces the one-set-per-day rule: if the metric has already been
+        logged today and ``override`` is False, raises HomeAssistantError.
+
+        On success, updates the metric value in coordinator data,
+        schedules a debounced save, and pushes an update to all entities.
+        """
+        today = dt_util.now().date().isoformat()
+        existing = self.data.metric_values.get(metric_key)
+
+        if existing and existing.get("date") == today and not override:
+            raise HomeAssistantError(
+                f"Metric '{metric_key}' already set to {existing['value']} today. "
+                "Use override to change it."
+            )
+
+        self.data.metric_values[metric_key] = {"date": today, "value": float(value)}
+        self._schedule_save()
+        self._push_update()
+
+    def is_metric_logged_today(self, metric_key: str) -> bool:
+        """Return True if the metric has been logged today."""
+        today = dt_util.now().date().isoformat()
+        entry = self.data.metric_values.get(metric_key)
+        return entry is not None and entry.get("date") == today
+
+    def get_metric_value(self, metric_key: str) -> float | None:
+        """
+        Return the metric value if logged today, else None.
+
+        Returns None for unlogged metrics (entity state will be ``unknown``).
+        """
+        today = dt_util.now().date().isoformat()
+        entry = self.data.metric_values.get(metric_key)
+        if entry and entry.get("date") == today:
+            return float(entry["value"])
+        return None
+
+    # ------------------------------------------------------------------
     # Shutdown — cancel pending save and flush to store
     # ------------------------------------------------------------------
     async def async_shutdown(self) -> None:
-        """Cancel pending debounced save and flush dose history to store."""
+        """Cancel pending debounced save and flush dose history + metrics to store."""
         if self._save_handle:
             self._save_handle.cancel()
             self._save_handle = None
@@ -297,6 +393,9 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
                 for ts, strength in self.data.dose_history
             ]
             await self._store.async_set_history(self._entry.entry_id, serialized)
+            await self._store.async_set_metrics(
+                self._entry.entry_id, self.data.metric_values
+            )
         await super().async_shutdown()
 
     # ------------------------------------------------------------------
@@ -312,7 +411,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
 
     @callback
     def _do_save(self) -> None:
-        """Persist dose history to the store (called after debounce window)."""
+        """Persist dose history and metric values to the store (called after debounce window)."""
         self._save_handle = None
         serialized = [
             [ts.isoformat(), strength]
@@ -320,6 +419,11 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         ]
         self.hass.async_create_task(
             self._store.async_set_history(self._entry.entry_id, serialized)
+        )
+        self.hass.async_create_task(
+            self._store.async_set_metrics(
+                self._entry.entry_id, self.data.metric_values
+            )
         )
 
     # ------------------------------------------------------------------

@@ -6,6 +6,7 @@ from homeassistant.helpers.dispatcher import (
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
+import homeassistant.util.dt as dt_util
 
 from .const import (
     DEFAULT_METRIC_ICON,
@@ -34,9 +35,9 @@ async def async_setup_entry(
     options = entry.options
     data = entry.data
 
+    tracked = options.get("tracked_symptoms", data.get("tracked_symptoms", []))
     for key, label in STANDARD_EFFECTIVENESS_METRICS.items():
-        opt_key = f"metric_{key}"
-        if options.get(opt_key, data.get(opt_key, False)):
+        if key in tracked:
             icon = EFFECTIVENESS_METRIC_ICONS.get(key, DEFAULT_METRIC_ICON)
             entities.append(PillEffectivenessSlider(entry, coordinator, key, label, icon))
 
@@ -159,10 +160,26 @@ class PillAddStockNumber(AxDoseLoggerEntity, NumberEntity):
         self._reset_timer = None
         self.async_write_ha_state()
 
-class PillEffectivenessSlider(AxDoseLoggerEntity, RestoreNumber):
-    """Number entity representing a 1-10 subjective effectiveness metric for a medication."""
+class PillEffectivenessSlider(AxDoseLoggerEntity, NumberEntity):
+    """
+    Daily-locked effectiveness metric slider.
+
+    State is ``unknown`` (None) until the user actively logs a value for the
+    current day.  Once set, the value is locked — further changes require an
+    override (via the ``ax_dose_logger.set_metric`` service with
+    ``override=true``).  At midnight, the coordinator clears all metric
+    values and the state resets to ``unknown``.
+
+    Extra state attributes:
+      - ``logged_today`` (bool): whether the metric has been set today
+      - ``last_logged_date`` (str | None): ISO date string of the last log
+    """
 
     _attr_has_entity_name = True
+    _attr_native_step = 1.0
+    _attr_native_min_value = 0.0
+    _attr_native_max_value = 10.0
+    _attr_mode = NumberMode.SLIDER
 
     def __init__(self, entry, coordinator, metric_key: str, metric_label: str, icon: str):
         super().__init__(entry, coordinator)
@@ -170,19 +187,59 @@ class PillEffectivenessSlider(AxDoseLoggerEntity, RestoreNumber):
         self._attr_name = f"{metric_label} Effectiveness"
         self._attr_unique_id = f"{entry.entry_id}_eff_{metric_key}"
         self._attr_icon = icon
-        self._attr_native_value = 1.0
-        self._attr_native_step = 1.0
-        self._attr_native_min_value = 1.0
-        self._attr_native_max_value = 10.0
-        self._attr_mode = NumberMode.SLIDER
+        # Start as None (unknown) — coordinator will provide the real value
+        self._attr_native_value: float | None = None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, bool | str | None]:
+        """Return whether the metric has been logged today and when."""
+        base_attrs: dict[str, bool | str | None] = {
+            "logged_today": False,
+            "last_logged_date": None,
+            "metric_key": self._metric_key,
+            "metric_label": self._attr_name.replace(" Effectiveness", ""),
+        }
+        if not self.coordinator.data:
+            return base_attrs
+        metric_entry = self.coordinator.data.metric_values.get(self._metric_key)
+        today = dt_util.now().date().isoformat()
+        if metric_entry and metric_entry.get("date") == today:
+            base_attrs["logged_today"] = True
+            base_attrs["last_logged_date"] = metric_entry.get("date")
+        return base_attrs
 
     async def async_added_to_hass(self):
-        """Restore last value on restart."""
+        """Register for coordinator updates (no RestoreNumber — coordinator is source of truth)."""
         await super().async_added_to_hass()
-        last_state = await self.async_get_last_number_data()
-        if last_state and last_state.native_value is not None:
-            self._attr_native_value = last_state.native_value
+        # Sync initial value from coordinator
+        self._sync_from_coordinator()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Read metric value from coordinator data and update state."""
+        self._sync_from_coordinator()
+        self.async_write_ha_state()
+
+    def _sync_from_coordinator(self) -> None:
+        """Sync native_value from coordinator metric data."""
+        if not self.coordinator.data:
+            return
+        value = self.coordinator.get_metric_value(self._metric_key)
+        if value is not None:
+            self._attr_native_value = value
+        else:
+            self._attr_native_value = None
 
     async def async_set_native_value(self, value: float):
-        self._attr_native_value = value
-        self.async_write_ha_state()
+        """
+        Set the metric value via the coordinator's daily-lock API.
+
+        If the metric has already been logged today, the coordinator will
+        raise ``HomeAssistantError`` which propagates to the HA UI as an
+        error toast.  The frontend card handles this by showing a warning
+        dialog with an Override button that calls the ``set_metric`` service
+        with ``override=true``.
+        """
+        await self.coordinator.async_set_metric(
+            self._metric_key, value, override=False
+        )

@@ -48,3 +48,24 @@ adherence_override:
       selector:
         config_entry:
           integration: ax_dose_logger
+
+set_metric:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: ax_dose_logger
+          domain: number
+    value:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 1
+          mode: box
+    override:
+      required: false
+      selector:
+        boolean:

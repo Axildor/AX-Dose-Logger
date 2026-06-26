@@ -33,6 +33,7 @@ class AxDoseLoggerEntity(CoordinatorEntity[AxDoseLoggerCoordinator]):
     ) -> None:
         """Initialize the entity from a config entry and coordinator."""
         super().__init__(coordinator)
+        self._entry = entry
         self._entry_id = entry.entry_id
         self._med_name = entry.data["medication_name"]
         self._attr_device_info = DeviceInfo(

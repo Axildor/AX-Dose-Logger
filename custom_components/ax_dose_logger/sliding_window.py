@@ -6,7 +6,7 @@ These pure functions were extracted from duplicated inline copies in
 and ``calendar.py`` (Batch 4A of the backend technical audit).
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 
@@ -94,3 +94,28 @@ def compute_safe_to_take(
         safe_to_take = 0
 
     return safe_to_take
+
+
+def is_day_covered(check_date: date, timestamps: list[datetime]) -> bool:
+    """
+    Return ``True`` when any dose timestamp falls on *check_date* (local calendar day).
+
+    Uses tz-safe local-date conversion mirroring ``avg_doses._local_date`` so
+    a UTC-stored timestamp is compared against the user's local calendar day,
+    not the UTC day.  This is the day-level coverage model used by
+    ``avg_doses`` (PDC) and ``next_dose`` for cyclic schedules, and by the
+    overdue sensor for single-slot Time of Day schedules.
+
+    Args:
+        check_date: The local calendar date to test (typically ``now.date()``
+            where ``now`` is tz-aware via ``dt_util.now()``).
+        timestamps: List of dose datetimes (may be tz-aware or naive).
+
+    Returns:
+        True if at least one timestamp's local date equals *check_date*.
+    """
+    for ts in timestamps:
+        ts_date = ts.astimezone().date() if ts.tzinfo is not None else ts.date()
+        if ts_date == check_date:
+            return True
+    return False
