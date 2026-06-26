@@ -24,7 +24,7 @@ from ..const import (
     get_dose_times,
 )
 from ..entity import AxDoseLoggerSensorEntity
-from ..sliding_window import is_on_day
+from ..sliding_window import is_day_covered, is_on_day
 
 
 class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
@@ -108,19 +108,31 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if not parsed_times:
             return None
 
-        # Compute grace period (same algorithm as next_dose.py)
-        if len(parsed_times) >= 2:
-            min_gap_minutes = 24 * 60
-            for i in range(len(parsed_times)):
-                for j in range(i + 1, len(parsed_times)):
-                    gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (
-                        parsed_times[i][0] * 60 + parsed_times[i][1]
-                    )
-                    min_gap_minutes = min(min_gap_minutes, gap)
-            grace_minutes = max(30, min_gap_minutes // 2)
-        else:
-            grace_minutes = 60
+        # Single daily dose: use day-level coverage so a late-but-taken
+        # dose clears overdue, matching pill_limit's 24h rolling window.
+        # This avoids the impossible "LIMIT REACHED + OVERDUE" state that
+        # the ±grace model produced.  Timing quality is still tracked by
+        # the adherence sensor (±grace).
+        if len(parsed_times) == 1:
+            hour, minute = parsed_times[0]
+            slot_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if now < slot_time:
+                return None
+            if is_day_covered(now.date(), timestamps):
+                return None
+            return slot_time
 
+        # Multi-slot: keep ±grace model (follow-up task may switch to
+        # inter-slot interval coverage; day-level is wrong here because
+        # a single dose would wrongly clear multiple slots).
+        min_gap_minutes = 24 * 60
+        for i in range(len(parsed_times)):
+            for j in range(i + 1, len(parsed_times)):
+                gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (
+                    parsed_times[i][0] * 60 + parsed_times[i][1]
+                )
+                min_gap_minutes = min(min_gap_minutes, gap)
+        grace_minutes = max(30, min_gap_minutes // 2)
         grace_td = timedelta(minutes=grace_minutes)
 
         # Check today's slots that have already passed
@@ -190,12 +202,14 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if now < dose_time_today:
             return None
 
-        # Check if a dose was taken within grace (1 hour for cyclic)
-        grace_td = timedelta(hours=1)
-        for ts in timestamps:
-            if abs((ts - dose_time_today).total_seconds()) <= grace_td.total_seconds():
-                # Covered — not overdue
-                return None
+        # Day-level coverage: any dose taken on this ON calendar day
+        # covers the slot.  This aligns with pill_limit (24h rolling
+        # window), avg_doses (PDC day coverage), and next_dose, so a
+        # late-but-taken dose clears overdue instead of producing the
+        # impossible "LIMIT REACHED + OVERDUE" state.  Timing quality
+        # is still tracked separately by the adherence sensor (±grace).
+        if is_day_covered(now.date(), timestamps):
+            return None
 
-        # On an ON day, dose time has passed, no dose within grace → overdue
+        # On an ON day, dose time has passed, no dose today → overdue
         return dose_time_today

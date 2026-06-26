@@ -339,14 +339,19 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry):
         self._entry = config_entry
         self._data = {}
+        # Snapshot of the tracking_type at the moment the options flow opened.
+        # Used to detect whether the user changed it in async_step_init, which
+        # routes to async_step_schedule to collect the new type's schedule
+        # fields before continuing to the PK step.
+        self._original_tracking_type = config_entry.data.get("tracking_type")
 
     async def async_step_init(self, user_input=None):
         """Step 1: Schedule and dosing parameters."""
         if user_input is not None:
             self._data.update(user_input)
-            # For Time of Day: collect dose_time_N into dose_times list
-            tracking_type = self._entry.data.get("tracking_type")
-            if tracking_type == TRACKING_TIME_OF_DAY:
+            new_tracking_type = user_input.get("tracking_type")
+            # For Time of Day (unchanged): collect dose_time_N into dose_times list
+            if new_tracking_type == TRACKING_TIME_OF_DAY and new_tracking_type == self._original_tracking_type:
                 doses_per_day = int(user_input.get("doses_per_day", self._entry.data.get("doses_per_day", 1)))
                 dose_times = []
                 for i in range(doses_per_day):
@@ -360,8 +365,12 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 for i in range(doses_per_day):
                     self._data.pop(f"dose_time_{i + 1}", None)
             # Force calendar off for As Needed — no predictable schedule
-            if tracking_type == TRACKING_AS_NEEDED:
+            if new_tracking_type == TRACKING_AS_NEEDED:
                 self._data["enable_calendar"] = False
+            # If the tracking type changed, collect the new type's schedule
+            # fields in a dedicated step before continuing to PK.
+            if new_tracking_type != self._original_tracking_type:
+                return await self.async_step_schedule()
             return await self.async_step_pk()
 
         tracking_type = self._entry.data.get("tracking_type")
@@ -369,6 +378,14 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         data = self._entry.data
 
         main_schema = {}
+        # Tracking type selector — allows changing the type post-setup.
+        main_schema[vol.Required("tracking_type", default=tracking_type)] = sel.SelectSelector(
+            sel.SelectSelectorConfig(
+                options=TRACKING_TYPES,
+                mode=sel.SelectSelectorMode.DROPDOWN,
+                translation_key="tracking_type",
+            )
+        )
         if tracking_type == TRACKING_REGULAR_INTERVAL:
             main_schema[vol.Required("hours_between_doses", default=options.get("hours_between_doses", data.get("hours_between_doses", 8)))] = _HOURS_BETWEEN_SELECTOR
             # Default time_window_hours to hours_between_doses if not explicitly set
@@ -401,6 +418,91 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(main_schema),
+        )
+
+    async def async_step_schedule(self, user_input=None):
+        """Step 1b: Collect schedule fields for a newly-selected tracking type.
+
+        Shown only when the user changed ``tracking_type`` in
+        ``async_step_init``.  Presents the new type's schedule-specific
+        fields with config-flow defaults (since the entry's data/options
+        don't yet contain fields for the new type).  For Time of Day, this
+        is a two-sub-step flow: first ``doses_per_day`` + safety fields,
+        then ``async_step_schedule_times`` for the N individual times.
+        """
+        new_tracking_type = self._data.get("tracking_type")
+
+        if user_input is not None:
+            self._data.update(user_input)
+            # For Time of Day: route to the times sub-step
+            if new_tracking_type == TRACKING_TIME_OF_DAY:
+                return await self.async_step_schedule_times()
+            return await self.async_step_pk()
+
+        # Build the schema for the new tracking type using config-flow defaults.
+        # Existing entry.data/options values are reused where the field already
+        # exists (e.g. pill_limit, time_window_hours), otherwise defaults.
+        options = self._entry.options
+        data = self._entry.data
+        schema = {}
+
+        if new_tracking_type == TRACKING_REGULAR_INTERVAL:
+            schema[vol.Required("hours_between_doses", default=options.get("hours_between_doses", data.get("hours_between_doses", 8)))] = _HOURS_BETWEEN_SELECTOR
+            tw_default = options.get("time_window_hours", data.get("time_window_hours", 8))
+            schema[vol.Required("time_window_hours", default=tw_default)] = _TIME_WINDOW_SELECTOR
+        elif new_tracking_type == TRACKING_TIME_OF_DAY:
+            schema[vol.Required("doses_per_day", default=1)] = _DOSES_PER_DAY_SELECTOR
+            schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = _TIME_WINDOW_SELECTOR
+        elif new_tracking_type == TRACKING_AS_NEEDED:
+            schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 8)))] = _TIME_WINDOW_SELECTOR
+        elif new_tracking_type == TRACKING_CYCLIC:
+            schema[vol.Required("days_on", default=5)] = _DAYS_SELECTOR
+            schema[vol.Required("days_off", default=2)] = _DAYS_SELECTOR
+            schema[vol.Required("cycle_anchor_date", default=date.today().isoformat())] = sel.DateSelector(sel.DateSelectorConfig())
+            schema[vol.Required("dose_time", default="08:00")] = sel.TimeSelector()
+            schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = _TIME_WINDOW_SELECTOR
+
+        schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = _PILL_LIMIT_SELECTOR
+
+        # Calendar toggle — only for scheduled tracking types (not As Needed)
+        if new_tracking_type != TRACKING_AS_NEEDED:
+            schema[vol.Optional("enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", False)))] = sel.BooleanSelector()
+
+        return self.async_show_form(
+            step_id="schedule",
+            data_schema=vol.Schema(schema),
+        )
+
+    async def async_step_schedule_times(self, user_input=None):
+        """Step 1c: Configure individual dose times for a new Time of Day type.
+
+        Mirrors the config flow's ``async_step_time_of_day_times``.  Shown
+        only when switching *to* Time of Day (after ``async_step_schedule``
+        collected ``doses_per_day``).
+        """
+        doses_per_day = int(self._data.get("doses_per_day", 1))
+        defaults = generate_default_dose_times(doses_per_day)
+
+        if user_input is not None:
+            dose_times = []
+            for i in range(doses_per_day):
+                key = f"dose_time_{i + 1}"
+                val = user_input.get(key, defaults[i] if i < len(defaults) else "08:00")
+                dose_times.append(val)
+            dose_times.sort()
+            self._data["dose_times"] = dose_times
+            for i in range(doses_per_day):
+                self._data.pop(f"dose_time_{i + 1}", None)
+            return await self.async_step_pk()
+
+        schema_fields = {}
+        for i in range(doses_per_day):
+            default_time = defaults[i] if i < len(defaults) else "08:00"
+            schema_fields[vol.Required(f"dose_time_{i + 1}", default=default_time)] = sel.TimeSelector()
+
+        return self.async_show_form(
+            step_id="schedule_times",
+            data_schema=vol.Schema(schema_fields),
         )
 
     async def async_step_pk(self, user_input=None):
@@ -450,18 +552,54 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             adherence_data = user_input.pop(_ADHERENCE_SECTION_KEY, {})
             user_input.update(adherence_data)
             self._data.update(user_input)
-            # Force adherence off for As Needed — no scheduled doses to track
-            if self._entry.data.get("tracking_type") == TRACKING_AS_NEEDED:
+            # Use the (possibly changed) tracking_type from self._data, not
+            # the original entry.data value, so adherence is forced off when
+            # switching to As Needed.
+            new_tracking_type = self._data.get("tracking_type", self._entry.data.get("tracking_type"))
+            if new_tracking_type == TRACKING_AS_NEEDED:
                 self._data["enable_adherence"] = False
+            # If the tracking type changed, persist the new type + schedule
+            # fields into entry.data via async_update_entry.  OptionsFlow
+            # only writes entry.options, so we mutate entry.data explicitly
+            # here.  This fires the update listener (async_reload_entry),
+            # which detects the tracking_type change and reloads the entry
+            # to recreate entities for the new type.
+            if new_tracking_type != self._original_tracking_type:
+                new_data = {**self._entry.data}
+                # Copy tracking_type + schedule fields from self._data into data.
+                # These are the fields that belong in entry.data (set during
+                # the initial config flow); PK/effectiveness/common fields
+                # stay in entry.options via async_create_entry below.
+                _DATA_KEYS_ON_TYPE_CHANGE = (
+                    "tracking_type",
+                    "hours_between_doses",
+                    "doses_per_day",
+                    "dose_times",
+                    "days_on",
+                    "days_off",
+                    "cycle_anchor_date",
+                    "dose_time",
+                    "time_window_hours",
+                    "pill_limit",
+                    "enable_calendar",
+                )
+                for key in _DATA_KEYS_ON_TYPE_CHANGE:
+                    if key in self._data:
+                        new_data[key] = self._data[key]
+                self.hass.config_entries.async_update_entry(
+                    self._entry, data=new_data
+                )
             # OptionsFlow.async_create_entry REPLACES entry.options entirely
             # (it does not merge). self._data accumulates all fields across the
-            # 3 steps (init → pk → effectiveness) via .update(), so the
+            # steps (init/schedule → pk → effectiveness) via .update(), so the
             # complete options dict is submitted here.
             return self.async_create_entry(title="", data=self._data)
 
         options = self._entry.options
         data = self._entry.data
-        tracking_type = data.get("tracking_type")
+        # Use the (possibly changed) tracking_type from self._data if the user
+        # already went through the schedule step; otherwise the original.
+        tracking_type = self._data.get("tracking_type", data.get("tracking_type"))
 
         fields = {}
         # Read tracked_symptoms from options/data; fall back to migrating

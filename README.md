@@ -18,7 +18,7 @@ If you want to go deeper, AX Dose Logger can also model how much medication is a
 <!-- SCREENSHOT: The 4-step AX Dose Logger config flow — capture step 1 (name + tracking type + release type) or a composite of all 4 steps -->
 ![Config flow](screenshots/config-flow.png)
 
-3. **Add to your dashboard** — Install the dedicated [AX Dose Logger Card](#dashboard-card) and add it to your dashboard. No template YAML required.
+3. **Add to your dashboard** — Install the dedicated [AX Dose Logger Card](https://github.com/Axildor/AX-Dose-Logger-Card) and add it to your dashboard. No template YAML required.
 
 ### How It Works
 
@@ -121,16 +121,9 @@ There's a ready-made Blueprint you can import for push notifications with Take, 
 
 AX Dose Logger has a dedicated Lovelace card that surfaces everything the integration produces — no template YAML, no Mushroom/Card-Mod dependencies. It's a separate repository, installed via HACS as a **Dashboard** card.
 
-> **Note:** The card repository link below is a placeholder — the dedicated card integration is not live yet.
-
 **Install:** `https://github.com/Axildor/AX-Dose-Logger-Card` (HACS → Custom Repositories → Dashboard category)
 
-Once installed, add it to your dashboard via the visual editor (pick your medication device) or with simple YAML:
-
-```yaml
-type: custom:ax-dose-logger-card
-device_id: <your medication device ID>
-```
+Once installed, add it to your dashboard via the visual editor and pick your medication device from the dropdown.
 
 The card has four panes, selectable via tabs at the bottom:
 
@@ -172,7 +165,7 @@ The card has four panes, selectable via tabs at the bottom:
 - Reset dose history
 - Undo last dose
 
-For full card configuration options (color schemes, column layouts, chip customization, graph toggles), see the card repository's README.
+For full card configuration options (color schemes, column layouts, chip customization, graph toggles), see the [AX Dose Logger Card repository](https://github.com/Axildor/AX-Dose-Logger-Card#readme).
 
 ---
 
@@ -491,9 +484,9 @@ Home Assistant event bus events (for automations):
 
 | Field | Range | Description | Default |
 |-------|------|-------------|---------|
-| Initial Release | 0–100 % | Percentage of the dose released immediately (IR fraction). For Panadol Extend, this is ~39%. | 100 |
-| Sustained Release Duration | 0–72 h | Duration of the zero-order (constant-rate) release phase. For Panadol Extend, this is ~4.5 h. | 0 |
-| Release Half-Life | 0–168 h | Half-life of the first-order release from the SR matrix after the zero-order phase ends. For Panadol Extend, this is ~2.5 h. | 0 |
+| Initial Release | 0–100 % | Percentage of the dose released immediately (IR fraction). For Paracetamol (Panadol/Tylenol) ER 665 mg, this is 31%. | 100 |
+| Sustained Release Duration | 0–72 h | Duration of the zero-order (constant-rate) release phase. Leave at 0 for matrix tablets (e.g. Paracetamol ER) — they are polymer sponges, not mechanical pumps. | 0 |
+| Release Half-Life | 0–168 h | Half-life of the first-order release from the SR matrix (the polymer sponge's physical dissolution time). For Paracetamol (Panadol/Tylenol) ER 665 mg, this is 3.0 h. | 0 |
 
 > Leave Dose Strength and Elimination Half-Life at 0 if you don't need concentration tracking. The Amount in Body sensor will report `0` when PK fields are not configured. The Steady State sensor is only created for scheduled medications (Regular Interval, Time of Day, Cyclic) — it is not available for As Needed medications.
 
@@ -510,13 +503,15 @@ Home Assistant event bus events (for automations):
 
 Click **Configure** on the integration entry to change settings without recreating the medication. The reconfiguration flow has 3 steps:
 
-**Step 1: Schedule & Dosing** (fields vary by tracking type — same as Step 2 above)
+**Step 1: Schedule & Dosing** — A **Tracking Type** dropdown at the top lets you change how the medication is scheduled (e.g. from Regular Interval to Cyclic, or to As Needed). If you change it, an extra **New Schedule** step appears to collect the new type's schedule fields. If you keep the same type, the current schedule fields are shown inline as before. Dose history and effectiveness logs are preserved across the change.
 
 **Step 2: Pharmacokinetics** (same as Step 3 above)
 
 **Step 3: Symptom & Adherence Tracking** (same as Step 4 above)
 
-> **Note:** The medication name, tracking type, and release type can't be changed after creation.
+> **Note:** The medication name and release type can't be changed after creation. The tracking type *can* be changed from the Configure dialog.
+
+> **Changes apply automatically.** After saving, schedule, dosing, and pharmacokinetic changes (including Dose Strength and its unit) propagate to all sensors on the next refresh cycle — within about a minute, or instantly when you log your next dose. No device reload is needed. The exceptions are: enabling/disabling the Calendar, Adherence, or tracked symptoms (which add or remove entities), and **changing the Tracking Type** (which reloads the device to recreate its sensors for the new schedule). In all cases your dose history and effectiveness logs are preserved.
 
 ---
 
@@ -530,7 +525,7 @@ When you take a standard (instant-release) pill, the drug doesn't instantly appe
 
 ```
 ┌─────────┐    absorption (kₐ)    ┌─────────┐    elimination (kₑ)    ┌─────┐
-│   Gut   │ ───────────────────▶ │  Body   │ ──────���───────────────▶ │ Out │
+│   Gut   │ ───────────────────▶ │  Body   │ ──────────────────────▶ │ Out │
 │  (mg)   │                       │  (mg)   │                         │     │
 └─────────┘                       └─────────┘                         └─────┘
 ```
@@ -590,7 +585,7 @@ The gut compartment is bypassed entirely (G = 0 at all times).
 
 ### Sustained Release: The Four-Compartment Hybrid Model
 
-For extended-release medications (e.g., Panadol Extend 665 mg), the drug is released in two phases: an initial burst for quick onset, followed by a sustained release that maintains therapeutic levels. AX Dose Logger models this with four compartments:
+For extended-release medications (e.g., Paracetamol (Panadol/Tylenol) ER 665 mg), the drug is released in two phases: an initial burst for quick onset, followed by a sustained release that maintains therapeutic levels. AX Dose Logger models this with four compartments:
 
 ```
                     ┌──────────────┐
@@ -599,7 +594,7 @@ For extended-release medications (e.g., Panadol Extend 665 mg), the drug is rele
                     └──────┬───────┘
                            │  kₐ absorption
                            ▼
-┌──────────────┐    ┌──────────────┐    elimination (kₑ)    ┌─────┐
+┌──────────────┐    ┌──────────────┐    elimination (kₑ)    ┌───��─┐
 │  SR Matrix   │───▶│  SR Gut      │──────────────────────▶ │ Out │
 │  (mg)        │    │  (mg)        │                         │     │
 └──────────────┘    └──────┬───────┘                         └─────┘
@@ -618,15 +613,16 @@ For extended-release medications (e.g., Panadol Extend 665 mg), the drug is rele
 
 #### SR Parameters
 
-| Parameter | What It Means | Example (Panadol Extend) |
+| Parameter | What It Means | Example (Paracetamol ER) |
 |-----------|--------------|--------------------------|
 | **Dose Strength (D)** | Milligrams per pill | 665 mg |
-| **Elimination Half-Life (t½)** | Time for the body to eliminate half the drug | 2.5 h (paracetamol) |
-| **Time to Peak Concentration (t_max)** | Hours until peak for the IR fraction | 0.5 h |
+| **Elimination Half-Life (t½)** | Time for the liver to clear half the drug | 2.0 h |
+| **Time to Peak Concentration (t_max)** | Hours until the overall formulation peaks | 2.8 h |
+| **Immediate Release Time to Peak (IR t_max)** | Hours until the fast instant-release layer peaks | 1.0 h |
 | **Bioavailability (F)** | Fraction reaching systemic circulation | 85% |
-| **Initial Release (IR%)** | Percentage of the dose released immediately | 39% |
-| **Sustained Release Duration** | Duration of the constant-rate (zero-order) release phase | 4.5 h |
-| **Release Half-Life** | Half-life of the exponential release from the SR matrix after the zero-order phase | 2.5 h |
+| **Initial Release (IR%)** | Percentage of the dose released immediately | 31% |
+| **Sustained Release Duration (T_dur)** | Duration of the constant-rate (zero-order) release phase — 0 for matrix tablets | 0 h |
+| **Release Half-Life** | Time for the polymer matrix sponge to physically dissolve | 3.0 h |
 
 #### Piecewise Analytical Solution
 
@@ -700,25 +696,31 @@ At the moment of the second dose, the body still holds ~35.5 mg from the first d
 
 This means at steady state, the peak amount in the body reaches approximately 228 mg — only 14% more than a single dose, because ibuprofen's 2-hour half-life allows significant elimination between doses.
 
-### Worked Example: Panadol Extend 665 mg (Sustained Release)
+### Worked Example: Paracetamol (Panadol/Tylenol) ER 665 mg (Sustained Release)
 
-**Configuration:** D = 665 mg, t½ = 2.5 h, t_max = 0.5 h, F = 85%, IR% = 39%, T = 4.5 h, release_half_life = 2.5 h
+**Configuration:** D = 665 mg, t½ = 2.0 h, t_max = 2.8 h, IR t_max = 1.0 h, F = 85%, IR% = 31%, T_dur = 0 h, release_half_life = 3.0 h
 
 **Step 1 — Rate constants:**
-> kₑ = ln(2) / 2.5 = 0.277 h⁻¹
-> kₐ ≈ 2.08 h⁻¹ (solved from t_max = 0.5 h)
-> kᵣ = ln(2) / 2.5 = 0.277 h⁻¹
+> kₑ = ln(2) / 2.0 = 0.347 h⁻¹
+> kₐ ≈ 0.51 h⁻¹ (solved from t_max = 2.8 h — the overall formulation peak)
+> kₐ_IR ≈ 1.15 h⁻¹ (solved from IR t_max = 1.0 h — the fast instant-release layer)
+> kᵣ = ln(2) / 3.0 = 0.231 h⁻¹ (the polymer matrix dissolution rate)
 
 **Step 2 — Dose fractions:**
-> D_IR = 665 × 0.39 = 259.4 mg (immediate release)
-> D_SR = 665 × 0.61 = 405.7 mg (sustained release)
+> D_IR = 665 × 0.85 × 0.31 = 175.2 mg (immediate release, bioavailability-adjusted)
+> D_SR = 665 × 0.85 × 0.69 = 389.9 mg (sustained release, bioavailability-adjusted)
 
-**Step 3 — Zero-order release rate:**
-> R₀ ≈ 50.6 mg/h (constant release during the first 4.5 hours)
+**Step 3 — Release profile (matrix tablet, no zero-order pump):**
+
+Because T_dur = 0, there is no constant-rate zero-order phase — Panadol is a matrix tablet, not an osmotic pump. The entire SR fraction is released by first-order dissolution of the polymer sponge at rate kᵣ = 0.231 h⁻¹ (half-life 3.0 h). The SR matrix mass decays as:
+
+> M(t) = D_SR × e^(−kᵣ·t)
+
+The released drug enters the SR gut compartment and is absorbed into the body at the slow overall rate kₐ = 0.51 h⁻¹.
 
 **Step 4 — Resulting profile:**
 
-The IR fraction peaks quickly (~30 min), providing rapid onset. The SR fraction then maintains drug levels over 8–12 hours through the combined zero-order and first-order release. The total body amount at any time is the sum of all compartment contributions plus any residual from previous doses.
+The IR fraction (31% of the dose) peaks quickly at ~1.0 h via the fast kₐ_IR, providing rapid onset. The SR fraction (69%) is gradually liberated as the polymer matrix dissolves over ~3 h half-lives, then absorbed at the slower overall kₐ, producing a broad second peak around t_max = 2.8 h that maintains therapeutic levels over 6–8 hours. The total body amount at any time is the superposition of the IR and SR contributions plus any residual from previous doses.
 
 ### Steady State Tracking
 

@@ -254,10 +254,15 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
         for suffix in ("_reset_adherence", "_cover_last_missed"):
             _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
 
-    # --- tracking_type: * → "as_needed" ---
-    # tracking_type is immutable via the options flow (set during initial
-    # config flow), so this branch is effectively dead code.  It's kept for
-    # safety in case a future reconfigure step allows changing tracking_type.
+    # --- tracking_type changed ---
+    # The options flow now allows changing tracking_type post-setup (e.g.
+    # Regular Interval → Cyclic).  When the new type is As Needed, the
+    # scheduled-only entities (steady_state, overdue, calendar, adherence
+    # sensors + adherence buttons) must be removed to prevent ghost
+    # "unavailable" entities, since As Needed doesn't create them.
+    # Scheduled → scheduled transitions (Regular/ToD/Cyclic) need no removal:
+    # all scheduled types create the same entity set, and the schedule-
+    # specific fields are read fresh by sensors on every update cycle.
     if "tracking_type" in changed and curr["tracking_type"] == TRACKING_AS_NEEDED:
         _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_steady_state")
         _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_overdue")
