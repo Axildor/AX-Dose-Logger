@@ -38,6 +38,9 @@ SERVICE_RESET: Final = "reset"
 SERVICE_ADHERENCE_RESET: Final = "adherence_reset"
 SERVICE_ADHERENCE_OVERRIDE: Final = "adherence_override"
 SERVICE_SET_METRIC: Final = "set_metric"
+SERVICE_LOG_DRINK: Final = "log_drink"
+SERVICE_UNDO_DRINK: Final = "undo_drink"
+SERVICE_RESET_DRINK: Final = "reset_drink"
 
 # Service fields
 ATTR_ENTRY_ID: Final = "entry_id"
@@ -180,6 +183,36 @@ async def _async_set_metric(call: ServiceCall) -> None:
     await coordinator.async_set_metric(metric_key, value, override=override)
 
 
+# log_drink / undo_drink / reset_drink reuse the same base schema
+# (entry_id + optional timestamp for log_drink) as the medicine services.
+SERVICE_LOG_DRINK_SCHEMA = SERVICE_TAKE_DOSE_SCHEMA
+
+
+async def _async_log_drink(call: ServiceCall) -> None:
+    """Handle the ``log_drink`` service — log a granular drink."""
+    coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
+    timestamp = None
+    if call.data.get(ATTR_TIMESTAMP):
+        timestamp = dt_util.parse_datetime(call.data[ATTR_TIMESTAMP])
+    if hasattr(coordinator, "is_within_cooldown") and coordinator.is_within_cooldown(timestamp):
+        raise HomeAssistantError(
+            "Cooldown active — wait until the lockout period ends before logging another drink."
+        )
+    await coordinator.async_log_drink(timestamp)
+
+
+async def _async_undo_drink(call: ServiceCall) -> None:
+    """Handle the ``undo_drink`` service — revert the last granular drink."""
+    coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
+    await coordinator.async_undo_drink()
+
+
+async def _async_reset_drink(call: ServiceCall) -> None:
+    """Handle the ``reset_drink`` service — clear a granular drink's history."""
+    coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
+    await coordinator.async_reset()
+
+
 def async_setup_services(hass: HomeAssistant) -> None:
     """
     Register all ax_dose_logger services.
@@ -215,6 +248,18 @@ def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_SET_METRIC, _async_set_metric, schema=SERVICE_SET_METRIC_SCHEMA
     )
+    # pylint: disable-next=home-assistant-service-registered-in-setup-entry
+    hass.services.async_register(
+        DOMAIN, SERVICE_LOG_DRINK, _async_log_drink, schema=SERVICE_LOG_DRINK_SCHEMA
+    )
+    # pylint: disable-next=home-assistant-service-registered-in-setup-entry
+    hass.services.async_register(
+        DOMAIN, SERVICE_UNDO_DRINK, _async_undo_drink, schema=SERVICE_BASE_SCHEMA
+    )
+    # pylint: disable-next=home-assistant-service-registered-in-setup-entry
+    hass.services.async_register(
+        DOMAIN, SERVICE_RESET_DRINK, _async_reset_drink, schema=SERVICE_BASE_SCHEMA
+    )
 
 
 def async_unload_services(hass: HomeAssistant) -> None:
@@ -230,6 +275,9 @@ def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_ADHERENCE_RESET,
         SERVICE_ADHERENCE_OVERRIDE,
         SERVICE_SET_METRIC,
+        SERVICE_LOG_DRINK,
+        SERVICE_UNDO_DRINK,
+        SERVICE_RESET_DRINK,
     ):
         if hass.services.has_service(DOMAIN, service_name):
             hass.services.async_remove(DOMAIN, service_name)

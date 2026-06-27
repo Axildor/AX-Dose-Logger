@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "ax_dose_logger"
-CURRENT_VERSION = 11
+CURRENT_VERSION = 12
 
 # --- Tracking type constants ---
 TRACKING_REGULAR_INTERVAL = "regular_interval"
@@ -33,6 +33,43 @@ RELEASE_TYPES: list[str] = [
     RELEASE_INSTANT,
     RELEASE_SUSTAINED,
 ]
+
+# --- Device category constants (config flow router) ---
+DEVICE_CATEGORY_MEDICINE = "medicine"
+DEVICE_CATEGORY_DRINKS = "drinks"
+DEVICE_CATEGORY_DRINK_SETTINGS = "drink_settings"
+
+DEVICE_CATEGORIES: list[str] = [
+    DEVICE_CATEGORY_MEDICINE,
+    DEVICE_CATEGORY_DRINKS,
+    DEVICE_CATEGORY_DRINK_SETTINGS,
+]
+
+# --- Drink type constants ---
+DRINK_TYPE_CAFFEINE = "caffeine"
+DRINK_TYPE_ALCOHOL = "alcohol"
+
+DRINK_TYPES: list[str] = [
+    DRINK_TYPE_CAFFEINE,
+    DRINK_TYPE_ALCOHOL,
+]
+
+# --- Substance tracker identifiers (stable across Drink Settings recreations) ---
+CAFFEINE_TRACKER_ID = "caffeine_tracker"
+ALCOHOL_TRACKER_ID = "alcohol_tracker"
+
+# Drink master store key suffix per substance type
+DRINK_MASTER_STORE_KEYS: dict[str, str] = {
+    DRINK_TYPE_CAFFEINE: "ax_dose_logger_drink_master_caffeine",
+    DRINK_TYPE_ALCOHOL: "ax_dose_logger_drink_master_alcohol",
+}
+
+# --- Global PK defaults (Drink Settings singleton) ---
+GLOBAL_PK_DEFAULTS: dict[str, float] = {
+    "global_caffeine_half_life": 5.0,        # hours
+    "global_caffeine_tmax": 0.75,            # hours
+    "global_alcohol_elimination_rate": 8.0,  # g/h
+}
 
 # --- Strength unit constants ---
 STRENGTH_UNIT_MCG = "mcg"

@@ -3,6 +3,10 @@ Persistent storage for dose history and daily metric data outside entity attribu
 
 Uses HA's storage.Store to persist dose history and daily metric values to
 JSON files, avoiding SQLite bloat and the 16KB attribute limit.
+
+Also persists aggregated drink-master dose history and zero-order PK state
+(caffeine/alcohol) so the Master Tracker sensors can reconstruct their decay
+curves across restarts.
 """
 
 from homeassistant.core import HomeAssistant, callback
@@ -21,6 +25,15 @@ _LEGACY_STORAGE_KEY = "pill_logger_dose_history"
 
 METRIC_STORAGE_VERSION = 1
 
+# Drink master storage — one Store per substance (caffeine/alcohol).
+# Each substance's data dict shape:
+#   {
+#     "doses": [[iso_timestamp, strength, t_dur_hours], ...],
+#     "body_mass": float,
+#     "last_decay": iso_timestamp | None
+#   }
+DRINK_MASTER_STORAGE_VERSION = 1
+
 
 class AxDoseLoggerStore:
     """
@@ -37,6 +50,9 @@ class AxDoseLoggerStore:
         self._data: dict[str, list[list[str | float]]] = {}
         self._metric_store: Store = Store(hass, METRIC_STORAGE_VERSION, METRIC_STORE_KEY)
         self._metric_data: dict[str, dict[str, dict]] = {}
+        # Per-substance drink master stores (created lazily)
+        self._drink_master_stores: dict[str, Store] = {}
+        self._drink_master_data: dict[str, dict] = {}
 
     async def async_load(self) -> None:
         """Load data from storage, migrating from the legacy key if needed.
@@ -74,6 +90,23 @@ class AxDoseLoggerStore:
         else:
             self._metric_data = {}
 
+    async def async_load_drink_master(self, substance: str, store_key: str) -> None:
+        """Load (or initialize) the drink master store for a substance.
+
+        Called once per substance during Drink Settings entry setup.
+        """
+        store = Store(self._hass, DRINK_MASTER_STORAGE_VERSION, store_key)
+        self._drink_master_stores[substance] = store
+        data = await store.async_load()
+        if data:
+            self._drink_master_data[substance] = data
+        else:
+            self._drink_master_data[substance] = {
+                "doses": [],
+                "body_mass": 0.0,
+                "last_decay": None,
+            }
+
     @callback
     def get_history(self, entry_id: str) -> list[list[str | float]]:
         """
@@ -105,3 +138,25 @@ class AxDoseLoggerStore:
         """Save daily metric values for a specific entry."""
         self._metric_data[entry_id] = metrics
         await self._metric_store.async_save(self._metric_data)
+
+    # ------------------------------------------------------------------
+    # Drink master storage (caffeine/alcohol aggregated PK)
+    # ------------------------------------------------------------------
+    @callback
+    def get_drink_master(self, substance: str) -> dict:
+        """Get the aggregated drink master data for a substance.
+
+        Returns {"doses": [[iso, strength, t_dur_hours], ...],
+                 "body_mass": float, "last_decay": iso | None}.
+        """
+        return self._drink_master_data.get(
+            substance,
+            {"doses": [], "body_mass": 0.0, "last_decay": None},
+        )
+
+    async def async_set_drink_master(self, substance: str, data: dict) -> None:
+        """Save aggregated drink master data for a substance."""
+        self._drink_master_data[substance] = data
+        store = self._drink_master_stores.get(substance)
+        if store is not None:
+            await store.async_save(data)

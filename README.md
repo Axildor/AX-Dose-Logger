@@ -1,10 +1,67 @@
 # 💊 AX Dose Logger
 
-A fully local Home Assistant integration for tracking medications — when you took them, when your next dose is, and whether it's safe to take another. It runs entirely on your instance with no cloud dependency.
+A fully local Home Assistant integration for tracking **medications and drinks** — when you took them, when your next dose is, and whether it's safe to take another. It runs entirely on your instance with no cloud dependency.
 
-If you want to go deeper, AX Dose Logger can also model how much medication is actually in your body over time using pharmacokinetic engines for both instant-release and sustained-release formulations, track how well your meds are working with custom sliders, and send you mobile reminders when it's time to take a dose.
+For medications, AX Dose Logger models how much drug is actually in your body over time using pharmacokinetic engines for both instant-release and sustained-release formulations, tracks how well your meds are working with custom sliders, and sends mobile reminders when it's time to take a dose.
+
+For drinks (caffeine & alcohol), it tracks each drink granularly (one device per drink) and aggregates the doses into global Master Trackers that draw decay curves using integration-level metabolic constants.
 
 > ⚠️ **Medical disclaimer:** This integration is for informational and home automation purposes only. It is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.
+
+---
+
+## Drinks Tracking (Caffeine & Alcohol)
+
+In addition to medications, AX Dose Logger can track caffeinated and alcoholic drinks. The first config-flow step now asks you to choose a **Device Category**:
+
+- **Medication** — the legacy flow (scheduled pills, PK concentration, adherence, etc.)
+- **Drink** — track a caffeine or alcohol drink with a granular device
+- **Drink Settings** — singleton entry hosting global metabolic constants + the two Master Tracker devices
+
+### How Drinks Work
+
+Each configured drink becomes its own **Granular Drink Device** (e.g. "Morning Espresso", "Evening Beer") with the same Control and Configuration entity set as a medication:
+
+- A **Log Drink** control button (with optional cooldown lockout — limit is always 1 per window). **Pressing this is what activates the Master Tracker PK engines** — each press forwards the drink's `dose_strength` + `drinking_duration` to the matching substance's Master Tracker coordinator.
+- An **Undo Drink** control button (reverts the last drink + its master contribution)
+- A **Reset History** configuration button (clears the drink's local history + master contribution)
+- A **Stock Left** control number (counts down by 1 per Log Drink press, using your configured unit of measurement, e.g. Cups/Cans/Bottles)
+- An **Add Stock** control number (disposable input to refill the Stock Left counter)
+- Local statistics: total count, last drink timestamp, and 7/14/30/365-day daily-average sensors
+
+When you press **Log Drink**, the dose is forwarded to the matching **Master Tracker** virtual device, which draws the global decay curve:
+
+- **Caffeine Tracker** — hosts `sensor.total_caffeine_in_body` (mg). Uses a discretized uniform-absorption model: each drink is split into mini-boluses spread across its `drinking_duration`, each absorbed via the IR Bateman equation with the global half-life and tmax. Linear PK → exact superposition across all caffeine drinks.
+- **Alcohol Tracker** — hosts `sensor.total_alcohol_in_body` (g). Uses zero-order (Michaelis-Menten saturated) elimination at a configurable grams-per-hour rate. Doses add instantly; elimination advances on every tick.
+
+### Configuring a Drink
+
+1. **Add a Device** → choose **Drink** as the category.
+2. **Drink Setup** — name, drink type (Caffeine/Alcohol), unit of measurement (e.g. Cups, Cans, Bottles), and an initial stock count (how many of this unit you currently have on hand).
+3. **Cooldown Timer** — optional lockout window in hours (0 = disabled; limit is always 1).
+4. **Drink Details** —
+   - Caffeine: `caffeine_mg` + `drinking_duration` (typical time to finish, minutes).
+   - Alcohol: `volume_ml` + `abv_percent` + `drinking_duration`. The ethanol mass is calculated automatically: `grams = volume_ml × (abv_percent / 100) × 0.789` (Widmark formula). `bioavailability` is hardcoded to 100 for all drinks.
+
+The Drink Settings singleton is auto-created the first time you add a drink. Edit its global constants via **Configure**:
+
+| Constant | Default | Unit |
+|----------|---------|------|
+| Caffeine Half-Life | 5.0 | hours |
+| Caffeine Time to Peak | 0.75 | hours |
+| Alcohol Elimination Rate | 8.0 | g/h |
+
+### Drink Services
+
+In addition to the **Log Drink** button, three services are available for automations:
+
+- `ax_dose_logger.log_drink` — log a drink (entry_id + optional timestamp)
+- `ax_dose_logger.undo_drink` — revert the last drink + its master contribution
+- `ax_dose_logger.reset_drink` — clear a drink's local history + master contribution
+
+The `ax_dose_logger_drink_taken` bus event fires on every log with `{entry_id, drink_type, dose_strength, drink_name}` for automations (e.g. "if caffeine in body > 200mg, dim lights").
+
+> **Note:** The Master Tracker devices expose a `drink_master: true` attribute so the AX Dose Logger Card can filter them out (they are read-only global sensors). A dedicated drinks card is a future frontend enhancement.
 
 ---
 

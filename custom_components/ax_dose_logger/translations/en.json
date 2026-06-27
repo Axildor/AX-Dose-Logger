@@ -2,12 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a Medication",
-        "description": "*This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.*\n\nName your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
+        "title": "Add a Device",
+        "description": "Choose what to track: a medication on a schedule, a drink (caffeine/alcohol), or open Drink Settings to edit global metabolic constants.",
         "data": {
-          "medication_name": "Medication Name",
-          "tracking_type": "Tracking Type",
-          "release_type": "Release Type"
+          "device_category": "Device Category"
         }
       },
       "regular_interval": {
@@ -190,6 +188,81 @@
               "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on."
             }
           }
+        }
+      },
+      "user_medicine": {
+        "title": "Add a Medication",
+        "description": "*This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.*\n\nName your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
+        "data": {
+          "medication_name": "Medication Name",
+          "tracking_type": "Tracking Type",
+          "release_type": "Release Type"
+        }
+      },
+      "drink_setup": {
+        "title": "Drink Setup",
+        "description": "Configure a drink to track. Each drink becomes its own device with a log button and local statistics.",
+        "data": {
+          "name": "Name",
+          "drink_type": "Drink Type",
+          "unit_of_measurement": "Unit of Measurement",
+          "initial_stock": "Initial Stock"
+        },
+        "data_description": {
+          "name": "A name for this drink, e.g. Morning Espresso or Evening Beer.",
+          "drink_type": "Choose Caffeine or Alcohol. Determines which master tracker receives the dose.",
+          "unit_of_measurement": "For example: Bags, Cans, Bottles, Cups",
+          "initial_stock": "Number of units currently available."
+        }
+      },
+      "drink_cooldown": {
+        "title": "Cooldown Timer",
+        "description": "Optional lockout between drinks. The limit is always 1 — only one drink per window.",
+        "data": {
+          "cooldown_window": "Cooldown Window"
+        },
+        "data_description": {
+          "cooldown_window": "Optional: Enforce a time limit lockout between drinks, in hours. Set to 0 to disable. Limit is always 1."
+        }
+      },
+      "drink_caffeine": {
+        "title": "Caffeine Details",
+        "description": "Enter the caffeine content and how long it typically takes to finish this drink.",
+        "data": {
+          "caffeine_mg": "Caffeine (mg)",
+          "drinking_duration": "Time to Finish Drink"
+        },
+        "data_description": {
+          "caffeine_mg": "Total caffeine in this drink, in milligrams.",
+          "drinking_duration": "Typical time to finish this drink, in minutes. Governs the absorption window for the PK curve."
+        }
+      },
+      "drink_alcohol": {
+        "title": "Alcohol Details",
+        "description": "Enter the volume, ABV, and how long it typically takes to finish this drink. The ethanol mass is calculated automatically (volume × ABV × 0.789).",
+        "data": {
+          "volume_ml": "Volume (ml)",
+          "abv_percent": "ABV (%)",
+          "drinking_duration": "Time to Finish Drink"
+        },
+        "data_description": {
+          "volume_ml": "Volume of this drink in milliliters.",
+          "abv_percent": "Alcohol by volume percentage. Used with volume to calculate grams of ethanol.",
+          "drinking_duration": "Typical time to finish this drink, in minutes. Governs the absorption window for the PK curve."
+        }
+      },
+      "drink_settings": {
+        "title": "Drink Settings",
+        "description": "Global metabolic constants used by the Caffeine and Alcohol Master Trackers to draw their decay curves.\n\nThe pre-filled values are **biological population averages** from pharmacokinetic literature — a good starting point for most adults. Medications, genetic factors, and health conditions (e.g. liver function, pregnancy, smoking) can significantly alter your individual metabolism. Adjust only if you know your values.",
+        "data": {
+          "global_caffeine_half_life": "Caffeine Half-Life",
+          "global_caffeine_tmax": "Caffeine Time to Peak",
+          "global_alcohol_elimination_rate": "Alcohol Elimination Rate"
+        },
+        "data_description": {
+          "global_caffeine_half_life": "Hours for the body to eliminate half the caffeine. Population average: 5.0 h.",
+          "global_caffeine_tmax": "Hours after ingestion until caffeine concentration peaks. Population average: 0.75 h.",
+          "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h."
         }
       }
     }
@@ -374,6 +447,34 @@
             }
           }
         }
+      },
+      "drink_settings_options": {
+        "title": "Drink Settings",
+        "description": "Edit the global metabolic constants used by the Master Trackers.\n\nThe defaults are **biological population averages**. Medications, genetic factors, and health conditions can significantly alter your individual metabolism.",
+        "data": {
+          "global_caffeine_half_life": "Caffeine Half-Life",
+          "global_caffeine_tmax": "Caffeine Time to Peak",
+          "global_alcohol_elimination_rate": "Alcohol Elimination Rate"
+        },
+        "data_description": {
+          "global_caffeine_half_life": "Hours for the body to eliminate half the caffeine. Population average: 5.0 h.",
+          "global_caffeine_tmax": "Hours after ingestion until caffeine concentration peaks. Population average: 0.75 h.",
+          "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h."
+        }
+      },
+      "drink_options": {
+        "title": "Drink Options",
+        "description": "Edit this drink's cooldown, dose strength, and drinking duration. Name and drink type are immutable.",
+        "data": {
+          "cooldown_window": "Cooldown Window",
+          "dose_strength": "Dose Strength",
+          "drinking_duration": "Time to Finish Drink"
+        },
+        "data_description": {
+          "cooldown_window": "Optional lockout between drinks, in hours. Set to 0 to disable.",
+          "dose_strength": "Caffeine (mg) or ethanol (g) per drink. For alcohol this is the Widmark mass: volume × ABV × 0.789.",
+          "drinking_duration": "Typical time to finish this drink, in minutes."
+        }
       }
     }
   },
@@ -405,6 +506,19 @@
         "mood": "Mood",
         "nausea": "Nausea",
         "fatigue": "Fatigue"
+      }
+    },
+    "device_category": {
+      "options": {
+        "medicine": "Medication — track pills on a schedule",
+        "drinks": "Drink — track caffeine or alcohol intake",
+        "drink_settings": "Drink Settings — edit global metabolic constants"
+      }
+    },
+    "drink_type": {
+      "options": {
+        "caffeine": "Caffeine",
+        "alcohol": "Alcohol"
       }
     }
   },
@@ -480,6 +594,40 @@
           "description": "Set to true to change a metric that has already been logged today. Defaults to false."
         }
       }
+    },
+    "log_drink": {
+      "name": "Log Drink",
+      "description": "Logs a drink for the selected granular drink device. Updates local statistics and forwards the dose to the matching Master Tracker for global PK.",
+      "fields": {
+        "entry_id": {
+          "name": "Drink",
+          "description": "The drink to log."
+        },
+        "timestamp": {
+          "name": "Timestamp",
+          "description": "Optional custom timestamp for the drink (defaults to now)."
+        }
+      }
+    },
+    "undo_drink": {
+      "name": "Undo Drink",
+      "description": "Reverts the most recently logged drink for the selected drink device, including its contribution to the Master Tracker.",
+      "fields": {
+        "entry_id": {
+          "name": "Drink",
+          "description": "The drink to undo."
+        }
+      }
+    },
+    "reset_drink": {
+      "name": "Reset Drink History",
+      "description": "Clears all drink history for the selected drink device and resets its Master Tracker contribution.",
+      "fields": {
+        "entry_id": {
+          "name": "Drink",
+          "description": "The drink to reset."
+        }
+      }
     }
   },
   "entity": {
@@ -516,6 +664,27 @@
       },
       "adherence": {
         "name": "Adherence ({window} Days)"
+      },
+      "total_caffeine_in_body": {
+        "name": "Total Caffeine in Body"
+      },
+      "total_alcohol_in_body": {
+        "name": "Total Alcohol in Body"
+      },
+      "drink_total": {
+        "name": "Total Drinks"
+      },
+      "drink_last_dose": {
+        "name": "Last Drink"
+      },
+      "drink_avg_doses": {
+        "name": "Avg Daily Drinks ({window} Days)"
+      },
+      "drink_master_avg_caffeine": {
+        "name": "Avg Daily Caffeine ({window} Days)"
+      },
+      "drink_master_avg_alcohol": {
+        "name": "Avg Daily Alcohol ({window} Days)"
       }
     },
     "button": {
@@ -533,6 +702,12 @@
       },
       "cover_last_missed": {
         "name": "Mark Last Adherence Taken"
+      },
+      "log_drink": {
+        "name": "Log Drink"
+      },
+      "undo_drink": {
+        "name": "Undo Drink"
       }
     },
     "number": {
@@ -541,6 +716,12 @@
       },
       "add_refill": {
         "name": "Add Refill"
+      },
+      "drink_stock": {
+        "name": "Inventory"
+      },
+      "drink_add_refill": {
+        "name": "Add Stock"
       }
     },
     "calendar": {
@@ -548,5 +729,8 @@
         "name": "Calendar"
       }
     }
+  },
+  "abort": {
+    "already_configured": "Drink Settings is already configured. Open the existing entry via Configure to edit the global metabolic constants."
   }
 }

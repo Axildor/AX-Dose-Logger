@@ -1,9 +1,27 @@
+from types import MappingProxyType
+
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .const import CURRENT_VERSION, DOMAIN, LOGGER, RELEASE_INSTANT, STANDARD_EFFECTIVENESS_METRICS, TRACKING_AS_NEEDED
+from .const import (
+    CURRENT_VERSION,
+    DEVICE_CATEGORY_DRINKS,
+    DEVICE_CATEGORY_DRINK_SETTINGS,
+    DEVICE_CATEGORY_MEDICINE,
+    DOMAIN,
+    DRINK_MASTER_STORE_KEYS,
+    DRINK_TYPE_ALCOHOL,
+    DRINK_TYPE_CAFFEINE,
+    GLOBAL_PK_DEFAULTS,
+    LOGGER,
+    RELEASE_INSTANT,
+    STANDARD_EFFECTIVENESS_METRICS,
+    TRACKING_AS_NEEDED,
+)
 from .coordinator import AxDoseLoggerCoordinator
 from .data import AxDoseLoggerConfigEntry
+from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from .services import async_setup_services, async_unload_services
 from .store import AxDoseLoggerStore
 from .views import AxDoseLoggerHistoryView
@@ -29,6 +47,9 @@ _RELEASE_TYPE_MIGRATION = {
     "Instant Release": "instant_release",
     "Sustained Release": "sustained_release",
 }
+
+# Stable unique_id for the Drink Settings singleton entry.
+_DRINK_SETTINGS_UNIQUE_ID = "drink_settings"
 
 
 def _get_structural_options(entry: AxDoseLoggerConfigEntry) -> dict:
@@ -61,6 +82,74 @@ def _remove_entity(ent_reg: er.EntityRegistry, platform: str, unique_id: str) ->
     entity_id = ent_reg.async_get_entity_id(platform, DOMAIN, unique_id)
     if entity_id:
         ent_reg.async_remove(entity_id)
+
+
+async def _ensure_drink_settings_entry(hass: HomeAssistant) -> None:
+    """Programmatically create the Drink Settings singleton entry if absent.
+
+    Uses ``async_add(ConfigEntry(...))`` with the ``GLOBAL_PK_DEFAULTS``
+    defaults so the master coordinators are set up synchronously (awaited)
+    before the calling drink device's ``async_setup_entry`` continues.
+
+    This bypasses the config-flow UI (no form shown) — the user can later
+    edit the global constants via the options flow (Configure button).
+
+    Idempotent: if a Drink Settings entry already exists (any state), this
+    is a no-op.  The ``unique_id="drink_settings"`` singleton guard in
+    ``async_step_drink_settings`` also prevents duplicate manual creation.
+    """
+    # Check whether a Drink Settings entry already exists.
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS:
+            return
+
+    settings_entry = ConfigEntry(
+        data={
+            "device_category": DEVICE_CATEGORY_DRINK_SETTINGS,
+            **GLOBAL_PK_DEFAULTS,
+        },
+        discovery_keys=MappingProxyType({}),
+        domain=DOMAIN,
+        minor_version=1,
+        options={},
+        source="user",
+        subentries_data=None,
+        title="Drink Settings",
+        unique_id=_DRINK_SETTINGS_UNIQUE_ID,
+        version=CURRENT_VERSION,
+    )
+    # async_add awaits async_setup -> async_setup_entry -> _setup_drink_masters,
+    # so the master coordinators exist in hass.data before this returns.
+    await hass.config_entries.async_add(settings_entry)
+
+
+def _get_drink_masters(hass: HomeAssistant) -> dict[str, DrinkMasterCoordinator]:
+    """Return the master coordinators dict (lazily-initialized in hass.data)."""
+    return hass.data.setdefault(DOMAIN, {}).setdefault("_drink_masters", {})
+
+
+async def _setup_drink_masters(hass: HomeAssistant, settings_entry: AxDoseLoggerConfigEntry) -> None:
+    """Create/refresh the two DrinkMasterCoordinator instances for the Drink Settings entry.
+
+    Loads each substance's aggregated dose history + body mass from the store,
+    refreshes the global PK constants from the settings entry, and starts the
+    1-min refresh timers.  Called on Drink Settings entry setup AND on reload
+    (so options-flow changes to the global constants propagate).
+    """
+    store: AxDoseLoggerStore = hass.data[DOMAIN]["_store"]
+    masters = _get_drink_masters(hass)
+
+    for substance, store_key in DRINK_MASTER_STORE_KEYS.items():
+        await store.async_load_drink_master(substance, store_key)
+        if substance in masters:
+            # Existing coordinator — refresh constants + first refresh.
+            masters[substance].update_global_constants(settings_entry)
+            await masters[substance].async_config_entry_first_refresh()
+        else:
+            master = DrinkMasterCoordinator(hass, substance, store, store_key)
+            master.update_global_constants(settings_entry)
+            masters[substance] = master
+            await master.async_config_entry_first_refresh()
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerConfigEntry) -> bool:
@@ -167,6 +256,12 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
         # been processed by the new code.
         pass
 
+    if config_entry.version <= 11:
+        # Version 12: Drinks category router.  All pre-existing entries are
+        # medicine entries (drinks are new).  Inject the category so the
+        # router logic has a stable key for every entry.
+        new_data.setdefault("device_category", DEVICE_CATEGORY_MEDICINE)
+
     hass.config_entries.async_update_entry(
         config_entry, data=new_data, options=new_options, version=CURRENT_VERSION
     )
@@ -191,7 +286,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
     # Register REST view (idempotent — HA ignores duplicate registrations)
     hass.http.register_view(AxDoseLoggerHistoryView())
 
-    # Create per-entry coordinator — single source of truth for dose history
+    device_category = entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
+
+    if device_category == DEVICE_CATEGORY_DRINK_SETTINGS:
+        # Drink Settings singleton — creates the two Master Tracker
+        # coordinators (caffeine/alcohol).  Forwards to the sensor platform
+        # which instantiates the master PK sensor entities.
+        await _setup_drink_masters(hass, entry)
+        hass.data[DOMAIN][entry.entry_id] = {
+            "entry_data": entry.data,
+            "settings_entry_id": entry.entry_id,
+        }
+        async_setup_services(hass)
+        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+        return True
+
+    if device_category == DEVICE_CATEGORY_DRINKS:
+        # Granular drink entry — ensure the Drink Settings singleton exists
+        # so the master coordinators are available to receive forwarded doses.
+        await _ensure_drink_settings_entry(hass)
+        store: AxDoseLoggerStore = hass.data[DOMAIN]["_store"]
+        masters = _get_drink_masters(hass)
+        coordinator = DrinkCoordinator(hass, entry, store, masters)
+        await coordinator.async_config_entry_first_refresh()
+        hass.data[DOMAIN][entry.entry_id] = {
+            "entry_data": entry.data,
+            "coordinator": coordinator,
+        }
+        async_setup_services(hass)
+        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+        await hass.config_entries.async_forward_entry_setups(
+            entry, ["sensor", "button", "number"]
+        )
+        return True
+
+    # --- Medicine (legacy) ---
     store: AxDoseLoggerStore = hass.data[DOMAIN]["_store"]
     coordinator = AxDoseLoggerCoordinator(hass, entry, store)
     hass.data[DOMAIN][entry.entry_id] = {
@@ -226,7 +356,24 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
 
     When a structural option *did* change, removes entities for newly-disabled
     features to prevent ghost "unavailable" entities, then reloads the entry.
+
+    For the Drink Settings entry, a reload refreshes the master coordinators'
+    global PK constants (no entity-registry surgery needed).
     """
+    device_category = entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
+
+    if device_category == DEVICE_CATEGORY_DRINK_SETTINGS:
+        # Refresh master coordinator constants + restart their refresh timers.
+        await _setup_drink_masters(hass, entry)
+        return
+
+    if device_category == DEVICE_CATEGORY_DRINKS:
+        # Granular drink entries only have mutable cooldown/dose_strength/
+        # drinking_duration — no structural entity changes.  Coordinator
+        # reads the new options on its next update cycle.
+        return
+
+    # --- Medicine ---
     entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
     prev = entry_data.get("prev_structural", {})
     curr = _get_structural_options(entry)
@@ -255,14 +402,6 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
             _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
 
     # --- tracking_type changed ---
-    # The options flow now allows changing tracking_type post-setup (e.g.
-    # Regular Interval → Cyclic).  When the new type is As Needed, the
-    # scheduled-only entities (steady_state, overdue, calendar, adherence
-    # sensors + adherence buttons) must be removed to prevent ghost
-    # "unavailable" entities, since As Needed doesn't create them.
-    # Scheduled → scheduled transitions (Regular/ToD/Cyclic) need no removal:
-    # all scheduled types create the same entity set, and the schedule-
-    # specific fields are read fresh by sensors on every update cycle.
     if "tracking_type" in changed and curr["tracking_type"] == TRACKING_AS_NEEDED:
         _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_steady_state")
         _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_overdue")
@@ -273,9 +412,6 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
             _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
 
     # --- tracked_symptoms: metric removed ---
-    # When a symptom is unchecked, remove its PillEffectivenessSlider entity
-    # to prevent ghost "unavailable" entities. Newly-added symptoms are
-    # created by the reload (number platform setup runs fresh).
     if "tracked_symptoms" in changed:
         prev_tracked = set(prev.get("tracked_symptoms", []))
         curr_tracked = set(curr.get("tracked_symptoms", []))
@@ -288,10 +424,19 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
     await hass.config_entries.async_reload(entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> bool:
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    device_category = entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
+    # Drink Settings only forwards to sensor; drinks forward to sensor+button.
+    if device_category == DEVICE_CATEGORY_DRINK_SETTINGS:
+        platforms = ["sensor"]
+    elif device_category == DEVICE_CATEGORY_DRINKS:
+        platforms = ["sensor", "button", "number"]
+    else:
+        platforms = PLATFORMS
+
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-        # Remove services when the last entry is unloaded
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        # Remove services when the last medicine coordinator is gone.
         if not any(
             isinstance(v, dict) and "coordinator" in v
             for v in hass.data.get(DOMAIN, {}).values()

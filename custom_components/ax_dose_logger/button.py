@@ -1,12 +1,14 @@
 import homeassistant.util.dt as dt_util
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, TRACKING_AS_NEEDED
+from .const import DEVICE_CATEGORY_DRINKS, DOMAIN, TRACKING_AS_NEEDED
 from .coordinator import AxDoseLoggerCoordinator
 from .data import AxDoseLoggerConfigEntry
+from .drink_coordinator import DrinkCoordinator
 from .entity import AxDoseLoggerEntity
 
 
@@ -15,11 +17,27 @@ def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordina
     return hass.data[DOMAIN][entry_id]["coordinator"]
 
 
+def _get_drink_coordinator(hass: HomeAssistant, entry_id: str) -> DrinkCoordinator:
+    """Retrieve the granular drink coordinator for this config entry."""
+    return hass.data[DOMAIN][entry_id]["coordinator"]
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: AxDoseLoggerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    category = entry.data.get("device_category")
+    if category == DEVICE_CATEGORY_DRINKS:
+        coordinator = _get_drink_coordinator(hass, entry.entry_id)
+        async_add_entities([
+            DrinkLogButton(entry, coordinator),
+            DrinkResetButton(entry, coordinator),
+            DrinkUndoButton(entry, coordinator),
+        ])
+        return
+
+    # --- Medicine (legacy) ---
     tracking_type = entry.data.get("tracking_type")
     coordinator = _get_coordinator(hass, entry.entry_id)
     entities = [
@@ -35,6 +53,10 @@ async def async_setup_entry(
         entities.append(PillAdherenceCoverButton(entry, coordinator))
     async_add_entities(entities)
 
+
+# =====================================================================
+# Medicine buttons (legacy — unchanged)
+# =====================================================================
 class PillTakeButton(AxDoseLoggerEntity, ButtonEntity):
     _attr_has_entity_name = True
 
@@ -122,3 +144,67 @@ class PillAdherenceCoverButton(AxDoseLoggerEntity, ButtonEntity):
         """When pressed, cover the most recent missed dose slot via the coordinator."""
         coordinator = _get_coordinator(self.hass, self._entry_id)
         await coordinator.async_adherence_override()
+
+
+# =====================================================================
+# Drink buttons (granular drink devices)
+# =====================================================================
+class DrinkLogButton(AxDoseLoggerEntity, ButtonEntity):
+    """Button that logs a drink and enforces the configured cooldown window.
+
+    The 'limit is always 1' rule is enforced via the cooldown_window option:
+    if set, only one drink may be logged within the window.  On press the
+    coordinator updates local stats AND forwards the dose_strength +
+    drinking_duration to the matching Master Tracker coordinator for global
+    PK computation.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "log_drink"
+        self._attr_unique_id = f"{entry.entry_id}_log_drink"
+        self._attr_icon = "mdi:cup-water"
+
+    async def async_press(self):
+        """Log a drink, enforcing the cooldown lockout if configured."""
+        coordinator = _get_drink_coordinator(self.hass, self._entry_id)
+        if coordinator.is_within_cooldown():
+            raise HomeAssistantError(
+                "Cooldown active — wait until the lockout period ends before logging another drink."
+            )
+        await coordinator.async_log_drink(dt_util.now())
+
+
+class DrinkResetButton(AxDoseLoggerEntity, ButtonEntity):
+    """Button that clears a granular drink's local history and notifies the master."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "reset_history"
+        self._attr_unique_id = f"{entry.entry_id}_reset"
+        self._attr_icon = "mdi:history"
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    async def async_press(self):
+        coordinator = _get_drink_coordinator(self.hass, self._entry_id)
+        await coordinator.async_reset()
+
+
+class DrinkUndoButton(AxDoseLoggerEntity, ButtonEntity):
+    """Button that reverts the most recent drink of this granular device."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "undo_drink"
+        self._attr_unique_id = f"{entry.entry_id}_undo"
+        self._attr_icon = "mdi:undo"
+
+    async def async_press(self):
+        coordinator = _get_drink_coordinator(self.hass, self._entry_id)
+        await coordinator.async_undo_drink()

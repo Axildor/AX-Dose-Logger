@@ -10,6 +10,7 @@ import homeassistant.util.dt as dt_util
 
 from .const import (
     DEFAULT_METRIC_ICON,
+    DEVICE_CATEGORY_DRINKS,
     DOMAIN,
     EFFECTIVENESS_METRIC_ICONS,
     STANDARD_EFFECTIVENESS_METRICS,
@@ -24,6 +25,13 @@ async def async_setup_entry(
     entry: AxDoseLoggerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    category = entry.data.get("device_category")
+
+    if category == DEVICE_CATEGORY_DRINKS:
+        await _setup_drink_numbers(hass, entry, async_add_entities)
+        return
+
+    # --- Medicine (legacy) ---
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     initial_stock = entry.data["initial_stock"]
     entities = [
@@ -52,6 +60,26 @@ async def async_setup_entry(
                 ))
 
     async_add_entities(entities)
+
+
+async def _setup_drink_numbers(
+    hass: HomeAssistant,
+    entry: AxDoseLoggerConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Granular drink device inventory number entities — mirror medicine stock.
+
+    Each drink gets an Inventory counter (using the configured
+    ``unit_of_measurement``) that decrements by 1 on each Log Drink press
+    (mirrors medicine's one-pill-per-take), plus a disposable Add Stock input
+    that fires a ``drink_add_stock_{entry_id}`` signal to refill the counter.
+    """
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    initial_stock = entry.data.get("initial_stock", 0)
+    async_add_entities([
+        DrinkStockNumber(entry, coordinator, initial_stock),
+        DrinkAddStockNumber(entry, coordinator),
+    ])
 
 class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
     _attr_has_entity_name = True
@@ -243,3 +271,128 @@ class PillEffectivenessSlider(AxDoseLoggerEntity, NumberEntity):
         await self.coordinator.async_set_metric(
             self._metric_key, value, override=False
         )
+
+
+# =====================================================================
+# Drink number entities (granular drink devices)
+# =====================================================================
+class DrinkStockNumber(AxDoseLoggerEntity, RestoreNumber):
+    """Current drink inventory (e.g. Cups/Cans/Bottles Left).
+
+    Mirrors :class:`PillStockNumber` but uses the drink's configured
+    ``unit_of_measurement`` and decrements by 1 on each Log Drink press
+    (each press represents consuming one unit, matching medicine's
+    one-pill-per-take).  Restores last value on restart.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry, coordinator, initial_stock):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "drink_stock"
+        self._attr_unique_id = f"{entry.entry_id}_drink_stock"
+        self._attr_icon = "mdi:cup-outline"
+        self._attr_native_value = float(initial_stock)
+        self._attr_native_step = 1.0
+        self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 9999.0
+        self._attr_native_unit_of_measurement = entry.data.get(
+            "unit_of_measurement", entry.data.get("unit_of_measurement")
+        )
+        self._attr_mode = NumberMode.BOX
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"drink_add_stock_{self._entry_id}",
+                self.add_stock,
+            )
+        )
+        last_state = await self.async_get_last_number_data()
+        if last_state and last_state.native_value is not None:
+            self._attr_native_value = last_state.native_value
+
+    async def async_set_native_value(self, value: float):
+        self._attr_native_value = value
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Decrement on log_drink, increment on undo (dose_history length)."""
+        if not self.coordinator.data:
+            return
+        current_count = len(self.coordinator.data.dose_history)
+        if not hasattr(self, "_last_dose_count"):
+            self._last_dose_count = current_count
+            return
+        if current_count > self._last_dose_count:
+            # Drink logged — decrement by 1 (one unit per log press)
+            if self._attr_native_value > 0:
+                self._attr_native_value -= 1
+        elif current_count < self._last_dose_count:
+            # Drink undone — increment
+            self._attr_native_value += 1
+        self._last_dose_count = current_count
+        self.async_write_ha_state()
+
+    @callback
+    def add_stock(self, amount: float, *args, **kwargs):
+        self._attr_native_value += amount
+        self.async_write_ha_state()
+
+
+class DrinkAddStockNumber(AxDoseLoggerEntity, NumberEntity):
+    """Disposable input to add stock to a granular drink's inventory.
+
+    Mirrors :class:`PillAddStockNumber`: on submit it fires a
+    ``drink_add_stock_{entry_id}`` signal (consumed by
+    :class:`DrinkStockNumber.add_stock`) and auto-resets to 0 after 0.5 s.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "drink_add_refill"
+        self._attr_unique_id = f"{entry.entry_id}_drink_add_stock"
+        self._attr_icon = "mdi:plus-box"
+        self._attr_native_value = 0.0
+        self._attr_native_step = 1.0
+        self._attr_native_min_value = 0.0
+        self._attr_native_unit_of_measurement = entry.data.get(
+            "unit_of_measurement", entry.data.get("unit_of_measurement")
+        )
+        self._attr_mode = NumberMode.BOX
+        self._reset_timer: CALLBACK_TYPE | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._cancel_reset_timer)
+
+    @callback
+    def _cancel_reset_timer(self) -> None:
+        if self._reset_timer:
+            self._reset_timer()
+            self._reset_timer = None
+
+    async def async_set_native_value(self, value: float):
+        if value > 0:
+            self._attr_native_value = value
+            self.async_write_ha_state()
+            async_dispatcher_send(
+                self.hass, f"drink_add_stock_{self._entry_id}", value
+            )
+            self._cancel_reset_timer()
+            self._reset_timer = async_call_later(
+                self.hass,
+                0.5,
+                self._reset_add_stock,
+            )
+
+    @callback
+    def _reset_add_stock(self, _now):
+        self._attr_native_value = 0.0
+        self._reset_timer = None
+        self.async_write_ha_state()

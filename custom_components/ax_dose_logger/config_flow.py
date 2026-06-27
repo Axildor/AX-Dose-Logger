@@ -7,7 +7,15 @@ from homeassistant.helpers import selector as sel
 
 from .const import (
     CURRENT_VERSION,
+    DEVICE_CATEGORIES,
+    DEVICE_CATEGORY_DRINKS,
+    DEVICE_CATEGORY_DRINK_SETTINGS,
+    DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
+    DRINK_TYPES,
+    DRINK_TYPE_ALCOHOL,
+    DRINK_TYPE_CAFFEINE,
+    GLOBAL_PK_DEFAULTS,
     MAX_DOSES_PER_DAY,
     PK_DEFAULTS,
     RELEASE_INSTANT,
@@ -96,6 +104,55 @@ _TRACKED_SYMPTOMS_SELECTOR = sel.SelectSelector(
     )
 )
 
+# --- Drink selector configs ---
+_DRINK_TYPE_SELECTOR = sel.SelectSelector(
+    sel.SelectSelectorConfig(
+        options=DRINK_TYPES,
+        mode=sel.SelectSelectorMode.DROPDOWN,
+        translation_key="drink_type",
+    )
+)
+# Drink stock is measured in arbitrary units (cans, bottles, cups) — NOT pills.
+# Medicine reuses _STOCK_SELECTOR (unit "pills"); drinks need their own selector
+# so the config-flow UI does not display "pills" next to the input box.
+_DRINK_STOCK_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=9999, step=1, unit_of_measurement="units", mode=sel.NumberSelectorMode.BOX
+))
+# Cooldown window is expressed in HOURS to align with medicine's time-window
+# fields (_TIME_WINDOW_SELECTOR / _HOURS_BETWEEN_SELECTOR both use "h").
+# Previously this was minutes (max 1440, unit "min"); changed per user request.
+_COOLDOWN_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=24, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
+))
+_DRINKING_DURATION_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=1, max=300, step=1, unit_of_measurement="min", mode=sel.NumberSelectorMode.BOX
+))
+_CAFFEINE_MG_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=2000, step=1, unit_of_measurement="mg", mode=sel.NumberSelectorMode.BOX
+))
+_VOLUME_ML_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=5000, step=1, unit_of_measurement="ml", mode=sel.NumberSelectorMode.BOX
+))
+_ABV_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=100, step=0.1, unit_of_measurement="%", mode=sel.NumberSelectorMode.BOX
+))
+_DOSE_STRENGTH_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=9999, step=0.1, mode=sel.NumberSelectorMode.BOX
+))
+# --- Global PK constant selectors (Drink Settings) ---
+_GLOBAL_CAFFEINE_HALF_LIFE_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0.5, max=24, step=0.1, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
+))
+_GLOBAL_CAFFEINE_TMAX_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0.1, max=8, step=0.05, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX
+))
+_GLOBAL_ALCOHOL_RATE_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=1, max=20, step=0.5, unit_of_measurement="g/h", mode=sel.NumberSelectorMode.BOX
+))
+
+# Ethanol density (g/ml) for Widmark mass calculation
+_ETHANOL_DENSITY = 0.789
+
 
 def _make_adherence_section(enable_default=True, grace_default=1):
     """Create an Adherence Tracking section with the given defaults."""
@@ -134,8 +191,36 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._data = {}
 
     async def async_step_user(self, user_input=None):
+        """Category router — medicine / drinks / drink_settings."""
+        if user_input is not None:
+            category = user_input["device_category"]
+            if category == DEVICE_CATEGORY_MEDICINE:
+                return await self.async_step_user_medicine()
+            if category == DEVICE_CATEGORY_DRINKS:
+                return await self.async_step_drink_setup()
+            if category == DEVICE_CATEGORY_DRINK_SETTINGS:
+                return await self.async_step_drink_settings()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema({
+                vol.Required("device_category", default=DEVICE_CATEGORY_MEDICINE): sel.SelectSelector(
+                    sel.SelectSelectorConfig(
+                        options=DEVICE_CATEGORIES,
+                        mode=sel.SelectSelectorMode.DROPDOWN,
+                        translation_key="device_category",
+                    )
+                ),
+            })
+        )
+
+    # ------------------------------------------------------------------
+    # Medicine flow (legacy — body of the old async_step_user)
+    # ------------------------------------------------------------------
+    async def async_step_user_medicine(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
+            self._data["device_category"] = DEVICE_CATEGORY_MEDICINE
             if user_input["tracking_type"] == TRACKING_REGULAR_INTERVAL:
                 return await self.async_step_regular_interval()
             if user_input["tracking_type"] == TRACKING_TIME_OF_DAY:
@@ -145,7 +230,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_as_needed()
 
         return self.async_show_form(
-            step_id="user",
+            step_id="user_medicine",
             data_schema=vol.Schema({
                 vol.Required("medication_name", default="My Medication"): str,
                 vol.Required("tracking_type", default=TRACKING_REGULAR_INTERVAL): sel.SelectSelector(
@@ -329,10 +414,137 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(fields)
         )
 
+    # ------------------------------------------------------------------
+    # Drink Settings singleton flow
+    # ------------------------------------------------------------------
+    async def async_step_drink_settings(self, user_input=None):
+        """Singleton Drink Settings entry — global metabolic constants.
+
+        Hosts the global PK constants and, on load, spawns the two Master
+        Tracker devices/sensors (caffeine/alcohol).  Singleton enforced via
+        ``async_set_unique_id`` + ``_abort_if_unique_id_configured``.
+        """
+        await self.async_set_unique_id("drink_settings")
+        self._abort_if_unique_id_configured()
+
+        if user_input is not None:
+            data = {
+                "device_category": DEVICE_CATEGORY_DRINK_SETTINGS,
+                "global_caffeine_half_life": float(user_input["global_caffeine_half_life"]),
+                "global_caffeine_tmax": float(user_input["global_caffeine_tmax"]),
+                "global_alcohol_elimination_rate": float(user_input["global_alcohol_elimination_rate"]),
+            }
+            return self.async_create_entry(title="Drink Settings", data=data)
+
+        return self.async_show_form(
+            step_id="drink_settings",
+            data_schema=vol.Schema({
+                vol.Required("global_caffeine_half_life", default=GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]): _GLOBAL_CAFFEINE_HALF_LIFE_SELECTOR,
+                vol.Required("global_caffeine_tmax", default=GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]): _GLOBAL_CAFFEINE_TMAX_SELECTOR,
+                vol.Required("global_alcohol_elimination_rate", default=GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]): _GLOBAL_ALCOHOL_RATE_SELECTOR,
+            }),
+        )
+
+    # ------------------------------------------------------------------
+    # Drinks flow — Step 1: Drink Setup
+    # ------------------------------------------------------------------
+    async def async_step_drink_setup(self, user_input=None):
+        if user_input is not None:
+            self._data.update(user_input)
+            return await self.async_step_drink_cooldown()
+
+        return self.async_show_form(
+            step_id="drink_setup",
+            data_schema=vol.Schema({
+                vol.Required("name", default="My Drink"): str,
+                vol.Required("drink_type", default=DRINK_TYPE_CAFFEINE): _DRINK_TYPE_SELECTOR,
+                vol.Required("unit_of_measurement", default="Cups"): str,
+                vol.Required("initial_stock", default=12): _DRINK_STOCK_SELECTOR,
+            }),
+        )
+
+    # ------------------------------------------------------------------
+    # Drinks flow — Step 2: Cooldown Timer
+    # ------------------------------------------------------------------
+    async def async_step_drink_cooldown(self, user_input=None):
+        if user_input is not None:
+            self._data.update(user_input)
+            drink_type = self._data.get("drink_type")
+            if drink_type == DRINK_TYPE_CAFFEINE:
+                return await self.async_step_drink_caffeine()
+            return await self.async_step_drink_alcohol()
+
+        return self.async_show_form(
+            step_id="drink_cooldown",
+            data_schema=vol.Schema({
+                vol.Required("cooldown_window", default=0): _COOLDOWN_SELECTOR,
+            }),
+        )
+
+    # ------------------------------------------------------------------
+    # Drinks flow — Step 3a: Caffeine payload
+    # ------------------------------------------------------------------
+    async def async_step_drink_caffeine(self, user_input=None):
+        if user_input is not None:
+            self._data.update(user_input)
+            # dose_strength = caffeine_mg; bioavailability hardcoded to 100
+            self._data["dose_strength"] = float(user_input["caffeine_mg"])
+            self._data["bioavailability"] = 100
+            self._data["device_category"] = DEVICE_CATEGORY_DRINKS
+            return await self._create_drink_entry()
+
+        return self.async_show_form(
+            step_id="drink_caffeine",
+            data_schema=vol.Schema({
+                vol.Required("caffeine_mg", default=90): _CAFFEINE_MG_SELECTOR,
+                vol.Required("drinking_duration", default=15): _DRINKING_DURATION_SELECTOR,
+            }),
+        )
+
+    # ------------------------------------------------------------------
+    # Drinks flow — Step 3b: Alcohol payload (Widmark mass computed silently)
+    # ------------------------------------------------------------------
+    async def async_step_drink_alcohol(self, user_input=None):
+        if user_input is not None:
+            self._data.update(user_input)
+            # Widmark: grams_ethanol = volume_ml * (abv_percent / 100) * 0.789
+            volume_ml = float(user_input["volume_ml"])
+            abv_percent = float(user_input["abv_percent"])
+            self._data["dose_strength"] = round(volume_ml * (abv_percent / 100.0) * _ETHANOL_DENSITY, 2)
+            self._data["bioavailability"] = 100
+            self._data["device_category"] = DEVICE_CATEGORY_DRINKS
+            return await self._create_drink_entry()
+
+        return self.async_show_form(
+            step_id="drink_alcohol",
+            data_schema=vol.Schema({
+                vol.Required("volume_ml", default=330): _VOLUME_ML_SELECTOR,
+                vol.Required("abv_percent", default=5.0): _ABV_SELECTOR,
+                vol.Required("drinking_duration", default=15): _DRINKING_DURATION_SELECTOR,
+            }),
+        )
+
+    async def _create_drink_entry(self):
+        """Create the drink config entry and ensure the Drink Settings singleton exists."""
+        # Title uses the drink name; remove the raw payload fields from data
+        # that were only needed for dose_strength computation.
+        title = self._data.get("name", "My Drink")
+        # Strip per-payload intermediate keys (keep dose_strength + drinking_duration)
+        entry_data = {k: v for k, v in self._data.items() if k not in ("caffeine_mg", "volume_ml", "abv_percent")}
+        return self.async_create_entry(title=title, data=entry_data)
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return AxDoseLoggerOptionsFlowHandler(config_entry)
+        """Route to the correct options flow handler by device category."""
+        category = config_entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
+        handler = AxDoseLoggerOptionsFlowHandler(config_entry)
+        handler._initial_step = {
+            DEVICE_CATEGORY_MEDICINE: "init",
+            DEVICE_CATEGORY_DRINK_SETTINGS: "drink_settings_options",
+            DEVICE_CATEGORY_DRINKS: "drink_options",
+        }.get(category, "init")
+        return handler
 
 
 class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
@@ -344,9 +556,27 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         # routes to async_step_schedule to collect the new type's schedule
         # fields before continuing to the PK step.
         self._original_tracking_type = config_entry.data.get("tracking_type")
+        # Device category determines which options flow branch to use.
+        self._device_category = config_entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
+        # Initial step for this handler — set by async_get_options_flow.
+        # Medicine entries start at 'init'; Drink Settings at
+        # 'drink_settings_options'; granular drinks at 'drink_options'.
+        self._initial_step = "init"
 
+    # ------------------------------------------------------------------
+    # Medicine options flow (legacy)
+    # ------------------------------------------------------------------
     async def async_step_init(self, user_input=None):
-        """Step 1: Schedule and dosing parameters."""
+        """Step 1: Schedule and dosing parameters (medicine category).
+
+        For Drink Settings / granular drink entries, dispatch to the
+        appropriate single-step options flow instead of the medicine
+        multi-step flow.
+        """
+        if self._initial_step != "init" and user_input is None:
+            # Route to the category-specific first step on the initial show.
+            method = getattr(self, f"async_step_{self._initial_step}")
+            return await method(None)
         if user_input is not None:
             self._data.update(user_input)
             new_tracking_type = user_input.get("tracking_type")
@@ -623,4 +853,44 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="effectiveness",
             data_schema=vol.Schema(fields)
+        )
+
+    # ------------------------------------------------------------------
+    # Drink Settings options flow — global PK constants
+    # ------------------------------------------------------------------
+    async def async_step_drink_settings_options(self, user_input=None):
+        """Edit global metabolic constants for the Drink Settings entry."""
+        if user_input is not None:
+            self._data.update(user_input)
+            return self.async_create_entry(title="", data=self._data)
+
+        options = self._entry.options
+        data = self._entry.data
+        return self.async_show_form(
+            step_id="drink_settings_options",
+            data_schema=vol.Schema({
+                vol.Required("global_caffeine_half_life", default=options.get("global_caffeine_half_life", data.get("global_caffeine_half_life", GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]))): _GLOBAL_CAFFEINE_HALF_LIFE_SELECTOR,
+                vol.Required("global_caffeine_tmax", default=options.get("global_caffeine_tmax", data.get("global_caffeine_tmax", GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]))): _GLOBAL_CAFFEINE_TMAX_SELECTOR,
+                vol.Required("global_alcohol_elimination_rate", default=options.get("global_alcohol_elimination_rate", data.get("global_alcohol_elimination_rate", GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]))): _GLOBAL_ALCOHOL_RATE_SELECTOR,
+            }),
+        )
+
+    # ------------------------------------------------------------------
+    # Granular drink options flow — cooldown + dose_strength + drinking_duration
+    # ------------------------------------------------------------------
+    async def async_step_drink_options(self, user_input=None):
+        """Edit a granular drink's mutable settings (name/drink_type immutable)."""
+        if user_input is not None:
+            self._data.update(user_input)
+            return self.async_create_entry(title="", data=self._data)
+
+        options = self._entry.options
+        data = self._entry.data
+        return self.async_show_form(
+            step_id="drink_options",
+            data_schema=vol.Schema({
+                vol.Required("cooldown_window", default=options.get("cooldown_window", data.get("cooldown_window", 0))): _COOLDOWN_SELECTOR,
+                vol.Required("dose_strength", default=options.get("dose_strength", data.get("dose_strength", 0))): _DOSE_STRENGTH_SELECTOR,
+                vol.Required("drinking_duration", default=options.get("drinking_duration", data.get("drinking_duration", 15))): _DRINKING_DURATION_SELECTOR,
+            }),
         )
