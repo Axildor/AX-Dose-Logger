@@ -1,7 +1,6 @@
 import homeassistant.util.dt as dt_util
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -150,13 +149,15 @@ class PillAdherenceCoverButton(AxDoseLoggerEntity, ButtonEntity):
 # Drink buttons (granular drink devices)
 # =====================================================================
 class DrinkLogButton(AxDoseLoggerEntity, ButtonEntity):
-    """Button that logs a drink and enforces the configured cooldown window.
+    """Button that logs a drink.
 
-    The 'limit is always 1' rule is enforced via the cooldown_window option:
-    if set, only one drink may be logged within the window.  On press the
-    coordinator updates local stats AND forwards the dose_strength +
-    drinking_duration to the matching Master Tracker coordinator for global
-    PK computation.
+    The cooldown lockout is NOT enforced here. It is exposed to the frontend
+    via the DrinkCooldownSensor (mirrors the medicine pill_limit pattern).
+    The card reads that sensor to soft-disable the Log button and show a
+    warning with Last/Next countdown, but the user can always override by
+    pressing anyway.  On press the coordinator updates local stats AND
+    forwards the dose_strength + drinking_duration to the matching Master
+    Tracker coordinator for global PK computation.
     """
 
     _attr_has_entity_name = True
@@ -166,14 +167,21 @@ class DrinkLogButton(AxDoseLoggerEntity, ButtonEntity):
         self._attr_translation_key = "log_drink"
         self._attr_unique_id = f"{entry.entry_id}_log_drink"
         self._attr_icon = "mdi:cup-water"
+        # Frontend contract: lets the card group granular drinks by substance
+        # for the Master Tracker Log Drink popup + Inventory panel. `role`
+        # lets the frontend classify this button without entity_id-suffix
+        # matching (entity_id is slugify(translated_name), not the unique_id
+        # stem; "Log Drink" → log_drink happens to match, but undo/reset do
+        # not — role makes all three robust).
+        self._attr_extra_state_attributes = {
+            "substance": entry.data.get("drink_type"),
+            "device_type": "drink",
+            "role": "log",
+        }
 
     async def async_press(self):
-        """Log a drink, enforcing the cooldown lockout if configured."""
+        """Log a drink. Cooldown is card-enforced (override always allowed)."""
         coordinator = _get_drink_coordinator(self.hass, self._entry_id)
-        if coordinator.is_within_cooldown():
-            raise HomeAssistantError(
-                "Cooldown active — wait until the lockout period ends before logging another drink."
-            )
         await coordinator.async_log_drink(dt_util.now())
 
 
@@ -188,6 +196,11 @@ class DrinkResetButton(AxDoseLoggerEntity, ButtonEntity):
         self._attr_unique_id = f"{entry.entry_id}_reset"
         self._attr_icon = "mdi:history"
         self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_extra_state_attributes = {
+            "substance": entry.data.get("drink_type"),
+            "device_type": "drink",
+            "role": "reset",
+        }
 
     async def async_press(self):
         coordinator = _get_drink_coordinator(self.hass, self._entry_id)
@@ -204,6 +217,11 @@ class DrinkUndoButton(AxDoseLoggerEntity, ButtonEntity):
         self._attr_translation_key = "undo_drink"
         self._attr_unique_id = f"{entry.entry_id}_undo"
         self._attr_icon = "mdi:undo"
+        self._attr_extra_state_attributes = {
+            "substance": entry.data.get("drink_type"),
+            "device_type": "drink",
+            "role": "undo",
+        }
 
     async def async_press(self):
         coordinator = _get_drink_coordinator(self.hass, self._entry_id)

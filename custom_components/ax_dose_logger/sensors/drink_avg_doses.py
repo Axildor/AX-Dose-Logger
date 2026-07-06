@@ -38,6 +38,7 @@ class DrinkAvgDosesSensor(RestoreSensor):
         self._entry = entry
         self._coordinator = coordinator
         self._window_days = window_days
+        self._substance = entry.data.get("drink_type")
         self._attr_unique_id = f"{entry.entry_id}_drink_avg_{window_days}"
         self._attr_translation_placeholders = {"window": str(window_days)}
         self._attr_device_info = DeviceInfo(
@@ -50,6 +51,9 @@ class DrinkAvgDosesSensor(RestoreSensor):
         self._attr_extra_state_attributes = {
             "window_days": window_days,
             "history_start_date": None,
+            "substance": self._substance,
+            "device_type": "drink",
+            "role": "avg",
         }
 
     async def async_added_to_hass(self) -> None:
@@ -101,4 +105,7 @@ class DrinkAvgDosesSensor(RestoreSensor):
             "effective_window_days": round(actual_window_days, 1),
             "doses_in_window": len(valid_timestamps),
             "history_start_date": self._history_start_date.isoformat() if self._history_start_date else None,
+            "substance": self._substance,
+            "device_type": "drink",
+            "role": "avg",
         }

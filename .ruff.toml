@@ -12,6 +12,16 @@ ignore = [
     "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
     "D203", # no-blank-line-before-class (incompatible with formatter)
     "D212", # multi-line-summary-first-line (incompatible with formatter)
+    "D213", # multi-line-summary-second-line (mutually exclusive with D212; HA Core ignores both)
+    "D413", # missing blank line after docstring (HA Core style doesn't enforce this)
+    "ERA001", # commented-out code — false-positives on documentation comments (storage dict shapes, formula docs); HA Core ignores it
+    "EM102", # f-string in exception (HA idiom — HA codebase uses f-string raises throughout)
+    "TRY003", # long messages outside exception class (HA Core ignores this — pyproject.toml:824)
+    "PERF401", # manual for-loop vs list comprehension (HA Core uses explicit loops commonly)
+    "PERF403", # explicit dict.get vs comprehension (HA style)
+    "FBT001", # boolean positional arg (HA sensors/helpers use boolean positional args)
+    "PLR0911", # too many return statements (HA Core ignores — pyproject.toml:798)
+    "RUF046", # unnamed-expr-return-type — false positive on dataclass field defaults
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
     "TC001", # Move application import into a type-checking block

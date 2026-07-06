@@ -26,6 +26,7 @@ class DrinkTotalSensor(RestoreSensor):
         """Initialize the granular total sensor."""
         self._entry = entry
         self._coordinator = coordinator
+        self._substance = entry.data.get("drink_type")
         self._attr_unique_id = f"{entry.entry_id}_drink_total"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -33,6 +34,14 @@ class DrinkTotalSensor(RestoreSensor):
             manufacturer="AX Dose Logger",
             model="Drink",
         )
+        # Frontend contract: lets the card detect a granular drink device and
+        # group drinks by substance for the Master Tracker Log Drink popup +
+        # Inventory panel.  Mirrors the master tracker's `drink_master: True`
+        # marker but with `device_type: "drink"` (granular) + `substance`.
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "device_type": "drink",
+        }
 
     async def async_added_to_hass(self) -> None:
         """Restore last value, then subscribe to the coordinator."""
@@ -52,4 +61,8 @@ class DrinkTotalSensor(RestoreSensor):
             self._attr_native_value = len(self._coordinator.data.dose_history)
         else:
             self._attr_native_value = 0
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "device_type": "drink",
+        }
         self.async_write_ha_state()

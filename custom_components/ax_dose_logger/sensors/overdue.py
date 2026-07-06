@@ -17,7 +17,6 @@ from homeassistant.const import UnitOfTime
 from homeassistant.core import callback
 
 from ..const import (
-    TRACKING_AS_NEEDED,
     TRACKING_CYCLIC,
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,

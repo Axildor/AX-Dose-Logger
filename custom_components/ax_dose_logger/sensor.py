@@ -2,8 +2,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    DEVICE_CATEGORY_DRINKS,
     DEVICE_CATEGORY_DRINK_SETTINGS,
+    DEVICE_CATEGORY_DRINKS,
     DOMAIN,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
@@ -16,13 +16,21 @@ from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.concentration import PillConcentrationSensor
 from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
 from .sensors.drink_avg_doses import DrinkAvgDosesSensor
+from .sensors.drink_cooldown import DrinkCooldownSensor
 from .sensors.drink_last_dose import DrinkLastDoseSensor
-from .sensors.drink_master_avg import DrinkMasterAvgDosesSensor
 from .sensors.drink_master import DrinkMasterSensor
+from .sensors.drink_master_avg import DrinkMasterAvgDosesSensor
+from .sensors.drink_master_daily_amount import DrinkMasterDailyAmountSensor
+from .sensors.drink_master_last_dose import DrinkMasterLastDoseSensor
+from .sensors.drink_master_sleep_disruption import (
+    DrinkMasterEstimatedLowTimeSensor,
+    DrinkMasterSleepDisruptionSensor,
+)
 from .sensors.drink_total import DrinkTotalSensor
 from .sensors.last_dose import PillLastDoseSensor
 from .sensors.next_dose import PillNextDoseSensor
 from .sensors.overdue import PillOverdueSensor
+from .sensors.pill_daily_amount import PillDailyAmountSensor
 from .sensors.pill_limit import PillLimitSensor
 from .sensors.steady_state import PillSteadyStateSensor
 from .sensors.strength import PillStrengthSensor
@@ -56,6 +64,7 @@ async def _setup_medicine_sensors(
     tracking_type = entry.data.get("tracking_type")
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     entities = [PillTotalSensor(entry, coordinator)]
+    entities.append(PillDailyAmountSensor(entry, coordinator))
     entities.append(PillLastDoseSensor(entry, coordinator))
     entities.append(PillLimitSensor(entry, coordinator))
     entities.append(PillConcentrationSensor(entry, coordinator))
@@ -102,6 +111,19 @@ async def _setup_drink_sensors(
         DrinkAvgDosesSensor(entry, coordinator, 30),
         DrinkAvgDosesSensor(entry, coordinator, 365),
     ]
+    # Cooldown sensor is only created when a cooldown window is configured,
+    # so drinks without a cooldown have no dead sensor entity. The card reads
+    # this entity (native 0/1 + cooldown_ends_at) to soft-disable the Log
+    # button + show a Last/Next countdown, mirroring the medicine pill_limit
+    # sensor. The backend never blocks a log — override is always available.
+    cooldown_window = float(
+        entry.options.get(
+            "cooldown_window",
+            entry.data.get("cooldown_window", 0),
+        )
+    )
+    if cooldown_window > 0:
+        entities.append(DrinkCooldownSensor(entry, coordinator))
     async_add_entities(entities)
 
 
@@ -129,11 +151,19 @@ async def _setup_drink_settings_sensors(
     if DRINK_TYPE_CAFFEINE in masters:
         master = masters[DRINK_TYPE_CAFFEINE]
         entities.append(DrinkMasterSensor(entry, master))
+        entities.append(DrinkMasterLastDoseSensor(entry, master))
+        entities.append(DrinkMasterSleepDisruptionSensor(entry, master))
+        entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master))
+        entities.append(DrinkMasterDailyAmountSensor(entry, master))
         for window in (7, 14, 30, 365):
             entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
     if DRINK_TYPE_ALCOHOL in masters:
         master = masters[DRINK_TYPE_ALCOHOL]
         entities.append(DrinkMasterSensor(entry, master))
+        entities.append(DrinkMasterLastDoseSensor(entry, master))
+        entities.append(DrinkMasterSleepDisruptionSensor(entry, master))
+        entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master))
+        entities.append(DrinkMasterDailyAmountSensor(entry, master))
         for window in (7, 14, 30, 365):
             entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
     async_add_entities(entities)

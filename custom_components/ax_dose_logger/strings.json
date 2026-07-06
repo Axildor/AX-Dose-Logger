@@ -16,14 +16,16 @@
           "hours_between_doses": "Dose Interval",
           "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity"
+          "enable_calendar": "Calendar Entity",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "hours_between_doses": "Minimum hours between consecutive doses.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
         }
       },
       "time_of_day": {
@@ -34,14 +36,16 @@
           "doses_per_day": "How Many Times per Day",
           "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity"
+          "enable_calendar": "Calendar Entity",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. You'll set the exact times on the next screen.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
         }
       },
       "time_of_day_times": {
@@ -94,12 +98,14 @@
         "data": {
           "initial_stock": "Inventory",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
         }
       },
       "cyclic": {
@@ -113,7 +119,8 @@
           "dose_time": "Dose Time",
           "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity"
+          "enable_calendar": "Calendar Entity",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
@@ -123,7 +130,8 @@
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 1 pill in 24 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
         }
       },
       "pk": {
@@ -257,12 +265,16 @@
         "data": {
           "global_caffeine_half_life": "Caffeine Half-Life",
           "global_caffeine_tmax": "Caffeine Time to Peak",
-          "global_alcohol_elimination_rate": "Alcohol Elimination Rate"
+          "global_alcohol_elimination_rate": "Alcohol Elimination Rate",
+          "caffeine_daily_limit_mg": "Caffeine 24h Limit",
+          "alcohol_daily_limit_g": "Alcohol 24h Limit"
         },
         "data_description": {
           "global_caffeine_half_life": "Hours for the body to eliminate half the caffeine. Population average: 5.0 h.",
           "global_caffeine_tmax": "Hours after ingestion until caffeine concentration peaks. Population average: 0.75 h.",
-          "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h."
+          "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h.",
+          "caffeine_daily_limit_mg": "Maximum caffeine (mg) allowed in the last 24 hours. FDA recommended limit: 400 mg/day for healthy adults. Lower for lighter body mass, pregnancy, or caffeine sensitivity. Set 0 to disable the limit.",
+          "alcohol_daily_limit_g": "Maximum ethanol (g) allowed in the last 24 hours. No FDA limit exists. US Dietary Guidelines: ~14 g/day for women, ~28 g/day for men (1 standard drink ~14 g ethanol). Set 0 to disable the limit."
         }
       }
     }
@@ -300,7 +312,8 @@
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
           "pill_limit": "Pill Limit",
-          "enable_calendar": "Calendar Entity"
+          "enable_calendar": "Calendar Entity",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
@@ -330,7 +343,8 @@
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity.",
-          "tracking_type": "How this medication is scheduled."
+          "tracking_type": "How this medication is scheduled.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Used by the Amount in Last 24h sensor to show remaining headroom. Set 0 for no limit (the sensor still shows the 24h total)."
         }
       },
       "schedule": {
@@ -454,12 +468,16 @@
         "data": {
           "global_caffeine_half_life": "Caffeine Half-Life",
           "global_caffeine_tmax": "Caffeine Time to Peak",
-          "global_alcohol_elimination_rate": "Alcohol Elimination Rate"
+          "global_alcohol_elimination_rate": "Alcohol Elimination Rate",
+          "caffeine_daily_limit_mg": "Caffeine 24h Limit",
+          "alcohol_daily_limit_g": "Alcohol 24h Limit"
         },
         "data_description": {
           "global_caffeine_half_life": "Hours for the body to eliminate half the caffeine. Population average: 5.0 h.",
           "global_caffeine_tmax": "Hours after ingestion until caffeine concentration peaks. Population average: 0.75 h.",
-          "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h."
+          "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h.",
+          "caffeine_daily_limit_mg": "Maximum caffeine (mg) allowed in the last 24 hours. FDA recommended limit: 400 mg/day for healthy adults. Lower for lighter body mass, pregnancy, or caffeine sensitivity. Set 0 to disable the limit.",
+          "alcohol_daily_limit_g": "Maximum ethanol (g) allowed in the last 24 hours. No FDA limit exists. US Dietary Guidelines: ~14 g/day for women, ~28 g/day for men (1 standard drink ~14 g ethanol). Set 0 to disable the limit."
         }
       },
       "drink_options": {
@@ -666,16 +684,25 @@
         "name": "Adherence ({window} Days)"
       },
       "total_caffeine_in_body": {
-        "name": "Total Caffeine in Body"
+        "name": "Amount in Body"
       },
       "total_alcohol_in_body": {
-        "name": "Total Alcohol in Body"
+        "name": "Amount in Body"
       },
       "drink_total": {
         "name": "Total Drinks"
       },
       "drink_last_dose": {
         "name": "Last Drink"
+      },
+      "drink_master_last_dose_caffeine": {
+        "name": "Last Caffeine"
+      },
+      "drink_master_last_dose_alcohol": {
+        "name": "Last Alcohol"
+      },
+      "drink_cooldown": {
+        "name": "Drinks Available"
       },
       "drink_avg_doses": {
         "name": "Avg Daily Drinks ({window} Days)"
@@ -685,6 +712,27 @@
       },
       "drink_master_avg_alcohol": {
         "name": "Avg Daily Alcohol ({window} Days)"
+      },
+      "sleep_disruption_caffeine": {
+        "name": "Sleep Disruption"
+      },
+      "sleep_disruption_alcohol": {
+        "name": "Sleep Disruption"
+      },
+      "estimated_low_time_caffeine": {
+        "name": "Estimated Low Time"
+      },
+      "estimated_low_time_alcohol": {
+        "name": "Estimated Low Time"
+      },
+      "pill_daily_amount": {
+        "name": "Amount in Last 24h"
+      },
+      "drink_master_daily_amount_caffeine": {
+        "name": "Amount in Last 24h"
+      },
+      "drink_master_daily_amount_alcohol": {
+        "name": "Amount in Last 24h"
       }
     },
     "button": {

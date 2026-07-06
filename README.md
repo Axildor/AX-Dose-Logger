@@ -22,23 +22,92 @@ In addition to medications, AX Dose Logger can track caffeinated and alcoholic d
 
 Each configured drink becomes its own **Granular Drink Device** (e.g. "Morning Espresso", "Evening Beer") with the same Control and Configuration entity set as a medication:
 
-- A **Log Drink** control button (with optional cooldown lockout — limit is always 1 per window). **Pressing this is what activates the Master Tracker PK engines** — each press forwards the drink's `dose_strength` + `drinking_duration` to the matching substance's Master Tracker coordinator.
+- A **Log Drink** control button. **Pressing this is what activates the Master Tracker PK engines** — each press forwards the drink's `dose_strength` + `drinking_duration` to the matching substance's Master Tracker coordinator. When a cooldown window is configured, the backend never blocks a log (override is always available); the lockout is exposed as a soft warning via the **Drinks Available** sensor (see below) for the Lovelace card to surface.
 - An **Undo Drink** control button (reverts the last drink + its master contribution)
 - A **Reset History** configuration button (clears the drink's local history + master contribution)
 - A **Stock Left** control number (counts down by 1 per Log Drink press, using your configured unit of measurement, e.g. Cups/Cans/Bottles)
 - An **Add Stock** control number (disposable input to refill the Stock Left counter)
-- Local statistics: total count, last drink timestamp, and 7/14/30/365-day daily-average sensors
+- Local statistics: total count, last drink timestamp, 7/14/30/365-day daily-average sensors, and (when a cooldown window is configured) a **Drinks Available** sensor exposing the cooldown state
+
+#### Drinks Available Sensor (Cooldown)
+
+When a drink has a `cooldown_window > 0`, a **Drinks Available** sensor (`sensor.<drink>_drinks_available`) is created on the granular drink device, mirroring the medicine **Pills Safe To Take** sensor's contract so the Lovelace card consumes it identically:
+
+| State | Meaning |
+| --- | --- |
+| `1` | A drink is available (outside the cooldown window, or no history yet) |
+| `0` | Cooldown active — limit reached for this window |
+
+Attributes:
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| `cooldown_ends_at` | datetime (ISO) \| null | When the current cooldown window expires (`last_dose_time + cooldown_window`). The card renders the "Next XXm" countdown from this. |
+| `last_dose_time` | datetime (ISO) \| null | Timestamp of the most recent drink. The card renders the "Last XXm" display from this. |
+| `cooldown_window_hours` | float | The configured cooldown window in hours. |
+| `within_cooldown` | bool | Raw boolean mirror of the coordinator's lockout check, for templates that prefer a boolean. |
+
+> **Override always available.** Unlike a hard backend block, the cooldown is a *soft* warning. The **Log Drink** button and the `ax_dose_logger.log_drink` service always record the drink, so a user can override the lockout directly from the HA UI or an automation at any time. The card is expected to soft-disable the button and show a "Last XXm * Next XXm" countdown when `native_value == 0`, with an explicit override affordance.
 
 When you press **Log Drink**, the dose is forwarded to the matching **Master Tracker** virtual device, which draws the global decay curve:
 
-- **Caffeine Tracker** — hosts `sensor.total_caffeine_in_body` (mg). Uses a discretized uniform-absorption model: each drink is split into mini-boluses spread across its `drinking_duration`, each absorbed via the IR Bateman equation with the global half-life and tmax. Linear PK → exact superposition across all caffeine drinks.
-- **Alcohol Tracker** — hosts `sensor.total_alcohol_in_body` (g). Uses zero-order (Michaelis-Menten saturated) elimination at a configurable grams-per-hour rate. Doses add instantly; elimination advances on every tick.
+- **Caffeine Tracker** — hosts `sensor.total_caffeine_in_body` (mg, displayed as **Amount in Body**), `sensor.sleep_disruption` (categorical), `sensor.estimated_low_time` (timestamp), and `sensor.amount_in_last_24h` (mg, sliding 24-hour window). Uses a discretized uniform-absorption model: each drink is split into mini-boluses spread across its `drinking_duration`, each absorbed via the IR Bateman equation with the global half-life and tmax. Linear PK → exact superposition across all caffeine drinks.
+- **Alcohol Tracker** — hosts `sensor.total_alcohol_in_body` (g, displayed as **Amount in Body**), `sensor.sleep_disruption` (categorical), `sensor.estimated_low_time` (timestamp), and `sensor.amount_in_last_24h` (g, sliding 24-hour window). Uses zero-order (Michaelis-Menten saturated) elimination at a configurable grams-per-hour rate. Doses add instantly; elimination advances on every tick.
+
+Each Master Tracker also exposes a **Sleep Disruption** sensor — a categorical readout (`None` / `Low` / `Moderate` / `High`) of how much the current body-mass load is likely to disrupt sleep. The state is a bare label (no unit suffix); the threshold ranges are documented in the tables below. The band is recomputed on every coordinator push (dose event or 1-min decay tick) so it tracks clearance in real time.
+
+A companion **Estimated Low Time** timestamp sensor (`sensor.estimated_low_time`) predicts the wall-clock time at which the body-mass will decay into the *Low* band — the first sleep-relevant improvement milestone and more realistic to watch than the asymptotic None band. It carries `estimated_none_time` (the sleep-safe moment) as an attribute.
+
+#### Amount in Last 24h — Master Trackers
+
+Each Master Tracker also exposes an **Amount in Last 24h** sensor (`sensor.amount_in_last_24h`) — a sliding 24-hour window showing the total strength of that substance consumed in the past 24 hours (mg for caffeine, g for alcohol). It aggregates **every** logged drink of that substance across all granular drink devices, recomputed on every coordinator push (dose event or 1-min tick) so it tracks intake in real time.
+
+Per-substance daily limits are configurable in **Drink Settings** (Configure):
+
+| Substance | Unit | Default Limit | Source |
+| --- | --- | --- | --- |
+| **Caffeine** | mg | **400 mg** (FDA — healthy adults) | User-overridable. Lower for lighter body mass, pregnancy, or caffeine sensitivity. `0` = no limit. |
+| **Alcohol** | g ethanol | **0 g** (no FDA limit) | User-overridable in grams ethanol. US Dietary Guidelines ≈ 14 g/day women, 28 g/day men (1 standard drink ≈ 14 g). `0` = no limit. |
+
+When a limit is set (> 0), the sensor exposes a `remaining` attribute (`daily_limit - amount`) so automations and the card can warn "X mg of 400 mg — Y left" before the next drink pushes intake over the cap.
+
+> **Intake vs. body load:** *Amount in Last 24h* tracks **how much you swallowed** in the rolling window — the correct value for comparing against FDA/Dietary Guidelines daily limits (which are stated as total daily *intake*, not plasma concentration). For the **current active amount in your body** (accounting for absorption and elimination), use the Master Tracker's *Amount in Body* sensor instead (displayed as "Amount in Body"; entity ids `sensor.total_caffeine_in_body` / `sensor.total_alcohol_in_body` are preserved for backward compatibility). These answer different questions: a dose taken 20 hours ago has mostly cleared from your body but still counts toward your 24h intake budget.
+
+#### Caffeine — Sleep Disruption Bands
+
+| State | Threshold | Biological Impact at Bedtime |
+| --- | --- | --- |
+| **None** | `0 - 10 mg` | **Negligible impact.** The liver has effectively cleared the drug. Adenosine receptor binding is minimal. Normal sleep architecture and natural melatonin production occur. |
+| **Low** | `11 - 30 mg` | **Minor architectural shift.** Roughly equivalent to the residual trace of a cup of green tea. Sleep latency is unaffected, and deep sleep metrics on wearables remain largely stable. Minor delays in the first REM cycle may occur. |
+| **Moderate** | `31 - 60 mg` | **Hidden disruption.** Roughly equivalent to a residual espresso shot. Users will likely still fall asleep easily, but Slow-Wave Sleep is measurably suppressed. Expect reduced deep sleep duration and an elevated resting heart rate during the first half of the night. |
+| **High** | `61+ mg` | **Severe disruption.** Heavy adenosine A2A receptor blockade. Increases sleep latency (tossing and turning), multiplies unconscious micro-arousals, and chemically delays the circadian melatonin trigger. |
+
+> **Note on "Immunity":** If you drink coffee late in the day and feel "immune" to it because you still get 8 hours of sleep, your central nervous system is still being robbed of its primary phase for physical and cognitive regeneration. You are unconscious, but you are not getting deep sleep.
+
+#### Alcohol — Sleep Disruption Bands
+
+| State | Threshold | Biological Impact at Bedtime |
+| --- | --- | --- |
+| **None** | `0 g` | **Clean architecture.** The liver has cleared all ethanol. Normal sleep cycling, baseline resting heart rate, and natural REM duration occur. |
+| **Low** | `1 - 10 g` | **Minor rebound.** (Less than 1 standard drink remaining). The ethanol will clear within the first 1-2 hours of sleep. Minor suppression of the first REM cycle, with a slight, brief elevation in resting heart rate. |
+| **Moderate** | `11 - 30 g` | **Moderate architectural stress.** (Roughly 1 to 2.5 standard drinks remaining). Noticeable REM suppression. The glutamate rebound will occur during the middle of the night, causing restless sleep, potential temperature dysregulation (sweating), and a measurable drop in Heart Rate Variability (HRV) on fitness trackers. |
+| **High** | `31+ g` | **Severe disruption.** Heavy REM suppression. The body is dedicating massive metabolic resources to clearance. Expect frequent mid-night awakenings, a spiked resting heart rate that stays elevated for hours, diuretic effects (waking up for the bathroom), and severe REM rebound (vivid, stressful dreams) if sleep is extended. |
+
+> **Note on "The Nightcap":** Using alcohol to fall asleep faster is a biological trap. You are trading sleep latency (falling asleep quickly) for sleep architecture (restorative sleep). Wearable data will almost always show a destroyed Heart Rate Variability (HRV) and elevated resting heart rate for hours after a late-night drink, leaving you physically exhausted the next day regardless of hours spent in bed.
+
+#### Sleep Disruption — Attributes
+
+The Sleep Disruption sensor's extra state attributes expose the raw `body_mass` + unit, the `next_band` it will drop into, and `minutes_until_next_band` (estimated decay time to the next-lower band). Caffeine uses first-order decay (t = ln(M/threshold) ÷ ke); alcohol uses zero-order linear decay (t = (M − threshold) ÷ rate).
+
+#### Estimated Low Time — Attributes
+
+The **Estimated Low Time** sensor (`sensor.estimated_low_time`) is a timestamp sensor whose state is the ISO-8601 wall-clock time the body-mass is predicted to reach the Low band. It exposes `estimated_none_time` (the sleep-safe moment when the body-mass enters the None band) as an attribute. When the body-mass is already in the Low band (or lower), the state is `None` (unknown); `estimated_none_time` is `None` once the body-mass is in the None band. Caffeine uses first-order decay (t = ln(M/threshold) ÷ ke); alcohol uses zero-order linear decay (t = (M − threshold) ÷ rate).
 
 ### Configuring a Drink
 
 1. **Add a Device** → choose **Drink** as the category.
 2. **Drink Setup** — name, drink type (Caffeine/Alcohol), unit of measurement (e.g. Cups, Cans, Bottles), and an initial stock count (how many of this unit you currently have on hand).
-3. **Cooldown Timer** — optional lockout window in hours (0 = disabled; limit is always 1).
+3. **Cooldown Timer** — optional lockout window in hours (0 = disabled; limit is always 1). The lockout is **card-enforced**, not backend-enforced: a **Drinks Available** sensor exposes the cooldown state for the Lovelace card to soft-disable the Log button with a Last/Next countdown, but the backend always records the drink so a user can override at any time.
 4. **Drink Details** —
    - Caffeine: `caffeine_mg` + `drinking_duration` (typical time to finish, minutes).
    - Alcohol: `volume_ml` + `abv_percent` + `drinking_duration`. The ethanol mass is calculated automatically: `grams = volume_ml × (abv_percent / 100) × 0.789` (Widmark formula). `bioavailability` is hardcoded to 100 for all drinks.
@@ -61,7 +130,7 @@ In addition to the **Log Drink** button, three services are available for automa
 
 The `ax_dose_logger_drink_taken` bus event fires on every log with `{entry_id, drink_type, dose_strength, drink_name}` for automations (e.g. "if caffeine in body > 200mg, dim lights").
 
-> **Note:** The Master Tracker devices expose a `drink_master: true` attribute so the AX Dose Logger Card can filter them out (they are read-only global sensors). A dedicated drinks card is a future frontend enhancement.
+> **Note:** The Master Tracker devices expose a `drink_master: true` + `substance` attribute so the AX Dose Logger Card can identify them and render the dedicated Drinks card (Drinks / Graph / Inventory / Stats / Tools panes). Granular drink devices expose a `device_type: "drink"` + `substance` attribute so the card can group drinks by substance for the Log Drink popup, Inventory, and Tools panels.
 
 ---
 
@@ -105,6 +174,7 @@ Accidentally taking too much is easy to do, especially with medications that hav
 If you want to understand what's happening in your body between doses, AX Dose Logger can optionally model the **amount of medication in your system over time** using pharmacokinetic models. When enabled, it creates sensors based on your tracking type:
 
 - **Amount in Body** — Shows current drug amount (mg), updated every 2 minutes, accounting for absorption and elimination. Available for all tracking types.
+- **Amount in Last 24h** — Sliding 24-hour window showing the total dose strength (mg/mcg/g) consumed in the last 24 hours. Use it to warn before the next dose pushes you over a daily limit. Set an optional **24h Dose Limit** (in this medication's unit; `0` = no limit) and the `remaining` attribute exposes the headroom left for automations and the card. Available for all tracking types, including As Needed.
 - **Steady State** — Shows how many days remain until you reach 90% steady state, along with the theoretical maximum and your current percentage. **Only available for scheduled medications** (Regular Interval, Time of Day, Cyclic). Not available for As Needed since steady state requires a fixed dosing interval.
 
 You choose a **Release Type** when adding a medication — **Instant Release** or **Sustained Release** — and then configure the appropriate parameters:
@@ -258,6 +328,15 @@ Key entities and their attributes for template references:
   - `kr`: SR release rate constant (h⁻¹)
   - `lag_time`: configured lag time (min)
   - `dose_history`: list of `[timestamp, strength]` pairs
+
+**Amount in Last 24h** (`sensor.ibuprofen_amount_in_last_24h`)
+- State: total dose strength (in this medication's unit — mg/mcg/g) consumed in the last 24 hours (float, 1 decimal)
+  - This is **intake** (how much you swallowed), not body load. For the current active amount in your body after absorption/elimination, see the *Amount in Body* sensor above. FDA daily limits are stated as intake, so this is the correct value for limit comparisons.
+- `window_hours`: `24` (fixed rolling window)
+- `doses_in_window`: count of doses logged in the window
+- `daily_limit`: configured 24h limit (in the medication's unit), or `null` when set to `0` (no limit)
+- `remaining`: `daily_limit - amount`, or `null` when no limit is configured
+- `unit_of_measurement`: the medication's strength unit (mg/mcg/g)
 
 **Steady State** (`sensor.ibuprofen_days_to_steady_state`)
 - State: days remaining to 90% steady state (float, 1 decimal), or `0.0` if reached

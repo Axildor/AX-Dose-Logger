@@ -5,14 +5,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
+    ALCOHOL_DEFAULT_LIMIT_G,
+    CAFFEINE_DEFAULT_LIMIT_MG,
     CURRENT_VERSION,
-    DEVICE_CATEGORY_DRINKS,
     DEVICE_CATEGORY_DRINK_SETTINGS,
+    DEVICE_CATEGORY_DRINKS,
     DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
     DRINK_MASTER_STORE_KEYS,
-    DRINK_TYPE_ALCOHOL,
-    DRINK_TYPE_CAFFEINE,
     GLOBAL_PK_DEFAULTS,
     LOGGER,
     RELEASE_INSTANT,
@@ -107,6 +107,8 @@ async def _ensure_drink_settings_entry(hass: HomeAssistant) -> None:
         data={
             "device_category": DEVICE_CATEGORY_DRINK_SETTINGS,
             **GLOBAL_PK_DEFAULTS,
+            "caffeine_daily_limit_mg": CAFFEINE_DEFAULT_LIMIT_MG,
+            "alcohol_daily_limit_g": ALCOHOL_DEFAULT_LIMIT_G,
         },
         discovery_keys=MappingProxyType({}),
         domain=DOMAIN,
@@ -146,7 +148,9 @@ async def _setup_drink_masters(hass: HomeAssistant, settings_entry: AxDoseLogger
             masters[substance].update_global_constants(settings_entry)
             await masters[substance].async_config_entry_first_refresh()
         else:
-            master = DrinkMasterCoordinator(hass, substance, store, store_key)
+            master = DrinkMasterCoordinator(
+                hass, substance, store, store_key, settings_entry
+            )
             master.update_global_constants(settings_entry)
             masters[substance] = master
             await master.async_config_entry_first_refresh()
@@ -277,11 +281,21 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
 async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
-    # Initialize shared store (singleton)
+    # Initialize shared store (singleton).  The slot MUST be reserved
+    # synchronously BEFORE the `await store.async_load()` so that
+    # concurrent `async_setup_entry` calls for other config entries share
+    # one instance.  HA sets up entries in parallel; assigning the slot
+    # only after the await let every entry create its own store, and
+    # coordinators that grabbed a losing instance wrote doses the REST
+    # endpoint (which reads the winning instance) never saw — the root
+    # cause of the "14-day graph not updating, no pattern, restart fixes
+    # it" bug.  Reserving the slot before the await guarantees a single
+    # instance; the store object exists immediately and `async_load`
+    # only populates its in-memory `_data` dict.
     if "_store" not in hass.data[DOMAIN]:
         store = AxDoseLoggerStore(hass)
+        hass.data[DOMAIN]["_store"] = store  # reserve BEFORE await
         await store.async_load()
-        hass.data[DOMAIN]["_store"] = store
 
     # Register REST view (idempotent — HA ignores duplicate registrations)
     hass.http.register_view(AxDoseLoggerHistoryView())

@@ -25,7 +25,6 @@ Two coordinator classes live here:
 
 from __future__ import annotations
 
-import asyncio
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -37,8 +36,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     DOMAIN,
-    DRINK_TYPE_CAFFEINE,
     DRINK_TYPE_ALCOHOL,
+    DRINK_TYPE_CAFFEINE,
     GLOBAL_PK_DEFAULTS,
     LOGGER,
     RELEASE_INSTANT,
@@ -56,9 +55,6 @@ __all__ = [
     "DrinkMasterCoordinator",
     "DrinkMasterCoordinatorData",
 ]
-
-# Debounce window for store saves (seconds).
-_SAVE_DEBOUNCE_SECONDS = 5.0
 
 
 # =====================================================================
@@ -101,7 +97,6 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         self._entry = entry
         self._store = store
         self._masters = master_coordinators
-        self._save_handle: asyncio.TimerHandle | None = None
 
     async def _async_setup(self) -> None:
         """Load local dose history from the store on first refresh."""
@@ -188,7 +183,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         # 1) Local stats
         self.data.dose_history.append((timestamp, dose_strength))
         self.data.last_dose_time = timestamp
-        self._schedule_save()
+        self._save()
 
         # 2) Forward to the master coordinator for global PK
         master = self._get_master()
@@ -216,7 +211,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         self.data.last_dose_time = (
             self.data.dose_history[-1][0] if self.data.dose_history else None
         )
-        self._schedule_save()
+        self._save()
 
         drink_type = self._entry.data.get("drink_type")
         master = self._get_master()
@@ -233,7 +228,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         """Clear all local drink history and notify the master to reset."""
         self.data.dose_history.clear()
         self.data.last_dose_time = None
-        self._schedule_save()
+        self._save()
 
         master = self._get_master()
         if master is not None:
@@ -262,36 +257,20 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         return (now - last) < timedelta(hours=cooldown_h)
 
     # ------------------------------------------------------------------
-    # Shutdown + debounced save (mirrors AxDoseLoggerCoordinator)
+    # Debounced store persistence (HA-native async_delay_save)
     # ------------------------------------------------------------------
-    async def async_shutdown(self) -> None:
-        if self._save_handle:
-            self._save_handle.cancel()
-            self._save_handle = None
-            serialized = [
-                [ts.isoformat(), strength]
-                for ts, strength in self.data.dose_history
-            ]
-            await self._store.async_set_history(self._entry.entry_id, serialized)
-        await super().async_shutdown()
-
-    def _schedule_save(self) -> None:
-        if self._save_handle:
-            self._save_handle.cancel()
-        self._save_handle = self.hass.loop.call_later(
-            _SAVE_DEBOUNCE_SECONDS, self._do_save
-        )
-
+    # Delegated to ``AxDoseLoggerStore.schedule_save_history`` which calls
+    # ``Store.async_delay_save``. HA's storage layer debounces natively and
+    # flushes any pending delayed save during the stop sequence, so no
+    # bespoke ``async_shutdown`` flush is needed.
     @callback
-    def _do_save(self) -> None:
-        self._save_handle = None
+    def _save(self) -> None:
+        """Serialize current dose history and schedule a debounced store save."""
         serialized = [
             [ts.isoformat(), strength]
             for ts, strength in self.data.dose_history
         ]
-        self.hass.async_create_task(
-            self._store.async_set_history(self._entry.entry_id, serialized)
-        )
+        self._store.schedule_save_history(self._entry.entry_id, serialized)
 
 
 # =====================================================================
@@ -330,19 +309,29 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         substance: str,
         store: AxDoseLoggerStore,
         store_key: str,
+        settings_entry: ConfigEntry,
     ) -> None:
-        """Initialize the master coordinator for a substance."""
+        """Initialize the master coordinator for a substance.
+
+        ``settings_entry`` is the Drink Settings singleton config entry.
+        Passing it as ``config_entry`` to ``DataUpdateCoordinator`` causes
+        HA to register ``async_shutdown`` on the entry's unload hook
+        ([`update_coordinator.py:148`](/usr/src/homeassistant/homeassistant/helpers/update_coordinator.py:148)).
+        Previously this was omitted, so the master coordinator's shutdown
+        was never called and any pending debounced save was dropped on
+        every restart — a root cause of drink-master data loss.
+        """
         super().__init__(
             hass,
             LOGGER,
             name=f"AX Dose Logger Master ({substance})",
+            config_entry=settings_entry,
             update_interval=timedelta(minutes=1),
             always_update=True,
         )
         self._substance = substance
         self._store = store
         self._store_key = store_key
-        self._save_handle: asyncio.TimerHandle | None = None
         # PK constants — refreshed from the Drink Settings entry on every recompute.
         self._caffeine_half_life = GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]
         self._caffeine_tmax = GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]
@@ -544,7 +533,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             # then let the next tick handle elimination.
             self.data.body_mass += dose_strength
 
-        self._schedule_save()
+        self._save()
         self._push_update()
 
     async def async_undo_dose(self) -> None:
@@ -558,7 +547,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         )
         if self._substance == DRINK_TYPE_ALCOHOL:
             self.data.body_mass = max(0.0, self.data.body_mass - removed_strength)
-        self._schedule_save()
+        self._save()
         self._push_update()
 
     async def async_reset(self) -> None:
@@ -567,32 +556,22 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         self.data.last_dose_time = None
         self.data.body_mass = 0.0
         self._last_decay = None
-        self._schedule_save()
+        self._save()
         self._push_update()
 
     # ------------------------------------------------------------------
-    # Shutdown + debounced save
+    # Debounced store persistence (HA-native async_delay_save)
     # ------------------------------------------------------------------
-    async def async_shutdown(self) -> None:
-        if self._save_handle:
-            self._save_handle.cancel()
-            self._save_handle = None
-            await self._persist()
-        await super().async_shutdown()
-
-    def _schedule_save(self) -> None:
-        if self._save_handle:
-            self._save_handle.cancel()
-        self._save_handle = self.hass.loop.call_later(
-            _SAVE_DEBOUNCE_SECONDS, self._do_save
-        )
-
+    # Delegated to ``AxDoseLoggerStore.schedule_save_drink_master`` which
+    # calls ``Store.async_delay_save`` on the per-substance Store instance.
+    # HA's storage layer debounces natively and flushes any pending delayed
+    # save during the stop sequence, so no bespoke ``async_shutdown`` flush
+    # is needed. The ``config_entry`` passed to ``super().__init__`` ensures
+    # ``async_shutdown`` is registered on the Drink Settings entry's unload
+    # hook so the coordinator is properly torn down.
     @callback
-    def _do_save(self) -> None:
-        self._save_handle = None
-        self.hass.async_create_task(self._persist())
-
-    async def _persist(self) -> None:
+    def _save(self) -> None:
+        """Serialize current master state and schedule a debounced store save."""
         data = self.data
         serialized = {
             "doses": [
@@ -602,7 +581,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             "body_mass": data.body_mass,
             "last_decay": self._last_decay.isoformat() if self._last_decay else None,
         }
-        await self._store.async_set_drink_master(self._substance, serialized)
+        self._store.schedule_save_drink_master(self._substance, serialized)
 
     # ------------------------------------------------------------------
     # Accessors
@@ -622,3 +601,43 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
     @property
     def last_dose_time(self) -> datetime | None:
         return self.data.last_dose_time
+
+    # ------------------------------------------------------------------
+    # Predictive helpers — used by the Sleep Disruption sensor to estimate
+    # how long until the body-mass decays into a lower band.
+    # ------------------------------------------------------------------
+    def estimate_time_to_body_mass(self, target: float) -> timedelta | None:
+        """Estimate the time for ``body_mass`` to decay to ``target``.
+
+        Caffeine uses first-order elimination (Bateman tail -> exponential
+        decay):  t = ln(M / target) / ke,  ke = ln(2) / half_life.
+
+        Alcohol uses zero-order elimination (linear):  t = (M - target) /
+        elimination_rate.  Body mass asymptotically approaches 0 g.
+
+        Returns ``None`` when the target is already met (``body_mass <=
+        target``) or when the relevant PK constant is unavailable / zero.
+        """
+        mass = self.data.body_mass
+        if mass <= target:
+            return None
+        if self._substance == DRINK_TYPE_CAFFEINE:
+            half_life = self._caffeine_half_life
+            if not half_life or half_life <= 0:
+                return None
+            ke = math.log(2) / half_life  # per hour
+            if ke <= 0:
+                return None
+            hours = math.log(mass / target) / ke
+            if hours < 0:
+                return None
+            return timedelta(hours=hours)
+        if self._substance == DRINK_TYPE_ALCOHOL:
+            rate = self._alcohol_elimination_rate
+            if not rate or rate <= 0:
+                return None
+            hours = (mass - target) / rate
+            if hours < 0:
+                return None
+            return timedelta(hours=hours)
+        return None

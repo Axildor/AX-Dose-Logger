@@ -241,7 +241,8 @@ def _inject_missing_schema_keys(
     migrated: dict[str, Any],
     modern_template: dict[str, Any] | None,
 ) -> None:
-    """
+    """Backfill missing schema keys from a modern template into a migrated entry.
+
     Backfill any schema keys present in ``modern_template`` but missing from
     ``migrated``, using type-safe fallback values derived from the template:
 
@@ -428,11 +429,11 @@ def save_registry_atomic(path: Path, data: dict[str, Any]) -> None:
         with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2, ensure_ascii=False)
             fh.write("\n")
-        os.replace(tmp_name, path)
+        Path(tmp_name).replace(path)
     except BaseException:
         # Clean up the temp file on any failure.
         try:
-            os.unlink(tmp_name)
+            Path(tmp_name).unlink()
         except OSError:
             pass
         raise

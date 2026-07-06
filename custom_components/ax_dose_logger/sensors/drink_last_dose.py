@@ -4,7 +4,6 @@ Replicates :class:`PillLastDoseSensor` but reads from a :class:`DrinkCoordinator
 Returns the timestamp of the most recent drink of this granular device.
 """
 
-from datetime import datetime
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor
@@ -31,6 +30,7 @@ class DrinkLastDoseSensor(RestoreSensor):
         """Initialize the granular last-dose sensor."""
         self._entry = entry
         self._coordinator = coordinator
+        self._substance = entry.data.get("drink_type")
         self._attr_unique_id = f"{entry.entry_id}_drink_last_dose"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -38,6 +38,12 @@ class DrinkLastDoseSensor(RestoreSensor):
             manufacturer="AX Dose Logger",
             model="Drink",
         )
+        # Frontend contract: substance + device_type so the card can detect a
+        # granular drink device and group by substance.
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "device_type": "drink",
+        }
 
     async def async_added_to_hass(self) -> None:
         """Restore last value, then subscribe to the coordinator."""
@@ -60,4 +66,8 @@ class DrinkLastDoseSensor(RestoreSensor):
             self._attr_native_value = self._coordinator.data.last_dose_time
         else:
             self._attr_native_value = None
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "device_type": "drink",
+        }
         self.async_write_ha_state()

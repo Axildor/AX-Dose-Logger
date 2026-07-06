@@ -6,15 +6,16 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector as sel
 
 from .const import (
+    ALCOHOL_DEFAULT_LIMIT_G,
+    CAFFEINE_DEFAULT_LIMIT_MG,
     CURRENT_VERSION,
     DEVICE_CATEGORIES,
-    DEVICE_CATEGORY_DRINKS,
     DEVICE_CATEGORY_DRINK_SETTINGS,
+    DEVICE_CATEGORY_DRINKS,
     DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
-    DRINK_TYPES,
-    DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
+    DRINK_TYPES,
     GLOBAL_PK_DEFAULTS,
     MAX_DOSES_PER_DAY,
     PK_DEFAULTS,
@@ -149,6 +150,19 @@ _GLOBAL_CAFFEINE_TMAX_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
 _GLOBAL_ALCOHOL_RATE_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
     min=1, max=20, step=0.5, unit_of_measurement="g/h", mode=sel.NumberSelectorMode.BOX
 ))
+# --- Daily intake limit selectors (24-hour window sensors) ---
+# Medicine: entered in the device's own strength_unit (mg/mcg/g). 0 = no limit.
+_DAILY_LIMIT_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=100000, step=1, mode=sel.NumberSelectorMode.BOX
+))
+# Caffeine: FDA default 400 mg/day (user-overridable in Drink Settings).
+_CAFFEINE_DAILY_LIMIT_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=2000, step=1, unit_of_measurement="mg", mode=sel.NumberSelectorMode.BOX
+))
+# Alcohol: no FDA limit. Default 0 = no limit; user sets in grams ethanol.
+_ALCOHOL_DAILY_LIMIT_SELECTOR = sel.NumberSelector(sel.NumberSelectorConfig(
+    min=0, max=500, step=0.5, unit_of_measurement="g", mode=sel.NumberSelectorMode.BOX
+))
 
 # Ethanol density (g/ml) for Widmark mass calculation
 _ETHANOL_DENSITY = 0.789
@@ -263,6 +277,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
                 vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
+                vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
             }),
         )
 
@@ -280,6 +295,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
                 vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
+                vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
             }),
         )
 
@@ -325,6 +341,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                 vol.Required("pill_limit", default=2): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
+                vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
             }),
         )
 
@@ -344,6 +361,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                 vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
                 vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
+                vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
             }),
         )
 
@@ -433,6 +451,8 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "global_caffeine_half_life": float(user_input["global_caffeine_half_life"]),
                 "global_caffeine_tmax": float(user_input["global_caffeine_tmax"]),
                 "global_alcohol_elimination_rate": float(user_input["global_alcohol_elimination_rate"]),
+                "caffeine_daily_limit_mg": float(user_input.get("caffeine_daily_limit_mg", CAFFEINE_DEFAULT_LIMIT_MG)),
+                "alcohol_daily_limit_g": float(user_input.get("alcohol_daily_limit_g", ALCOHOL_DEFAULT_LIMIT_G)),
             }
             return self.async_create_entry(title="Drink Settings", data=data)
 
@@ -442,6 +462,8 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("global_caffeine_half_life", default=GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]): _GLOBAL_CAFFEINE_HALF_LIFE_SELECTOR,
                 vol.Required("global_caffeine_tmax", default=GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]): _GLOBAL_CAFFEINE_TMAX_SELECTOR,
                 vol.Required("global_alcohol_elimination_rate", default=GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]): _GLOBAL_ALCOHOL_RATE_SELECTOR,
+                vol.Required("caffeine_daily_limit_mg", default=CAFFEINE_DEFAULT_LIMIT_MG): _CAFFEINE_DAILY_LIMIT_SELECTOR,
+                vol.Required("alcohol_daily_limit_g", default=ALCOHOL_DEFAULT_LIMIT_G): _ALCOHOL_DAILY_LIMIT_SELECTOR,
             }),
         )
 
@@ -640,6 +662,7 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             main_schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = _TIME_WINDOW_SELECTOR
 
         main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = _PILL_LIMIT_SELECTOR
+        main_schema[vol.Optional("daily_limit", default=options.get("daily_limit", data.get("daily_limit", 0)))] = _DAILY_LIMIT_SELECTOR
 
         # Calendar toggle — only for scheduled tracking types (not As Needed)
         if tracking_type != TRACKING_AS_NEEDED:
@@ -693,6 +716,7 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             schema[vol.Required("time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24)))] = _TIME_WINDOW_SELECTOR
 
         schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = _PILL_LIMIT_SELECTOR
+        schema[vol.Optional("daily_limit", default=options.get("daily_limit", data.get("daily_limit", 0)))] = _DAILY_LIMIT_SELECTOR
 
         # Calendar toggle — only for scheduled tracking types (not As Needed)
         if new_tracking_type != TRACKING_AS_NEEDED:
@@ -811,6 +835,7 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                     "dose_time",
                     "time_window_hours",
                     "pill_limit",
+                    "daily_limit",
                     "enable_calendar",
                 )
                 for key in _DATA_KEYS_ON_TYPE_CHANGE:
@@ -872,6 +897,8 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required("global_caffeine_half_life", default=options.get("global_caffeine_half_life", data.get("global_caffeine_half_life", GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]))): _GLOBAL_CAFFEINE_HALF_LIFE_SELECTOR,
                 vol.Required("global_caffeine_tmax", default=options.get("global_caffeine_tmax", data.get("global_caffeine_tmax", GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]))): _GLOBAL_CAFFEINE_TMAX_SELECTOR,
                 vol.Required("global_alcohol_elimination_rate", default=options.get("global_alcohol_elimination_rate", data.get("global_alcohol_elimination_rate", GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]))): _GLOBAL_ALCOHOL_RATE_SELECTOR,
+                vol.Required("caffeine_daily_limit_mg", default=options.get("caffeine_daily_limit_mg", data.get("caffeine_daily_limit_mg", CAFFEINE_DEFAULT_LIMIT_MG))): _CAFFEINE_DAILY_LIMIT_SELECTOR,
+                vol.Required("alcohol_daily_limit_g", default=options.get("alcohol_daily_limit_g", data.get("alcohol_daily_limit_g", ALCOHOL_DEFAULT_LIMIT_G))): _ALCOHOL_DAILY_LIMIT_SELECTOR,
             }),
         )
 

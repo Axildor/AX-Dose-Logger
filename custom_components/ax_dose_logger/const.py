@@ -71,6 +71,13 @@ GLOBAL_PK_DEFAULTS: dict[str, float] = {
     "global_alcohol_elimination_rate": 8.0,  # g/h
 }
 
+# --- Daily intake limits (24-hour window sensors) ---
+# Caffeine: FDA recommends <=400 mg/day for healthy adults.
+# User-overridable per-substance via Drink Settings.
+CAFFEINE_DEFAULT_LIMIT_MG = 400
+# Alcohol: no FDA limit. Default 0 = no limit (user can set in grams ethanol).
+ALCOHOL_DEFAULT_LIMIT_G = 0
+
 # --- Strength unit constants ---
 STRENGTH_UNIT_MCG = "mcg"
 STRENGTH_UNIT_MG = "mg"

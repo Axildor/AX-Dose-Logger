@@ -13,7 +13,6 @@ Once all entities are migrated (1D-2) the signal firing is removed (1D-3).
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -33,10 +32,6 @@ if TYPE_CHECKING:
     from .store import AxDoseLoggerStore
 
 __all__ = ["AxDoseLoggerCoordinator", "AxDoseLoggerCoordinatorData"]
-
-# Debounce window for store saves (seconds).  Rapid doses within this
-# window coalesce into a single disk write.
-_SAVE_DEBOUNCE_SECONDS = 5.0
 
 
 @dataclass
@@ -95,7 +90,6 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         )
         self._entry = entry
         self._store = store
-        self._save_handle: asyncio.TimerHandle | None = None
         self._last_midnight_check: datetime | None = None
 
     # ------------------------------------------------------------------
@@ -255,7 +249,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         )
         self.data.dose_history.append((timestamp, strength))
         self.data.last_dose_time = timestamp
-        self._schedule_save()
+        self._save()
 
         # Fire legacy signal so not-yet-migrated sensors still work
         async_dispatcher_send(self.hass, f"pill_taken_{self._entry.entry_id}", timestamp)
@@ -275,7 +269,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self.data.last_dose_time = (
             self.data.dose_history[-1][0] if self.data.dose_history else None
         )
-        self._schedule_save()
+        self._save()
 
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_undone_{self._entry.entry_id}")
@@ -292,7 +286,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self.data.last_dose_time = None
         self.data.adherence_overrides.clear()
         self.data.adherence_reset_time = None
-        self._schedule_save()
+        self._save()
 
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_reset_{self._entry.entry_id}")
@@ -358,7 +352,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             )
 
         self.data.metric_values[metric_key] = {"date": today, "value": float(value)}
-        self._schedule_save()
+        self._save_metrics()
         self._push_update()
 
     def is_metric_logged_today(self, metric_key: str) -> bool:
@@ -380,50 +374,28 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         return None
 
     # ------------------------------------------------------------------
-    # Shutdown — cancel pending save and flush to store
+    # Debounced store persistence (HA-native async_delay_save)
     # ------------------------------------------------------------------
-    async def async_shutdown(self) -> None:
-        """Cancel pending debounced save and flush dose history + metrics to store."""
-        if self._save_handle:
-            self._save_handle.cancel()
-            self._save_handle = None
-            # Do a final flush save so no data is lost on unload
-            serialized = [
-                [ts.isoformat(), strength]
-                for ts, strength in self.data.dose_history
-            ]
-            await self._store.async_set_history(self._entry.entry_id, serialized)
-            await self._store.async_set_metrics(
-                self._entry.entry_id, self.data.metric_values
-            )
-        await super().async_shutdown()
-
-    # ------------------------------------------------------------------
-    # Debounced store persistence
-    # ------------------------------------------------------------------
-    def _schedule_save(self) -> None:
-        """Debounce store saves — coalesce rapid doses into one write."""
-        if self._save_handle:
-            self._save_handle.cancel()
-        self._save_handle = self.hass.loop.call_later(
-            _SAVE_DEBOUNCE_SECONDS, self._do_save
-        )
-
+    # Persistence is delegated to ``AxDoseLoggerStore.schedule_save_*``
+    # which call ``Store.async_delay_save``. HA's storage layer debounces
+    # natively AND flushes any pending delayed save during the stop
+    # sequence (``EVENT_HOMEASSISTANT_FINAL_WRITE``), so a restart can
+    # never drop a queued write. No bespoke ``async_shutdown`` flush is
+    # needed — the base ``DataUpdateCoordinator.async_shutdown`` suffices.
     @callback
-    def _do_save(self) -> None:
-        """Persist dose history and metric values to the store (called after debounce window)."""
-        self._save_handle = None
+    def _save(self) -> None:
+        """Serialize current dose history and schedule a debounced store save."""
         serialized = [
             [ts.isoformat(), strength]
             for ts, strength in self.data.dose_history
         ]
-        self.hass.async_create_task(
-            self._store.async_set_history(self._entry.entry_id, serialized)
-        )
-        self.hass.async_create_task(
-            self._store.async_set_metrics(
-                self._entry.entry_id, self.data.metric_values
-            )
+        self._store.schedule_save_history(self._entry.entry_id, serialized)
+
+    @callback
+    def _save_metrics(self) -> None:
+        """Serialize current metric values and schedule a debounced store save."""
+        self._store.schedule_save_metrics(
+            self._entry.entry_id, self.data.metric_values
         )
 
     # ------------------------------------------------------------------

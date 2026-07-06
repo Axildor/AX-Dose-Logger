@@ -1,3 +1,4 @@
+import homeassistant.util.dt as dt_util
 from homeassistant.components.number import NumberEntity, NumberMode, RestoreNumber
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.dispatcher import (
@@ -6,7 +7,6 @@ from homeassistant.helpers.dispatcher import (
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
-import homeassistant.util.dt as dt_util
 
 from .const import (
     DEFAULT_METRIC_ICON,
@@ -300,6 +300,16 @@ class DrinkStockNumber(AxDoseLoggerEntity, RestoreNumber):
             "unit_of_measurement", entry.data.get("unit_of_measurement")
         )
         self._attr_mode = NumberMode.BOX
+        # Frontend contract: lets the card detect a granular drink device and
+        # group drinks by substance for the Master Tracker Inventory panel.
+        # `role: "stock"` lets the frontend classify this entity without relying
+        # on entity_id suffixes (entity_id is slugify(translated_name) = the
+        # device-name-prefixed "inventory", not the unique_id stem).
+        self._attr_extra_state_attributes = {
+            "substance": entry.data.get("drink_type"),
+            "device_type": "drink",
+            "role": "stock",
+        }
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -366,6 +376,11 @@ class DrinkAddStockNumber(AxDoseLoggerEntity, NumberEntity):
         )
         self._attr_mode = NumberMode.BOX
         self._reset_timer: CALLBACK_TYPE | None = None
+        self._attr_extra_state_attributes = {
+            "substance": entry.data.get("drink_type"),
+            "device_type": "drink",
+            "role": "add_stock",
+        }
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()

@@ -18,7 +18,6 @@ from ..const import (
 )
 from ..drink_coordinator import DrinkMasterCoordinator
 
-
 # Stable device identifiers + native units per substance.
 _TRACKER_INFO = {
     DRINK_TYPE_CAFFEINE: {
@@ -83,7 +82,11 @@ class DrinkMasterSensor(RestoreSensor):
             "substance": self._substance,
             "pk_model": self._pk_model,
             "drink_master": True,  # Frontend filter marker
-            "last_dose_time": None,
+            # NOTE: last_dose_time moved to the dedicated DrinkMasterLastDoseSensor
+            # (TIMESTAMP device class) — single source of truth for the "Last"
+            # fact. dose_count is retained as metadata for the Stats panel's
+            # totalDoses mapping (there is also a DrinkTotalSensor per granular
+            # drink, but no master-level total count sensor yet).
             "dose_count": 0,
         }
 
@@ -105,12 +108,11 @@ class DrinkMasterSensor(RestoreSensor):
         data = self._coordinator.data
         if data is None:
             return
-        self._attr_native_value = round(data.body_mass, 2)
+        self._attr_native_value = round(data.body_mass, 1)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "pk_model": self._pk_model,
             "drink_master": True,
-            "last_dose_time": data.last_dose_time.isoformat() if data.last_dose_time else None,
             "dose_count": len(data.dose_history),
         }
         self.async_write_ha_state()

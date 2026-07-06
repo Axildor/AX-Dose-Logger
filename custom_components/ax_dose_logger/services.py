@@ -25,8 +25,9 @@ from typing import Final
 
 import homeassistant.util.dt as dt_util
 import voluptuous as vol
-from homeassistant.core import HomeAssistant, ServiceCall, HomeAssistantError
-from homeassistant.helpers import entity_registry as er, selector, service
+from homeassistant.core import HomeAssistant, HomeAssistantError, ServiceCall
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import selector, service
 
 from .const import DOMAIN
 from .coordinator import AxDoseLoggerCoordinator
@@ -194,10 +195,6 @@ async def _async_log_drink(call: ServiceCall) -> None:
     timestamp = None
     if call.data.get(ATTR_TIMESTAMP):
         timestamp = dt_util.parse_datetime(call.data[ATTR_TIMESTAMP])
-    if hasattr(coordinator, "is_within_cooldown") and coordinator.is_within_cooldown(timestamp):
-        raise HomeAssistantError(
-            "Cooldown active — wait until the lockout period ends before logging another drink."
-        )
     await coordinator.async_log_drink(timestamp)
 
 

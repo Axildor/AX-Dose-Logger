@@ -27,7 +27,6 @@ from ..const import (
 )
 from ..drink_coordinator import DrinkMasterCoordinator
 
-
 # Stable device identifiers + per-substance translation key + unique-id stem.
 _TRACKER_INFO = {
     DRINK_TYPE_CAFFEINE: {
