@@ -258,24 +258,6 @@
           "abv_percent": "Alcohol by volume percentage. Used with volume to calculate grams of ethanol.",
           "drinking_duration": "Typical time to finish this drink, in minutes. Governs the absorption window for the PK curve."
         }
-      },
-      "drink_settings": {
-        "title": "Drink Settings",
-        "description": "Global metabolic constants used by the Caffeine and Alcohol Master Trackers to draw their decay curves.\n\nThe pre-filled values are **biological population averages** from pharmacokinetic literature — a good starting point for most adults. Medications, genetic factors, and health conditions (e.g. liver function, pregnancy, smoking) can significantly alter your individual metabolism. Adjust only if you know your values.",
-        "data": {
-          "global_caffeine_half_life": "Caffeine Half-Life",
-          "global_caffeine_tmax": "Caffeine Time to Peak",
-          "global_alcohol_elimination_rate": "Alcohol Elimination Rate",
-          "caffeine_daily_limit_mg": "Caffeine 24h Limit",
-          "alcohol_daily_limit_g": "Alcohol 24h Limit"
-        },
-        "data_description": {
-          "global_caffeine_half_life": "Hours for the body to eliminate half the caffeine. Population average: 5.0 h.",
-          "global_caffeine_tmax": "Hours after ingestion until caffeine concentration peaks. Population average: 0.75 h.",
-          "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h.",
-          "caffeine_daily_limit_mg": "Maximum caffeine (mg) allowed in the last 24 hours. FDA recommended limit: 400 mg/day for healthy adults. Lower for lighter body mass, pregnancy, or caffeine sensitivity. Set 0 to disable the limit.",
-          "alcohol_daily_limit_g": "Maximum ethanol (g) allowed in the last 24 hours. No FDA limit exists. US Dietary Guidelines: ~14 g/day for women, ~28 g/day for men (1 standard drink ~14 g ethanol). Set 0 to disable the limit."
-        }
       }
     }
   },
@@ -513,7 +495,7 @@
     },
     "strength_unit": {
       "options": {
-        "mcg": "mcg — micrograms",
+        "μg": "μg — micrograms",
         "mg": "mg — milligrams (default)",
         "g": "g — grams"
       }
@@ -529,8 +511,7 @@
     "device_category": {
       "options": {
         "medicine": "Medication — track pills on a schedule",
-        "drinks": "Drink — track caffeine or alcohol intake",
-        "drink_settings": "Drink Settings — edit global metabolic constants"
+        "drinks": "Drink — track caffeine or alcohol intake"
       }
     },
     "drink_type": {

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "ax_dose_logger"
-CURRENT_VERSION = 12
+CURRENT_VERSION = 13
 
 # --- Tracking type constants ---
 TRACKING_REGULAR_INTERVAL = "regular_interval"
@@ -42,8 +42,13 @@ DEVICE_CATEGORY_DRINK_SETTINGS = "drink_settings"
 DEVICE_CATEGORIES: list[str] = [
     DEVICE_CATEGORY_MEDICINE,
     DEVICE_CATEGORY_DRINKS,
-    DEVICE_CATEGORY_DRINK_SETTINGS,
 ]
+# NOTE: DEVICE_CATEGORY_DRINK_SETTINGS is intentionally NOT in this list.
+# The Drink Settings singleton is auto-created by `_ensure_drink_settings_entry`
+# in __init__.py the first time a drink device is set up. It is never a
+# user-selectable config-flow device category -- the user edits its global
+# constants via the options flow (Configure button). The constant is kept
+# because __init__.py / sensor.py / config_flow.py route on it.
 
 # --- Drink type constants ---
 DRINK_TYPE_CAFFEINE = "caffeine"
@@ -79,7 +84,11 @@ CAFFEINE_DEFAULT_LIMIT_MG = 400
 ALCOHOL_DEFAULT_LIMIT_G = 0
 
 # --- Strength unit constants ---
-STRENGTH_UNIT_MCG = "mcg"
+# Micrograms use HA's canonical UnitOfMass.MICROGRAMS symbol ("μg", Greek mu
+# U+03BC + g). The earlier "mcg" value failed SensorDeviceClass.WEIGHT unit
+# validation in HA core (set(UnitOfMass) accepts only "μg"/"mg"/"g"/...).
+# v13 migration converts any stored "mcg" to "μg".
+STRENGTH_UNIT_MCG = "μg"
 STRENGTH_UNIT_MG = "mg"
 STRENGTH_UNIT_G = "g"
 

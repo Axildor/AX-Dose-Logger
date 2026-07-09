@@ -16,7 +16,8 @@ In addition to medications, AX Dose Logger can track caffeinated and alcoholic d
 
 - **Medication** — the legacy flow (scheduled pills, PK concentration, adherence, etc.)
 - **Drink** — track a caffeine or alcohol drink with a granular device
-- **Drink Settings** — singleton entry hosting global metabolic constants + the two Master Tracker devices
+
+The **Drink Settings** singleton (global metabolic constants + the two Master Tracker devices) is **auto-created the first time you add a drink** — it is never a manual config-flow choice. Edit its global constants later via the **Configure** button on the auto-created Drink Settings entry.
 
 ### How Drinks Work
 
@@ -174,7 +175,7 @@ Accidentally taking too much is easy to do, especially with medications that hav
 If you want to understand what's happening in your body between doses, AX Dose Logger can optionally model the **amount of medication in your system over time** using pharmacokinetic models. When enabled, it creates sensors based on your tracking type:
 
 - **Amount in Body** — Shows current drug amount (mg), updated every 2 minutes, accounting for absorption and elimination. Available for all tracking types.
-- **Amount in Last 24h** — Sliding 24-hour window showing the total dose strength (mg/mcg/g) consumed in the last 24 hours. Use it to warn before the next dose pushes you over a daily limit. Set an optional **24h Dose Limit** (in this medication's unit; `0` = no limit) and the `remaining` attribute exposes the headroom left for automations and the card. Available for all tracking types, including As Needed.
+- **Amount in Last 24h** — Sliding 24-hour window showing the total dose strength (mg/μg/g) consumed in the last 24 hours. Use it to warn before the next dose pushes you over a daily limit. Set an optional **24h Dose Limit** (in this medication's unit; `0` = no limit) and the `remaining` attribute exposes the headroom left for automations and the card. Available for all tracking types, including As Needed.
 - **Steady State** — Shows how many days remain until you reach 90% steady state, along with the theoretical maximum and your current percentage. **Only available for scheduled medications** (Regular Interval, Time of Day, Cyclic). Not available for As Needed since steady state requires a fixed dosing interval.
 
 You choose a **Release Type** when adding a medication — **Instant Release** or **Sustained Release** — and then configure the appropriate parameters:
@@ -330,13 +331,13 @@ Key entities and their attributes for template references:
   - `dose_history`: list of `[timestamp, strength]` pairs
 
 **Amount in Last 24h** (`sensor.ibuprofen_amount_in_last_24h`)
-- State: total dose strength (in this medication's unit — mg/mcg/g) consumed in the last 24 hours (float, 1 decimal)
+- State: total dose strength (in this medication's unit — mg/μg/g) consumed in the last 24 hours (float, 1 decimal)
   - This is **intake** (how much you swallowed), not body load. For the current active amount in your body after absorption/elimination, see the *Amount in Body* sensor above. FDA daily limits are stated as intake, so this is the correct value for limit comparisons.
 - `window_hours`: `24` (fixed rolling window)
 - `doses_in_window`: count of doses logged in the window
 - `daily_limit`: configured 24h limit (in the medication's unit), or `null` when set to `0` (no limit)
 - `remaining`: `daily_limit - amount`, or `null` when no limit is configured
-- `unit_of_measurement`: the medication's strength unit (mg/mcg/g)
+- `unit_of_measurement`: the medication's strength unit (mg/μg/g)
 
 **Steady State** (`sensor.ibuprofen_days_to_steady_state`)
 - State: days remaining to 90% steady state (float, 1 decimal), or `0.0` if reached

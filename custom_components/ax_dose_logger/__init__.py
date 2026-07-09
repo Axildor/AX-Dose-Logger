@@ -266,6 +266,21 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
         # router logic has a stable key for every entry.
         new_data.setdefault("device_category", DEVICE_CATEGORY_MEDICINE)
 
+    if config_entry.version <= 12:
+        # Version 13: Normalize strength_unit "mcg" → "μg" (HA canonical
+        # UnitOfMass.MICROGRAMS). The v9 migration converted the legacy
+        # micro-sign "µg" (U+00B5) into "mcg", but "mcg" is NOT in
+        # set(UnitOfMass), so SensorDeviceClass.WEIGHT sensors
+        # (PillStrengthSensor, PillDailyAmountSensor) emitted a validation
+        # warning on every state write. Convert any stored "mcg" (and the
+        # legacy "µg" micro-sign that v9 may have missed for entries that
+        # skipped v9) to the canonical "μg" (Greek mu U+03BC + g) in both
+        # entry.data and entry.options.
+        for unit_store in (new_data, new_options):
+            current_unit = unit_store.get("strength_unit")
+            if current_unit in ("mcg", "µg"):
+                unit_store["strength_unit"] = "μg"
+
     hass.config_entries.async_update_entry(
         config_entry, data=new_data, options=new_options, version=CURRENT_VERSION
     )
@@ -281,21 +296,36 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
 async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
-    # Initialize shared store (singleton).  The slot MUST be reserved
-    # synchronously BEFORE the `await store.async_load()` so that
-    # concurrent `async_setup_entry` calls for other config entries share
-    # one instance.  HA sets up entries in parallel; assigning the slot
-    # only after the await let every entry create its own store, and
-    # coordinators that grabbed a losing instance wrote doses the REST
-    # endpoint (which reads the winning instance) never saw — the root
-    # cause of the "14-day graph not updating, no pattern, restart fixes
-    # it" bug.  Reserving the slot before the await guarantees a single
-    # instance; the store object exists immediately and `async_load`
-    # only populates its in-memory `_data` dict.
+    # Initialize shared store (singleton) with a load-once barrier.
+    # Two races must both be guarded:
+    #   1. INSTANCE race — concurrent entries must share ONE AxDoseLoggerStore.
+    #      Guarded by reserving the slot synchronously before any `await`
+    #      (the prior fix): the first entry publishes the store object
+    #      immediately so no concurrent entry creates a second instance.
+    #   2. LOAD race — concurrent entries must not read `_data` before the
+    #      disk load completes.  Reserving the slot alone is NOT enough:
+    #      a concurrent entry that arrives while entry #1 is still
+    #      awaiting `store.async_load()` sees the slot populated, SKIPS the
+    #      load block entirely, and reads an empty `_data`.  Its coordinator's
+    #      `_async_setup` (which runs once during first refresh) then bakes
+    #      `dose_history = []` into `self.data` and never re-reads — so
+    #      every derived sensor (total, last dose, daily amount, averages)
+    #      resets to 0/unknown after restart for THAT entry.
+    #      "Pills left" survived because `PillStockNumber` restores from the
+    #      recorder via `RestoreNumber`, NOT from this store — the smoking
+    #      gun that the store (not persistence) was the failing data source.
+    # Guard: schedule `async_load` as a SHARED task published synchronously,
+    # and have EVERY entry `await` that same task.  The creator and all
+    # concurrent siblings resume together once the disk read finishes, so
+    # `_data` is guaranteed populated before any coordinator reads it.
+    # Awaiting an already-completed task is cheap for late-arriving entries.
     if "_store" not in hass.data[DOMAIN]:
         store = AxDoseLoggerStore(hass)
-        hass.data[DOMAIN]["_store"] = store  # reserve BEFORE await
-        await store.async_load()
+        hass.data[DOMAIN]["_store"] = store  # reserve instance BEFORE await
+        hass.data[DOMAIN]["_store_load"] = hass.async_create_task(
+            store.async_load()
+        )
+    await hass.data[DOMAIN]["_store_load"]
 
     # Register REST view (idempotent — HA ignores duplicate registrations)
     hass.http.register_view(AxDoseLoggerHistoryView())

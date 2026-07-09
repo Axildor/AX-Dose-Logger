@@ -212,8 +212,6 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_user_medicine()
             if category == DEVICE_CATEGORY_DRINKS:
                 return await self.async_step_drink_setup()
-            if category == DEVICE_CATEGORY_DRINK_SETTINGS:
-                return await self.async_step_drink_settings()
 
         return self.async_show_form(
             step_id="user",
@@ -430,41 +428,6 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="effectiveness",
             data_schema=vol.Schema(fields)
-        )
-
-    # ------------------------------------------------------------------
-    # Drink Settings singleton flow
-    # ------------------------------------------------------------------
-    async def async_step_drink_settings(self, user_input=None):
-        """Singleton Drink Settings entry — global metabolic constants.
-
-        Hosts the global PK constants and, on load, spawns the two Master
-        Tracker devices/sensors (caffeine/alcohol).  Singleton enforced via
-        ``async_set_unique_id`` + ``_abort_if_unique_id_configured``.
-        """
-        await self.async_set_unique_id("drink_settings")
-        self._abort_if_unique_id_configured()
-
-        if user_input is not None:
-            data = {
-                "device_category": DEVICE_CATEGORY_DRINK_SETTINGS,
-                "global_caffeine_half_life": float(user_input["global_caffeine_half_life"]),
-                "global_caffeine_tmax": float(user_input["global_caffeine_tmax"]),
-                "global_alcohol_elimination_rate": float(user_input["global_alcohol_elimination_rate"]),
-                "caffeine_daily_limit_mg": float(user_input.get("caffeine_daily_limit_mg", CAFFEINE_DEFAULT_LIMIT_MG)),
-                "alcohol_daily_limit_g": float(user_input.get("alcohol_daily_limit_g", ALCOHOL_DEFAULT_LIMIT_G)),
-            }
-            return self.async_create_entry(title="Drink Settings", data=data)
-
-        return self.async_show_form(
-            step_id="drink_settings",
-            data_schema=vol.Schema({
-                vol.Required("global_caffeine_half_life", default=GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]): _GLOBAL_CAFFEINE_HALF_LIFE_SELECTOR,
-                vol.Required("global_caffeine_tmax", default=GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]): _GLOBAL_CAFFEINE_TMAX_SELECTOR,
-                vol.Required("global_alcohol_elimination_rate", default=GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]): _GLOBAL_ALCOHOL_RATE_SELECTOR,
-                vol.Required("caffeine_daily_limit_mg", default=CAFFEINE_DEFAULT_LIMIT_MG): _CAFFEINE_DAILY_LIMIT_SELECTOR,
-                vol.Required("alcohol_daily_limit_g", default=ALCOHOL_DEFAULT_LIMIT_G): _ALCOHOL_DAILY_LIMIT_SELECTOR,
-            }),
         )
 
     # ------------------------------------------------------------------
