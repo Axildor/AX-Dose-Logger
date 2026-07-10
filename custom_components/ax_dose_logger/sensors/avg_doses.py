@@ -17,7 +17,7 @@ Day bucketing uses the local calendar date, mirroring the frontend
 disagree on which day a dose belongs to.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
@@ -25,20 +25,7 @@ from homeassistant.core import callback
 
 from ..const import TRACKING_CYCLIC
 from ..entity import AxDoseLoggerSensorEntity
-from ..sliding_window import is_on_day
-
-
-def _local_date(dt: datetime) -> date:
-    """
-    Convert a datetime to its local calendar date.
-
-    Mirrors the frontend ``_toLocalDateKey()`` so backend average and
-    frontend bar graph always agree on day bucketing. Handles both
-    tz-aware and naive datetimes.
-    """
-    if dt.tzinfo is not None:
-        return dt.astimezone().date()
-    return dt.date()
+from ..sliding_window import is_on_day, local_date
 
 
 class PillAvgDosesSensor(AxDoseLoggerSensorEntity, RestoreSensor):
@@ -155,8 +142,8 @@ class PillAvgDosesSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         # Prune timestamps outside the window
         valid_timestamps = [ts for ts in timestamps if ts >= base_cutoff]
 
-        dose_dates = {_local_date(ts) for ts in valid_timestamps}
-        today = _local_date(now)
+        dose_dates = {local_date(ts) for ts in valid_timestamps}
+        today = local_date(now)
 
         if self._tracking_type == TRACKING_CYCLIC:
             scheduled_days, covered_days = self._count_cyclic_days(now, base_cutoff, dose_dates, today)

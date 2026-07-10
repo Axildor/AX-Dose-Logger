@@ -94,15 +94,33 @@ def compute_safe_to_take(
     return safe_to_take
 
 
+def local_date(dt: datetime) -> date:
+    """Convert a datetime to its local calendar date (tz-safe).
+
+    If ``dt`` is timezone-aware, convert to the local timezone before
+    extracting the date so a UTC-stored timestamp maps to the user's
+    local calendar day, not the UTC day.  If naive, return ``dt.date()``
+    directly (no timezone conversion possible).
+
+    This is the canonical shared copy — previously duplicated as
+    ``avg_doses._local_date``, ``drink_master_avg._local_date``, and
+    inlined in ``is_day_covered``.  Re-exported via
+    ``sensors._tracker_info`` so sensor files can import it from one place.
+    """
+    if dt.tzinfo is not None:
+        return dt.astimezone().date()
+    return dt.date()
+
+
 def is_day_covered(check_date: date, timestamps: list[datetime]) -> bool:
     """
     Return ``True`` when any dose timestamp falls on *check_date* (local calendar day).
 
-    Uses tz-safe local-date conversion mirroring ``avg_doses._local_date`` so
-    a UTC-stored timestamp is compared against the user's local calendar day,
-    not the UTC day.  This is the day-level coverage model used by
-    ``avg_doses`` (PDC) and ``next_dose`` for cyclic schedules, and by the
-    overdue sensor for single-slot Time of Day schedules.
+    Uses :func:`local_date` for tz-safe local-date conversion so a UTC-stored
+    timestamp is compared against the user's local calendar day, not the UTC
+    day.  This is the day-level coverage model used by ``avg_doses`` (PDC) and
+    ``next_dose`` for cyclic schedules, and by the overdue sensor for
+    single-slot Time of Day schedules.
 
     Args:
         check_date: The local calendar date to test (typically ``now.date()``
@@ -112,8 +130,4 @@ def is_day_covered(check_date: date, timestamps: list[datetime]) -> bool:
     Returns:
         True if at least one timestamp's local date equals *check_date*.
     """
-    for ts in timestamps:
-        ts_date = ts.astimezone().date() if ts.tzinfo is not None else ts.date()
-        if ts_date == check_date:
-            return True
-    return False
+    return any(local_date(ts) == check_date for ts in timestamps)

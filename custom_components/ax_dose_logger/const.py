@@ -63,17 +63,24 @@ DRINK_TYPES: list[str] = [
 CAFFEINE_TRACKER_ID = "caffeine_tracker"
 ALCOHOL_TRACKER_ID = "alcohol_tracker"
 
-# --- Per-substance Low band upper bound (sleep-relevant decay target) ---
+# --- Per-substance Low band UPPER bound (Moderate -> Low crossing) ---
 # Single source of truth shared by DrinkMasterEstimatedLowTimeSensor /
 # DrinkMasterLowHoursUntilSensor (sensors/drink_master_sleep_disruption.py)
 # and DrinkMasterCoordinator.predict_low_time_if_dose (drink_coordinator.py).
 # Caffeine body-mass is in mg; alcohol body-mass is in g.
-# The Low band is the first sleep-relevant improvement milestone (the body-mass
-# level below which sleep disruption is considered low) — more realistic to
-# watch than the asymptotic None band.
+#
+# This is the body-mass level the user crosses DOWN into the Low band from
+# above (the Moderate to Low boundary), i.e. the moment "Low is reached".
+# It is the UPPER bound of the Low band as defined by the per-substance
+# `bands` list in sensors/drink_master_sleep_disruption.py:
+#   caffeine Low band spans 11..31 mg -> upper bound (entry from Moderate) is 31 mg
+#   alcohol  Low band spans  1..11 g  -> upper bound (entry from Moderate) is 11 g
+# The Low band's LOWER bound (Low to None crossing) is tracked separately as
+# `none_threshold` in _TRACKER_INFO, NOT here; see estimated_none_time /
+# estimated_none_hours in the Low sensors.
 DRINK_LOW_THRESHOLD: dict[str, float] = {
-    DRINK_TYPE_CAFFEINE: 11.0,
-    DRINK_TYPE_ALCOHOL: 1.0,
+    DRINK_TYPE_CAFFEINE: 31.0,
+    DRINK_TYPE_ALCOHOL: 11.0,
 }
 
 # Drink master store key suffix per substance type
@@ -105,8 +112,6 @@ STRENGTH_UNIT_MCG = "μg"
 STRENGTH_UNIT_MG = "mg"
 STRENGTH_UNIT_G = "g"
 
-STRENGTH_UNITS: list[str] = [STRENGTH_UNIT_MCG, STRENGTH_UNIT_MG, STRENGTH_UNIT_G]
-
 STANDARD_EFFECTIVENESS_METRICS: dict[str, str] = {
     "pain": "Pain",
     "mood": "Mood",
@@ -124,7 +129,6 @@ EFFECTIVENESS_METRIC_ICONS: dict[str, str] = {
 DEFAULT_METRIC_ICON = "mdi:chart-line"
 
 # --- Daily-locked metric constants ---
-METRIC_SLIDER_DEFAULT = 0  # Slider UI position default (leftmost/neutral)
 METRIC_STORE_KEY = "ax_dose_logger_metrics"  # Separate storage key for daily metric values
 
 PK_DEFAULTS: dict[str, float] = {

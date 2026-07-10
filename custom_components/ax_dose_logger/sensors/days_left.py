@@ -55,8 +55,6 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
 
 from ..const import (
-    ALCOHOL_TRACKER_ID,
-    CAFFEINE_TRACKER_ID,
     DEVICE_CATEGORY_DRINKS,
     DOMAIN,
     DRINK_TYPE_ALCOHOL,
@@ -69,6 +67,7 @@ from ..const import (
 from ..coordinator import AxDoseLoggerCoordinator
 from ..drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from ..entity import AxDoseLoggerSensorEntity
+from ._tracker_info import tracker_device_info
 
 # The averaging window (days) used for the empirical "Est. days left" variants.
 _AVG_WINDOW_DAYS = 7
@@ -352,16 +351,14 @@ class DrinkDaysLeftSensor(RestoreSensor):
 # Master Tracker — DrinkMasterDaysLeftSensor
 # =====================================================================
 
-# Stable device identifiers + per-substance translation key + unique-id stem.
-_MASTER_TRACKER_INFO = {
+# Sensor-specific keys per substance (common keys live in MASTER_TRACKERS).
+_MASTER_SENSOR_INFO = {
     DRINK_TYPE_CAFFEINE: {
-        "tracker_id": CAFFEINE_TRACKER_ID,
         "unique_id_stem": "drink_master_days_left_caffeine",
         "translation_key": "days_left_est_master_caffeine",
         "icon": "mdi:calendar-clock",
     },
     DRINK_TYPE_ALCOHOL: {
-        "tracker_id": ALCOHOL_TRACKER_ID,
         "unique_id_stem": "drink_master_days_left_alcohol",
         "translation_key": "days_left_est_master_alcohol",
         "icon": "mdi:calendar-clock",
@@ -393,17 +390,13 @@ class DrinkMasterDaysLeftSensor(RestoreSensor):
         coordinator: DrinkMasterCoordinator,
         hass: HomeAssistant,
     ) -> None:
-        info = _MASTER_TRACKER_INFO[coordinator.substance]
+        info = _MASTER_SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
         self._attr_unique_id = info["unique_id_stem"]
         self._attr_translation_key = info["translation_key"]
         self._attr_icon = info["icon"]
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, info["tracker_id"])},
-            manufacturer="AX Dose Logger",
-            model="Master Tracker",
-        )
+        self._attr_device_info = tracker_device_info(self._substance)
         self._stock_entity_ids: list[str] = []
         self._unsub_stock: callable | None = None
         self._update_state()
@@ -433,6 +426,12 @@ class DrinkMasterDaysLeftSensor(RestoreSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Recompute on master dose-history changes (dose/undo/reset + tick)."""
+        # Re-resolve stock entities in case a granular drink of this substance
+        # was added or removed at runtime (the initial resolution in
+        # async_added_to_hass is fixed for the entity's lifetime otherwise).
+        # The set comparison ensures re-subscription only happens on actual
+        # add/remove (rare), not on every tick.
+        self._refresh_stock_subscription()
         self._update_state()
         self.async_write_ha_state()
 
@@ -443,8 +442,32 @@ class DrinkMasterDaysLeftSensor(RestoreSensor):
         self.async_write_ha_state()
 
     # ------------------------------------------------------------------
-    # Stock-entity resolution
+    # Stock-entity resolution + subscription refresh
     # ------------------------------------------------------------------
+
+    def _refresh_stock_subscription(self) -> None:
+        """Re-resolve stock entities and re-subscribe if the set changed.
+
+        Called on every coordinator update (dose/undo/reset + 1-min tick).
+        Catches runtime add/remove of granular drink entries of this
+        substance: a newly added drink's ``DrinkStockNumber`` entity is found
+        on the next tick and its changes start triggering refresh; a removed
+        drink's dead entity_id drops out and the stale subscription is
+        cleaned up.  The set comparison short-circuits the common case (no
+        add/remove) so re-subscription only happens when the list actually
+        changes.
+        """
+        old_ids = set(self._stock_entity_ids)
+        self._resolve_stock_entities()
+        new_ids = set(self._stock_entity_ids)
+        if new_ids != old_ids:
+            if self._unsub_stock:
+                self._unsub_stock()
+                self._unsub_stock = None
+            if new_ids:
+                self._unsub_stock = async_track_state_change_event(
+                    self.hass, list(new_ids), self._stock_state_changed
+                )
 
     def _resolve_stock_entities(self) -> None:
         """Resolve every DrinkStockNumber of this substance via the registries.

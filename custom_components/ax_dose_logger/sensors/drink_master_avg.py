@@ -11,44 +11,32 @@ Drinks have no schedule, so the as_needed path applies (simple
 are 3-tuples ``(datetime, strength, t_dur_hours)`` — the timestamp is index 0.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
-from homeassistant.helpers.device_registry import DeviceInfo
 
 from ..const import (
-    ALCOHOL_TRACKER_ID,
-    CAFFEINE_TRACKER_ID,
-    DOMAIN,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
+from ._tracker_info import tracker_device_info
 
-# Stable device identifiers + per-substance translation key + unique-id stem.
-_TRACKER_INFO = {
+# Sensor-specific keys per substance (common keys live in MASTER_TRACKERS).
+_SENSOR_INFO = {
     DRINK_TYPE_CAFFEINE: {
-        "tracker_id": CAFFEINE_TRACKER_ID,
         "unique_id_stem": "drink_master_avg_caffeine",
         "translation_key": "drink_master_avg_caffeine",
         "icon": "mdi:chart-bell-curve",
     },
     DRINK_TYPE_ALCOHOL: {
-        "tracker_id": ALCOHOL_TRACKER_ID,
         "unique_id_stem": "drink_master_avg_alcohol",
         "translation_key": "drink_master_avg_alcohol",
         "icon": "mdi:chart-bell-curve",
     },
 }
-
-
-def _local_date(dt: datetime) -> date:
-    """Convert a datetime to its local calendar date (mirrors frontend)."""
-    if dt.tzinfo is not None:
-        return dt.astimezone().date()
-    return dt.date()
 
 
 class DrinkMasterAvgDosesSensor(RestoreSensor):
@@ -71,7 +59,7 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         window_days: int,
     ) -> None:
         """Initialize the substance-aggregate avg-doses sensor."""
-        info = _TRACKER_INFO[coordinator.substance]
+        info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
         self._window_days = window_days
@@ -83,11 +71,7 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         self._attr_icon = info["icon"]
         # Stable device identifiers — standalone virtual Master Tracker device,
         # not tied to entry_id (see DrinkMasterSensor for the rationale).
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, info["tracker_id"])},
-            manufacturer="AX Dose Logger",
-            model="Master Tracker",
-        )
+        self._attr_device_info = tracker_device_info(self._substance)
         self._history_start_date: datetime | None = None
         self._attr_extra_state_attributes = {
             "window_days": window_days,

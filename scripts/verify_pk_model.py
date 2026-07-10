@@ -6,7 +6,7 @@ This script imports :mod:`custom_components.ax_dose_logger.pk_model` directly �
 no Home Assistant stubbing is required because the module is pure math.
 
 It ports the three assertions from the legacy ``scripts/verify_fix.py`` and
-adds two IR-model tests:
+adds one IR-model test:
 
 1. **ER continuity** — 12 h curve at 1-min steps, max step-to-step body
    jump < 15 mg (accommodates the fast IR-coat rise while catching genuine
@@ -14,8 +14,11 @@ adds two IR-model tests:
 2. **ER mass balance at t=0** — ``gut_ir + matrix_sr == dose``.
 3. **ER continuity at T_dur** — ``|body(8h+eps) - body(8h-eps)| < 0.01``.
 4. **IR mass balance at t=0** — ``gut == dose``.
-5. **IR decay matches full recalc** — ``decay_ir`` result ≈ ``compute``
-   at ``now + elapsed`` (within 0.1 mg).
+
+The former 5th test (``decay_ir`` matches full recalc) was removed when
+``PKModel.decay_ir`` was deleted as dead code — the incremental-decay
+optimization it validated is no longer used (the coordinator does a
+full-history recompute on every 1-min tick instead).
 """
 
 import os
@@ -112,29 +115,6 @@ def test_ir_mass_balance_t0():
     print(f"PASS: IR mass conserved at t=0 (gut = {r.gut_ir:.2f})")
 
 
-def test_ir_decay_matches_recalc():
-    """decay_ir must match a full recalculation at now + elapsed."""
-    dose_history = [(DOSE_TIME, 100.0)]
-    # Establish state at t = 1h
-    t1 = DOSE_TIME + timedelta(hours=1.0)
-    r1 = PKModel.compute(IR_PARAMS, dose_history, t1)
-    body1, gut1 = r1.body, r1.gut_ir
-
-    # Decay forward 2h via decay_ir
-    elapsed = 2.0
-    body_decayed, gut_decayed = PKModel.decay_ir(IR_PARAMS, body1, gut1, elapsed)
-
-    # Full recalc at t = 3h
-    t3 = DOSE_TIME + timedelta(hours=3.0)
-    r3 = PKModel.compute(IR_PARAMS, dose_history, t3)
-
-    print(f"IR decay check: decay_ir body={body_decayed:.4f} gut={gut_decayed:.4f}")
-    print(f"IR recalc check: compute  body={r3.body:.4f} gut={r3.gut_ir:.4f}")
-    assert abs(body_decayed - r3.body) < 0.1, f"FAIL: IR body decay mismatch ({body_decayed:.4f} vs {r3.body:.4f})"
-    assert abs(gut_decayed - r3.gut_ir) < 0.1, f"FAIL: IR gut decay mismatch ({gut_decayed:.4f} vs {r3.gut_ir:.4f})"
-    print("PASS: IR decay_ir matches full recalculation")
-
-
 def main():
     print("=" * 60)
     print("PKModel verification — no HA imports required")
@@ -147,8 +127,6 @@ def main():
     test_er_continuity_at_tdur()
     print()
     test_ir_mass_balance_t0()
-    print()
-    test_ir_decay_matches_recalc()
     print()
     print("=" * 60)
     print("ALL TESTS PASSED")
