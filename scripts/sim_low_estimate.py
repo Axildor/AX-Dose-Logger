@@ -106,8 +106,10 @@ def _run(substance: str, dose_strength: float, t_dur_hours: float, label: str) -
             f"eta_low={eta} low_time={low_time.isoformat() if low_time else None}"
         )
         if not gate_passes and data.body_mass <= threshold:
-            print(f"          -> body {data.body_mass:.3f} <= threshold {threshold}: "
-                  f"sensor correctly reads None (already in Low band or below)")
+            print(
+                f"          -> body {data.body_mass:.3f} <= threshold {threshold}: "
+                f"sensor correctly reads None (already in Low band or below)"
+            )
 
     snapshot(0)  # pre-dose baseline
 

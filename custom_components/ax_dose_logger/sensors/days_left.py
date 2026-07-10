@@ -465,9 +465,7 @@ class DrinkMasterDaysLeftSensor(RestoreSensor):
                 self._unsub_stock()
                 self._unsub_stock = None
             if new_ids:
-                self._unsub_stock = async_track_state_change_event(
-                    self.hass, list(new_ids), self._stock_state_changed
-                )
+                self._unsub_stock = async_track_state_change_event(self.hass, list(new_ids), self._stock_state_changed)
 
     def _resolve_stock_entities(self) -> None:
         """Resolve every DrinkStockNumber of this substance via the registries.
