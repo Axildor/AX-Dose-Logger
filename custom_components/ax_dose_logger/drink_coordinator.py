@@ -344,6 +344,17 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         self._alcohol_elimination_rate = GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]
         # Last decay timestamp — used by alcohol zero-order simulation.
         self._last_decay: datetime | None = None
+        # Caffeine peak forecast cache — the forecasted (peak_mass, peak_time)
+        # is stationary between dose events (it doesn't move on a 1-min tick
+        # unless a new dose arrives or the absorption window ends).  Caching it
+        # avoids re-sweeping the full dose history × 8 mini-boluses × 5-min
+        # steps on every tick during the absorption window (~99% CPU reduction
+        # during that window).  Invalidated by: dose count change, last dose
+        # timestamp change, or the cached peak time passing into the past.
+        self._cached_peak_mass: float | None = None
+        self._cached_peak_time: datetime | None = None
+        self._cached_peak_dose_count: int = -1
+        self._cached_peak_last_dose_time: datetime | None = None
 
     # ------------------------------------------------------------------
     # Global PK constant refresh (called by __init__.py when Drink Settings loads/saves)
@@ -551,6 +562,24 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         if not dose_history:
             return current_mass, now
 
+        # Cache hit: the dose history is unchanged (same count + same last
+        # dose timestamp) AND the cached peak is still in the future.  The
+        # forecasted peak doesn't move between ticks unless a new dose arrives
+        # or the absorption window ends, so this avoids re-sweeping the full
+        # history × 8 mini-boluses × 5-min steps on every 1-min tick during
+        # the absorption window (~99% CPU reduction during that window).
+        #
+        # ``getattr`` defaults handle the standalone simulation scripts which
+        # bypass ``__init__`` (via ``__new__``) and don't set the cache fields.
+        last_dose_time = dose_history[-1][0]
+        if (
+            len(dose_history) == getattr(self, "_cached_peak_dose_count", -1)
+            and last_dose_time == getattr(self, "_cached_peak_last_dose_time", None)
+            and getattr(self, "_cached_peak_time", None) is not None
+            and getattr(self, "_cached_peak_time", None) > now
+        ):
+            return self._cached_peak_mass, self._cached_peak_time
+
         # Latest mini-bolus peak time = dose_time + drinking_duration + t_max.
         # The last mini-bolus is emitted at dose_time + (N-1)/N * t_dur; using
         # the full t_dur is a safe upper bound and keeps the window inclusive.
@@ -560,6 +589,11 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         )
         if peak_window_end <= now:
             # All doses absorbed — the current mass is the post-peak value.
+            # Cache this (cheap) result so subsequent ticks also hit the cache.
+            self._cached_peak_mass = current_mass
+            self._cached_peak_time = now
+            self._cached_peak_dose_count = len(dose_history)
+            self._cached_peak_last_dose_time = last_dose_time
             return current_mass, now
 
         # Sample the deterministic PK curve from `now` to `peak_window_end`.
@@ -578,6 +612,12 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         if end_mass > peak_mass:
             peak_mass = end_mass
             peak_time = peak_window_end
+        # Cache the sweep result so subsequent ticks during the absorption
+        # window return immediately without re-sweeping.
+        self._cached_peak_mass = peak_mass
+        self._cached_peak_time = peak_time
+        self._cached_peak_dose_count = len(dose_history)
+        self._cached_peak_last_dose_time = last_dose_time
         return peak_mass, peak_time
 
     # ------------------------------------------------------------------

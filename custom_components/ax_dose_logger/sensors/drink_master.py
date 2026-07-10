@@ -7,32 +7,23 @@ by the Drink Settings singleton).  Reads ``body_mass`` from the matching
 
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
-from homeassistant.helpers.device_registry import DeviceInfo
 
 from ..const import (
-    ALCOHOL_TRACKER_ID,
-    CAFFEINE_TRACKER_ID,
-    DOMAIN,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
+from ._tracker_info import MASTER_TRACKERS, tracker_device_info
 
-# Stable device identifiers + native units per substance.
-_TRACKER_INFO = {
+# Sensor-specific keys per substance (common keys live in MASTER_TRACKERS).
+_SENSOR_INFO = {
     DRINK_TYPE_CAFFEINE: {
-        "tracker_id": CAFFEINE_TRACKER_ID,
-        "device_name": "Caffeine Tracker",
-        "unit": "mg",
         "unique_id": "drink_master_caffeine",
         "translation_key": "total_caffeine_in_body",
         "icon": "mdi:coffee",
         "pk_model": "bateman_ir_uniform",
     },
     DRINK_TYPE_ALCOHOL: {
-        "tracker_id": ALCOHOL_TRACKER_ID,
-        "device_name": "Alcohol Tracker",
-        "unit": "g",
         "unique_id": "drink_master_alcohol",
         "translation_key": "total_alcohol_in_body",
         "icon": "mdi:glass-wine",
@@ -58,27 +49,19 @@ class DrinkMasterSensor(RestoreSensor):
 
     def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
         """Initialize the master PK sensor."""
-        info = _TRACKER_INFO[coordinator.substance]
+        info = _SENSOR_INFO[coordinator.substance]
+        common = MASTER_TRACKERS[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
         self._attr_unique_id = info["unique_id"]
         self._attr_translation_key = info["translation_key"]
-        self._attr_native_unit_of_measurement = info["unit"]
+        self._attr_native_unit_of_measurement = common["unit"]
         self._attr_icon = info["icon"]
         self._pk_model = info["pk_model"]
         # Stable device identifiers — not tied to entry_id so the device
-        # survives Drink Settings entry recreation.
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, info["tracker_id"])},
-            name=info["device_name"],
-            manufacturer="AX Dose Logger",
-            model="Master Tracker",
-            # NOTE: no via_device — the Drink Settings singleton entry creates no
-            # device of its own (it only forwards to the sensor platform), so
-            # referencing its entry_id as via_device points at a non-existent
-            # device (HA 2025.12 will reject this). The Master Tracker devices
-            # are standalone virtual devices with stable identifiers.
-        )
+        # survives Drink Settings entry recreation.  with_name=True because
+        # this is the device's namesake entity (has_entity_name=False).
+        self._attr_device_info = tracker_device_info(self._substance, with_name=True)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "pk_model": self._pk_model,

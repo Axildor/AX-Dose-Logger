@@ -44,21 +44,21 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import UnitOfTime
 from homeassistant.core import callback
-from homeassistant.helpers.device_registry import DeviceInfo
 
 from ..const import (
-    ALCOHOL_TRACKER_ID,
-    CAFFEINE_TRACKER_ID,
-    DOMAIN,
     DRINK_LOW_THRESHOLD,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
+from ._tracker_info import tracker_device_info
 
-_TRACKER_INFO = {
+# Sensor-specific keys per substance (common keys — tracker_id, device_name,
+# unit — live in MASTER_TRACKERS in ._tracker_info).  This dict holds the
+# three sensor classes' unique_id/translation_key pairs plus the disruption
+# bands + thresholds that are specific to this file.
+_SENSOR_INFO = {
     DRINK_TYPE_CAFFEINE: {
-        "tracker_id": CAFFEINE_TRACKER_ID,
         "disruption_unique_id": "drink_master_sleep_disruption_caffeine",
         "disruption_translation_key": "sleep_disruption_caffeine",
         "estimated_low_unique_id": "drink_master_estimated_low_time_caffeine",
@@ -74,16 +74,17 @@ _TRACKER_INFO = {
             (61, "Moderate"),
             (math.inf, "High"),
         ],
-        # Upper bound of the None band (sleep-safe threshold).
-        "none_threshold": 10.0,
-        # Upper bound of the Low band — the Estimated Low Time target.
-        # Reads from the shared DRINK_LOW_THRESHOLD constant (single source of
-        # truth; the master coordinator's predict_low_time_if_dose uses the
-        # same value so the popup prediction matches the sensor's target).
+        # Lower bound of the Low band = upper bound of the None band
+        # (Low -> None crossing; the sleep-safe target for estimated_none_time).
+        "none_threshold": 11.0,
+        # Upper bound of the Low band (Moderate -> Low crossing) — the
+        # Estimated Low Time target.  Reads from the shared DRINK_LOW_THRESHOLD
+        # constant (single source of truth; the master coordinator's
+        # predict_low_time_if_dose uses the same value so the popup prediction
+        # matches the sensor's target).
         "low_threshold": DRINK_LOW_THRESHOLD[DRINK_TYPE_CAFFEINE],
     },
     DRINK_TYPE_ALCOHOL: {
-        "tracker_id": ALCOHOL_TRACKER_ID,
         "disruption_unique_id": "drink_master_sleep_disruption_alcohol",
         "disruption_translation_key": "sleep_disruption_alcohol",
         "estimated_low_unique_id": "drink_master_estimated_low_time_alcohol",
@@ -98,10 +99,12 @@ _TRACKER_INFO = {
             (31, "Moderate"),
             (math.inf, "High"),
         ],
-        # None band: 0 g (sleep-safe threshold).
-        "none_threshold": 0.0,
-        # Upper bound of the Low band — the Estimated Low Time target.
-        # Reads from the shared DRINK_LOW_THRESHOLD constant (see caffeine note).
+        # Lower bound of the Low band = upper bound of the None band
+        # (Low -> None crossing; the sleep-safe target for estimated_none_time).
+        "none_threshold": 1.0,
+        # Upper bound of the Low band (Moderate -> Low crossing) — the
+        # Estimated Low Time target.  Reads from the shared DRINK_LOW_THRESHOLD
+        # constant (see caffeine note).
         "low_threshold": DRINK_LOW_THRESHOLD[DRINK_TYPE_ALCOHOL],
     },
 }
@@ -126,7 +129,7 @@ class DrinkMasterSleepDisruptionSensor(RestoreSensor):
 
     def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
         """Initialize the sleep-disruption band sensor."""
-        info = _TRACKER_INFO[coordinator.substance]
+        info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
         self._unit = info["unit"]
@@ -137,11 +140,7 @@ class DrinkMasterSleepDisruptionSensor(RestoreSensor):
         self._attr_icon = info["icon"]
         # Stable device identifiers — standalone virtual Master Tracker
         # device, not tied to entry_id (mirrors DrinkMasterSensor).
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, info["tracker_id"])},
-            manufacturer="AX Dose Logger",
-            model="Master Tracker",
-        )
+        self._attr_device_info = tracker_device_info(self._substance)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "drink_master": True,  # Frontend filter marker
@@ -221,7 +220,7 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
 
     def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
         """Initialize the Estimated Low Time timestamp sensor."""
-        info = _TRACKER_INFO[coordinator.substance]
+        info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
         self._low_threshold = info["low_threshold"]
@@ -231,11 +230,7 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
         self._attr_icon = "mdi:bed-clock"
         # Stable device identifiers — standalone virtual Master Tracker
         # device, not tied to entry_id (mirrors DrinkMasterSensor).
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, info["tracker_id"])},
-            manufacturer="AX Dose Logger",
-            model="Master Tracker",
-        )
+        self._attr_device_info = tracker_device_info(self._substance)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "drink_master": True,  # Frontend filter marker
@@ -261,6 +256,13 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Recompute the estimated Low + None wall-clock times on updates.
+
+        ``estimated_low_time`` is the wall-clock time the body-mass will cross
+        DOWN into the Low band from above (the Moderate -> Low boundary,
+        ``low_threshold``: 31 mg caffeine / 11 g alcohol); ``None`` once the
+        mass is at or below that boundary.  ``estimated_none_time`` is the
+        longer-horizon time to cross the Low -> None boundary
+        (``none_threshold``: 11 mg / 1 g); ``None`` once at or below it.
 
         The gate anchors on the **forecasted peak body mass** for caffeine
         (``data.peak_body_mass``), not the instantaneous ``body_mass``.  At
@@ -312,13 +314,17 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
 
     A numeric companion to :class:`DrinkMasterEstimatedLowTimeSensor` for users
     who prefer a countdown over a wall-clock timestamp.  The ``native_value``
-    is the number of hours remaining until the body-mass decays into the *Low*
-    band (the first sleep-relevant improvement milestone), rounded to 1
-    decimal.  ``None`` (unknown) when the body-mass is already in the Low band
-    or lower — no countdown is needed once you have arrived.
+    is the number of hours remaining until the body-mass decays down into the
+    *Low* band — i.e. crosses the Moderate -> Low boundary (the per-substance
+    ``low_threshold``, 31 mg for caffeine / 11 g for alcohol) — rounded to 1
+    decimal.  ``None`` (unknown) once the body-mass is at or below that
+    boundary (already in the Low band or lower): no countdown is needed once
+    you have arrived at Low.
 
     Carries ``estimated_none_hours`` as an attribute — the longer-horizon
-    countdown to the sleep-safe None band (``None`` once in the None band).
+    countdown to the sleep-safe None band, i.e. crossing the Low -> None
+    boundary (the per-substance ``none_threshold``, 11 mg / 1 g).  ``None``
+    once in the None band.
 
     Reuses the per-substance ``low_threshold`` (the upper bound of the Low
     band, already the Estimated Low Time target) + the coordinator's existing
@@ -335,7 +341,7 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
 
     def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
         """Initialize the Low - Hours Until countdown sensor."""
-        info = _TRACKER_INFO[coordinator.substance]
+        info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
         self._low_threshold = info["low_threshold"]
@@ -346,11 +352,7 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
         self._attr_icon = "mdi:timer-sand"
         # Stable device identifiers — standalone virtual Master Tracker
         # device, not tied to entry_id (mirrors the sibling sensors).
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, info["tracker_id"])},
-            manufacturer="AX Dose Logger",
-            model="Master Tracker",
-        )
+        self._attr_device_info = tracker_device_info(self._substance)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "drink_master": True,  # Frontend filter marker
@@ -382,6 +384,12 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Recompute the hours-until-Low + hours-until-None countdowns.
+
+        ``hours_until_low`` counts down to the Moderate -> Low boundary
+        (``low_threshold``: 31 mg caffeine / 11 g alcohol); ``None`` once the
+        mass is at or below that boundary.  ``estimated_none_hours`` counts
+        down to the Low -> None boundary (``none_threshold``: 11 mg / 1 g);
+        ``None`` once at or below it.
 
         The gate anchors on the **forecasted peak body mass** for caffeine
         (``data.peak_body_mass``), not the instantaneous ``body_mass`` — see

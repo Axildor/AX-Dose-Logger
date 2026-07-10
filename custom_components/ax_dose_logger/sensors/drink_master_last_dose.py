@@ -18,27 +18,22 @@ import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.core import callback
-from homeassistant.helpers.device_registry import DeviceInfo
 
 from ..const import (
-    ALCOHOL_TRACKER_ID,
-    CAFFEINE_TRACKER_ID,
-    DOMAIN,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
+from ._tracker_info import tracker_device_info
 
-# Stable device identifiers + per-substance translation key + unique-id stem.
-_TRACKER_INFO = {
+# Sensor-specific keys per substance (common keys live in MASTER_TRACKERS).
+_SENSOR_INFO = {
     DRINK_TYPE_CAFFEINE: {
-        "tracker_id": CAFFEINE_TRACKER_ID,
         "unique_id": "drink_master_last_dose_caffeine",
         "translation_key": "drink_master_last_dose_caffeine",
         "icon": "mdi:clock-time-four",
     },
     DRINK_TYPE_ALCOHOL: {
-        "tracker_id": ALCOHOL_TRACKER_ID,
         "unique_id": "drink_master_last_dose_alcohol",
         "translation_key": "drink_master_last_dose_alcohol",
         "icon": "mdi:clock-time-four",
@@ -63,7 +58,7 @@ class DrinkMasterLastDoseSensor(RestoreSensor):
 
     def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
         """Initialize the substance-aggregate last-dose sensor."""
-        info = _TRACKER_INFO[coordinator.substance]
+        info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
         # Stable unique_id — survives Drink Settings entry recreation, mirrors
@@ -73,11 +68,7 @@ class DrinkMasterLastDoseSensor(RestoreSensor):
         self._attr_icon = info["icon"]
         # Stable device identifiers — standalone virtual Master Tracker device,
         # not tied to entry_id (see DrinkMasterSensor for the rationale).
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, info["tracker_id"])},
-            manufacturer="AX Dose Logger",
-            model="Master Tracker",
-        )
+        self._attr_device_info = tracker_device_info(self._substance)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "drink_master": True,  # Frontend filter marker

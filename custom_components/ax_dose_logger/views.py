@@ -17,21 +17,12 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
-    ALCOHOL_TRACKER_ID,
-    CAFFEINE_TRACKER_ID,
     DOMAIN,
-    DRINK_TYPE_ALCOHOL,
-    DRINK_TYPE_CAFFEINE,
 )
 from .const import (
     LOGGER as _LOGGER,
 )
-
-# Map the stable Master Tracker device identifier suffix to its substance.
-_TRACKER_SUBSTANCE = {
-    CAFFEINE_TRACKER_ID: DRINK_TYPE_CAFFEINE,
-    ALCOHOL_TRACKER_ID: DRINK_TYPE_ALCOHOL,
-}
+from .sensors._tracker_info import tracker_substance
 
 
 class AxDoseLoggerHistoryView(HomeAssistantView):
@@ -73,7 +64,7 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
         for identifier in device.identifiers:
             if identifier[0] != DOMAIN:
                 continue
-            substance = _TRACKER_SUBSTANCE.get(identifier[1])
+            substance = tracker_substance(identifier[1])
             if substance is not None:
                 master_data = store.get_drink_master(substance)
                 doses = master_data.get("doses", [])

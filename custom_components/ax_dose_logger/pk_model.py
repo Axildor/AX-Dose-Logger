@@ -466,32 +466,3 @@ class PKModel:
             ka=k_a,
             kr=k_r,
         )
-
-    # ------------------------------------------------------------------
-    # Incremental IR decay (2-min timer optimization)
-    # ------------------------------------------------------------------
-    @staticmethod
-    def decay_ir(params: PKParams, body: float, gut: float, elapsed_hours: float) -> tuple[float, float]:
-        """
-        Decay the IR model compartments by ``elapsed_hours`` using the
-        exact Bateman equation.
-
-        This is an optimization used by the 2-minute decay timer: instead
-        of re-iterating the full dose history, it advances the current
-        ``(body, gut)`` state forward in time.  Returns the new
-        ``(body, gut)`` tuple.
-        """
-        k_e = math.log(2) / params.half_life
-        k_a = PKModel.solve_ka(params.hours_to_peak, k_e) if params.hours_to_peak > 0 else 0
-        if k_a > 0 and abs(k_a - k_e) < _EPS:
-            k_a *= 1.0001
-
-        if params.hours_to_peak <= 0:
-            new_gut = 0.0
-            new_body = body * math.exp(-k_e * elapsed_hours)
-        else:
-            new_gut = gut * math.exp(-k_a * elapsed_hours)
-            new_body = body * math.exp(-k_e * elapsed_hours) + (gut * k_a / (k_a - k_e)) * (
-                math.exp(-k_e * elapsed_hours) - math.exp(-k_a * elapsed_hours)
-            )
-        return new_body, new_gut

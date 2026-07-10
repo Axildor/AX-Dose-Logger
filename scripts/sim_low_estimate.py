@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """
-Standalone verification that the Low-Time / Hours-Until sensors emit a value
-the instant a caffeine dose is logged (peak-anchored), instead of staying
-``unknown`` until the instantaneous body-mass crosses the Low threshold.
+Standalone verification of the Low-Time / Hours-Until sensor behaviour.
 
-No HA imports are needed — ``dt_util.now()`` is monkeypatched to a fixed clock
-so the simulation is deterministic.  Reproduces the sensor gate logic from
-``sensors/drink_master_sleep_disruption.py`` against a live
-``DrinkMasterCoordinator`` to confirm the post-fix behaviour.
+Confirms two properties against a live ``DrinkMasterCoordinator`` (no HA
+imports — ``dt_util.now()`` is monkeypatched to a fixed deterministic clock):
+
+1. **Peak-anchored gate** — the sensors emit a value the instant a caffeine
+   dose is logged (forecasted peak already exceeds the Low band), instead of
+   staying ``unknown`` until the instantaneous body-mass crosses the
+   threshold.
+2. **Correct Low boundary** — ``DRINK_LOW_THRESHOLD`` is the UPPER bound of
+   the Low band (Moderate -> Low crossing): 31 mg caffeine / 11 g alcohol.
+   The sensors predict decay to THAT boundary (not the lower None/Low
+   boundary), and go ``None`` once the body-mass is at or below it.
 
 Run:  python3 scripts/sim_low_estimate.py
 """
@@ -86,18 +91,25 @@ def _run(substance: str, dose_strength: float, t_dur_hours: float, label: str) -
 
     threshold = DRINK_LOW_THRESHOLD[substance]
     print(f"\n=== {label} ===  (substance={substance}, strength={dose_strength})")
+    print(f"  DRINK_LOW_THRESHOLD (Moderate->Low upper bound) = {threshold}")
 
     def snapshot(minutes: int) -> None:
         data = master.data
         anchor = float(data.peak_body_mass) if data.peak_body_mass else float(data.body_mass)
         eta = master.estimate_time_to_body_mass(threshold)
         low_time = CLOCK + eta if eta is not None else None
+        gate_passes = anchor > threshold
         print(
             f"t={minutes:4d}min: body={data.body_mass:7.3f} peak={data.peak_body_mass:7.3f} "
             f"anchor(peak_or_body)={anchor:7.3f} "
-            f"gate_passes={'YES' if anchor > threshold else 'no '} "
+            f"gate_passes={'YES' if gate_passes else 'no '} "
             f"eta_low={eta} low_time={low_time.isoformat() if low_time else None}"
         )
+        if not gate_passes and data.body_mass <= threshold:
+            print(
+                f"          -> body {data.body_mass:.3f} <= threshold {threshold}: "
+                f"sensor correctly reads None (already in Low band or below)"
+            )
 
     snapshot(0)  # pre-dose baseline
 
@@ -119,19 +131,26 @@ def _run(substance: str, dose_strength: float, t_dur_hours: float, label: str) -
 
 
 def main() -> None:
-    # Caffeine: 90 mg, 15-min drink duration. Pre-fix the sensors stayed
-    # ``unknown`` until the body-mass rose above 11 mg (~30+ min).  Post-fix
-    # (peak-anchored) the gate passes at t=0 because the forecasted peak
-    # immediately exceeds 11 mg.
+    # Caffeine: 90 mg, 15-min drink duration.
+    #   - t=0min: peak-anchored gate passes (forecasted peak > 31 mg) so the
+    #     sensor emits a real Low time immediately. eta targets crossing 31 mg
+    #     (Moderate -> Low), NOT 11 mg.
+    #   - late samples: once body decays to <= 31 mg the gate fails and the
+    #     sensor reads None (Low band reached / entered).
     _run(DRINK_TYPE_CAFFEINE, 90.0, 0.25, "Caffeine 90mg / 15min")
-    # Alcohol: 14 g, instant absorption. Already worked pre-fix; confirm no
-    # regression — gate passes at t=0 because peak == body == 14 > 1.
+    # Alcohol: 14 g, instant absorption.
+    #   - t=0min: gate passes (peak == body == 14 > 11 g). eta targets
+    #     crossing 11 g (Moderate -> Low), NOT 1 g.
+    #   - late samples: once body decays to <= 11 g the sensor reads None.
     _run(DRINK_TYPE_ALCOHOL, 14.0, 0.0, "Alcohol 14g / instant")
 
     print("\n=== Interpretation ===")
-    print("Caffeine t=0min gate_passes should be YES post-fix (peak-anchored).")
-    print("Pre-fix it was 'no' (body still ~0) -> sensors read unknown.")
-    print("Alcohol t=0min gate_passes is YES both pre+post (instant absorption).")
+    print("DRINK_LOW_THRESHOLD is the UPPER bound of the Low band:")
+    print(f"  caffeine = {DRINK_LOW_THRESHOLD[DRINK_TYPE_CAFFEINE]} mg (Moderate->Low)")
+    print(f"  alcohol  = {DRINK_LOW_THRESHOLD[DRINK_TYPE_ALCOHOL]} g  (Moderate->Low)")
+    print("t=0min gate_passes=YES (peak-anchored for caffeine; instant for alcohol).")
+    print("eta_low targets the Moderate->Low boundary; sensor reads None once")
+    print("body-mass is at or below that boundary (Low band reached).")
 
 
 if __name__ == "__main__":
