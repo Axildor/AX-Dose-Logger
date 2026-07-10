@@ -54,13 +54,11 @@ def is_on_day(entry: ConfigEntry, check_date: date, fallback_date: date | None =
     """
     days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
     days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
-    anchor_str = entry.options.get(
-        "cycle_anchor_date", entry.data.get("cycle_anchor_date")
-    )
+    anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
 
     try:
         anchor_date = date.fromisoformat(anchor_str)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         anchor_date = fallback_date if fallback_date is not None else check_date
 
     cycle_length = days_on + days_off

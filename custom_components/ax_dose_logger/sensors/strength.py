@@ -33,15 +33,11 @@ class PillStrengthSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         always reflects the latest options.
         """
         entry = self._entry
-        strength_unit = entry.options.get(
-            "strength_unit", entry.data.get("strength_unit", "mg")
-        )
+        strength_unit = entry.options.get("strength_unit", entry.data.get("strength_unit", "mg"))
         self._strength_unit = strength_unit
         self._attr_native_unit_of_measurement = strength_unit
         self._attr_extra_state_attributes = {"strength_unit": strength_unit}
-        self._attr_native_value = float(
-            entry.options.get("strength", entry.data.get("strength", 0))
-        )
+        self._attr_native_value = float(entry.options.get("strength", entry.data.get("strength", 0)))
 
     @callback
     def _handle_coordinator_update(self) -> None:

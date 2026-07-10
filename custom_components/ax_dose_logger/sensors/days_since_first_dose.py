@@ -24,7 +24,7 @@ class PillDaysSinceFirstDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if last_state and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 self._attr_native_value = int(float(last_state.state))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
 
     @callback

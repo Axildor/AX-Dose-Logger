@@ -29,9 +29,7 @@ def get_next_dose_time(
     callers must handle those branches inline.
     """
     if tracking_type == TRACKING_REGULAR_INTERVAL:
-        hours_between = entry.options.get(
-            "hours_between_doses", entry.data.get("hours_between_doses", 0)
-        )
+        hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
         if timestamps:
             return timestamps[-1] + timedelta(hours=hours_between)
         return now

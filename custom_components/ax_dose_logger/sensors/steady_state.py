@@ -29,17 +29,15 @@ class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if last_state:
             if "last_dose_timestamp" in last_state.attributes:
                 try:
-                    self._last_dose_timestamp = dt_util.parse_datetime(
-                        last_state.attributes["last_dose_timestamp"]
-                    )
-                except (ValueError, TypeError):
+                    self._last_dose_timestamp = dt_util.parse_datetime(last_state.attributes["last_dose_timestamp"])
+                except ValueError, TypeError:
                     pass
             # Restore _current_mass so update_state() produces correct
             # values before the first coordinator refresh completes.
             if "current_mass" in last_state.attributes:
                 try:
                     self._current_mass = float(last_state.attributes["current_mass"])
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
 
     @callback
@@ -60,10 +58,13 @@ class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         half_life = float(entry.options.get("half_life", entry.data.get("half_life", 0.0)))
         strength = float(entry.options.get("strength", entry.data.get("strength", 0.0)))
-        bioavailability = float(entry.options.get("bioavailability", entry.data.get("bioavailability", PK_DEFAULTS["bioavailability"])))
+        bioavailability = float(
+            entry.options.get("bioavailability", entry.data.get("bioavailability", PK_DEFAULTS["bioavailability"]))
+        )
 
         # Compute tau (dosing interval) based on tracking type
         from ..const import TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY
+
         tracking_type = entry.data.get("tracking_type")
         if tracking_type == TRACKING_TIME_OF_DAY:
             parsed_times = get_dose_times(entry)
@@ -109,6 +110,6 @@ class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "theoretical_max_mg": round(c_max_ss, 1),
             "current_mass": round(self._current_mass, 2),
             "current_percentage": round((self._current_mass / c_max_ss) * 100, 1),
-            "last_dose_timestamp": self._last_dose_timestamp.isoformat() if self._last_dose_timestamp else None
+            "last_dose_timestamp": self._last_dose_timestamp.isoformat() if self._last_dose_timestamp else None,
         }
         self.async_write_ha_state()

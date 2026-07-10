@@ -1,4 +1,3 @@
-
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -22,7 +21,7 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = self._strength_unit
-        self._attr_suggested_display_precision = 1
+        self._attr_suggested_display_precision = 0
         self._attr_native_value = 0.0
         self._attr_extra_state_attributes = {"last_updated": None, "gut_mass": 0.0, "ka": 0.0, "lag_time": 0.0}
 
@@ -44,12 +43,20 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             strength=float(opts.get("strength", data.get("strength", 0))),
             half_life=float(opts.get("half_life", data.get("half_life", 0))),
             hours_to_peak=float(opts.get("hours_to_peak", data.get("hours_to_peak", 0.0))),
-            bioavailability=float(opts.get("bioavailability", data.get("bioavailability", PK_DEFAULTS["bioavailability"]))),
+            bioavailability=float(
+                opts.get("bioavailability", data.get("bioavailability", PK_DEFAULTS["bioavailability"]))
+            ),
             ir_fraction=float(opts.get("ir_fraction", data.get("ir_fraction", PK_DEFAULTS["ir_fraction"]))),
-            zero_order_duration=float(opts.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"]))),
-            release_half_life=float(opts.get("release_half_life", data.get("release_half_life", PK_DEFAULTS["release_half_life"]))),
+            zero_order_duration=float(
+                opts.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"]))
+            ),
+            release_half_life=float(
+                opts.get("release_half_life", data.get("release_half_life", PK_DEFAULTS["release_half_life"]))
+            ),
             lag_time=float(opts.get("lag_time", data.get("lag_time", PK_DEFAULTS["lag_time"]))),
-            ir_hours_to_peak=float(opts.get("ir_hours_to_peak", data.get("ir_hours_to_peak", PK_DEFAULTS["ir_hours_to_peak"]))),
+            ir_hours_to_peak=float(
+                opts.get("ir_hours_to_peak", data.get("ir_hours_to_peak", PK_DEFAULTS["ir_hours_to_peak"]))
+            ),
         )
 
     async def async_added_to_hass(self):
@@ -65,7 +72,7 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             try:
                 old_mass = float(last_state.state)
                 self._attr_native_value = round(old_mass, 1)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
 
     @callback

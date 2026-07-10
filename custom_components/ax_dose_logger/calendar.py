@@ -38,9 +38,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the AX Dose Logger calendar entity from a config entry."""
-    enable_calendar = entry.options.get(
-        "enable_calendar", entry.data.get("enable_calendar", True)
-    )
+    enable_calendar = entry.options.get("enable_calendar", entry.data.get("enable_calendar", True))
     if not enable_calendar:
         return
 
@@ -109,9 +107,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         """Return the current config entry, or None if removed."""
         return self.hass.config_entries.async_get_entry(self._entry_id)
 
-    def _generate_events(
-        self, start_date: datetime, end_date: datetime
-    ) -> list[CalendarEvent]:
+    def _generate_events(self, start_date: datetime, end_date: datetime) -> list[CalendarEvent]:
         """Dispatch event generation based on tracking type."""
         entry = self._get_entry()
         if entry is None:
@@ -142,9 +138,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         current = start_date.date()
         while current <= end_date.date():
             for hour, minute in parsed_times:
-                event_start = datetime(
-                    current.year, current.month, current.day, hour, minute, tzinfo=tz
-                )
+                event_start = datetime(current.year, current.month, current.day, hour, minute, tzinfo=tz)
                 event_end = event_start + EVENT_DURATION
                 if event_end > start_date and event_start < end_date:
                     events.append(
@@ -165,11 +159,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         self, entry: ConfigEntry, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
         """Events every N hours anchored to midnight each day."""
-        hours_between = int(
-            entry.options.get(
-                "hours_between_doses", entry.data.get("hours_between_doses", 8)
-            )
-        )
+        hours_between = int(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 8)))
         if hours_between <= 0:
             hours_between = 1
 
@@ -180,9 +170,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         while current <= end:
             hour = 0
             while hour < 24:
-                event_start = datetime(
-                    current.year, current.month, current.day, hour, 0, tzinfo=tz
-                )
+                event_start = datetime(current.year, current.month, current.day, hour, 0, tzinfo=tz)
                 event_end = event_start + EVENT_DURATION
                 if event_end > start_date and event_start < end_date:
                     events.append(
@@ -204,15 +192,11 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         self, entry: ConfigEntry, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
         """Events on ON days at the configured dose_time."""
-        dose_time_str = entry.options.get(
-            "dose_time", entry.data.get("dose_time", "08:00")
-        )
+        dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
 
         try:
-            dose_hour, dose_minute = int(dose_time_str.split(":")[0]), int(
-                dose_time_str.split(":")[1]
-            )
-        except (ValueError, AttributeError):
+            dose_hour, dose_minute = int(dose_time_str.split(":")[0]), int(dose_time_str.split(":")[1])
+        except ValueError, AttributeError:
             dose_hour, dose_minute = 8, 0
 
         events: list[CalendarEvent] = []

@@ -69,3 +69,31 @@ set_metric:
       required: false
       selector:
         boolean:
+
+log_drink:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: ax_dose_logger
+    timestamp:
+      required: false
+      selector:
+        datetime:
+
+undo_drink:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: ax_dose_logger
+
+reset_drink:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: ax_dose_logger

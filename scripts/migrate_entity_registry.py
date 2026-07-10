@@ -241,7 +241,8 @@ def _inject_missing_schema_keys(
     migrated: dict[str, Any],
     modern_template: dict[str, Any] | None,
 ) -> None:
-    """
+    """Backfill missing schema keys from a modern template into a migrated entry.
+
     Backfill any schema keys present in ``modern_template`` but missing from
     ``migrated``, using type-safe fallback values derived from the template:
 
@@ -421,26 +422,22 @@ def load_registry(path: Path) -> dict[str, Any]:
 
 def save_registry_atomic(path: Path, data: dict[str, Any]) -> None:
     """Write JSON to ``path`` atomically via a temp file + os.replace."""
-    tmp_fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
-    )
+    tmp_fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2, ensure_ascii=False)
             fh.write("\n")
-        os.replace(tmp_name, path)
+        Path(tmp_name).replace(path)
     except BaseException:
         # Clean up the temp file on any failure.
         try:
-            os.unlink(tmp_name)
+            Path(tmp_name).unlink()
         except OSError:
             pass
         raise
 
 
-def print_report(
-    stats: dict[str, int], errors: list[str], warnings: list[str]
-) -> int:
+def print_report(stats: dict[str, int], errors: list[str], warnings: list[str]) -> int:
     """Print a human-readable summary.  Returns the exit code."""
     print("=" * 60)
     print("Entity Registry Migration Summary (dual-array resurrection)")
@@ -485,10 +482,7 @@ def print_report(
         return 1
 
     if errors:
-        print(
-            f"\nMigration complete with {len(errors)} unmatched entit(y/ies) "
-            "left in the graveyard (see INFO above)."
-        )
+        print(f"\nMigration complete with {len(errors)} unmatched entit(y/ies) left in the graveyard (see INFO above).")
     else:
         print("\nAll pill_logger entities matched successfully.")
     return 0
@@ -573,9 +567,7 @@ def main(argv: list[str] | None = None) -> int:
         # Some registries may not have a graveyard yet -- treat as empty.
         deleted_entities = []
 
-    new_active, new_deleted, stats, errors, warnings = migrate_registry(
-        active_entities, deleted_entities
-    )
+    new_active, new_deleted, stats, errors, warnings = migrate_registry(active_entities, deleted_entities)
     exit_code = print_report(stats, errors, warnings)
     if exit_code != 0:
         # Fatal error (no pill_logger entities found).  Never write a file in
@@ -603,10 +595,7 @@ def main(argv: list[str] | None = None) -> int:
     save_registry_atomic(out_path, data)
     print(f"\nWrote migrated registry to: {out_path}")
     if not args.overwrite:
-        print(
-            "Review the diff, then rename into place:\n"
-            f"  mv {out_path.name} {input_path.name}"
-        )
+        print(f"Review the diff, then rename into place:\n  mv {out_path.name} {input_path.name}")
     return 0
 
 

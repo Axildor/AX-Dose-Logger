@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "ax_dose_logger"
-CURRENT_VERSION = 11
+CURRENT_VERSION = 13
 
 # --- Tracking type constants ---
 TRACKING_REGULAR_INTERVAL = "regular_interval"
@@ -34,8 +34,74 @@ RELEASE_TYPES: list[str] = [
     RELEASE_SUSTAINED,
 ]
 
+# --- Device category constants (config flow router) ---
+DEVICE_CATEGORY_MEDICINE = "medicine"
+DEVICE_CATEGORY_DRINKS = "drinks"
+DEVICE_CATEGORY_DRINK_SETTINGS = "drink_settings"
+
+DEVICE_CATEGORIES: list[str] = [
+    DEVICE_CATEGORY_MEDICINE,
+    DEVICE_CATEGORY_DRINKS,
+]
+# NOTE: DEVICE_CATEGORY_DRINK_SETTINGS is intentionally NOT in this list.
+# The Drink Settings singleton is auto-created by `_ensure_drink_settings_entry`
+# in __init__.py the first time a drink device is set up. It is never a
+# user-selectable config-flow device category -- the user edits its global
+# constants via the options flow (Configure button). The constant is kept
+# because __init__.py / sensor.py / config_flow.py route on it.
+
+# --- Drink type constants ---
+DRINK_TYPE_CAFFEINE = "caffeine"
+DRINK_TYPE_ALCOHOL = "alcohol"
+
+DRINK_TYPES: list[str] = [
+    DRINK_TYPE_CAFFEINE,
+    DRINK_TYPE_ALCOHOL,
+]
+
+# --- Substance tracker identifiers (stable across Drink Settings recreations) ---
+CAFFEINE_TRACKER_ID = "caffeine_tracker"
+ALCOHOL_TRACKER_ID = "alcohol_tracker"
+
+# --- Per-substance Low band upper bound (sleep-relevant decay target) ---
+# Single source of truth shared by DrinkMasterEstimatedLowTimeSensor /
+# DrinkMasterLowHoursUntilSensor (sensors/drink_master_sleep_disruption.py)
+# and DrinkMasterCoordinator.predict_low_time_if_dose (drink_coordinator.py).
+# Caffeine body-mass is in mg; alcohol body-mass is in g.
+# The Low band is the first sleep-relevant improvement milestone (the body-mass
+# level below which sleep disruption is considered low) — more realistic to
+# watch than the asymptotic None band.
+DRINK_LOW_THRESHOLD: dict[str, float] = {
+    DRINK_TYPE_CAFFEINE: 11.0,
+    DRINK_TYPE_ALCOHOL: 1.0,
+}
+
+# Drink master store key suffix per substance type
+DRINK_MASTER_STORE_KEYS: dict[str, str] = {
+    DRINK_TYPE_CAFFEINE: "ax_dose_logger_drink_master_caffeine",
+    DRINK_TYPE_ALCOHOL: "ax_dose_logger_drink_master_alcohol",
+}
+
+# --- Global PK defaults (Drink Settings singleton) ---
+GLOBAL_PK_DEFAULTS: dict[str, float] = {
+    "global_caffeine_half_life": 5.0,  # hours
+    "global_caffeine_tmax": 0.75,  # hours
+    "global_alcohol_elimination_rate": 8.0,  # g/h
+}
+
+# --- Daily intake limits (24-hour window sensors) ---
+# Caffeine: FDA recommends <=400 mg/day for healthy adults.
+# User-overridable per-substance via Drink Settings.
+CAFFEINE_DEFAULT_LIMIT_MG = 400
+# Alcohol: no FDA limit. Default 0 = no limit (user can set in grams ethanol).
+ALCOHOL_DEFAULT_LIMIT_G = 0
+
 # --- Strength unit constants ---
-STRENGTH_UNIT_MCG = "mcg"
+# Micrograms use HA's canonical UnitOfMass.MICROGRAMS symbol ("μg", Greek mu
+# U+03BC + g). The earlier "mcg" value failed SensorDeviceClass.WEIGHT unit
+# validation in HA core (set(UnitOfMass) accepts only "μg"/"mg"/"g"/...).
+# v13 migration converts any stored "mcg" to "μg".
+STRENGTH_UNIT_MCG = "μg"
 STRENGTH_UNIT_MG = "mg"
 STRENGTH_UNIT_G = "g"
 
@@ -91,8 +157,8 @@ def generate_default_dose_times(n: int) -> list[str]:
     if n in DEFAULT_DOSE_TIMES:
         return DEFAULT_DOSE_TIMES[n]
     # Spread n times evenly from 07:00 to 21:00 (14-hour window)
-    start_minutes = 7 * 60   # 07:00
-    end_minutes = 21 * 60     # 21:00
+    start_minutes = 7 * 60  # 07:00
+    end_minutes = 21 * 60  # 21:00
     span = end_minutes - start_minutes
     times: list[str] = []
     for i in range(n):
@@ -110,14 +176,10 @@ def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:
     Falls back to the legacy time_of_day field for entries that haven't been
     migrated yet, and ultimately defaults to ["08:00"].
     """
-    dose_times = entry.options.get(
-        "dose_times", entry.data.get("dose_times", None)
-    )
+    dose_times = entry.options.get("dose_times", entry.data.get("dose_times", None))
     # Legacy fallback: single time_of_day string
     if dose_times is None:
-        old_time = entry.options.get(
-            "time_of_day", entry.data.get("time_of_day", "08:00")
-        )
+        old_time = entry.options.get("time_of_day", entry.data.get("time_of_day", "08:00"))
         dose_times = [old_time] if old_time else ["08:00"]
 
     parsed: list[tuple[int, int]] = []
@@ -125,7 +187,7 @@ def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:
         try:
             parts = ts.split(":")
             parsed.append((int(parts[0]), int(parts[1])))
-        except (ValueError, AttributeError, IndexError):
+        except ValueError, AttributeError, IndexError:
             parsed.append((8, 0))
     parsed.sort()
     return parsed

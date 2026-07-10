@@ -17,6 +17,7 @@ adds two IR-model tests:
 5. **IR decay matches full recalc** — ``decay_ir`` result ≈ ``compute``
    at ``now + elapsed`` (within 0.1 mg).
 """
+
 import os
 import sys
 from datetime import datetime, timedelta
@@ -73,8 +74,7 @@ def test_er_continuity():
             max_jump = max(max_jump, abs(r.body - prev))
         prev = r.body
         if i % 30 == 0 or abs(t_h - 8.0) < 0.02:
-            print(f"{t_h:6.3f}, {r.body:7.2f}, {r.gut_ir:6.2f}, "
-                  f"{r.matrix_sr:6.2f}, {r.gut_sr:6.2f}, {total:7.2f}")
+            print(f"{t_h:6.3f}, {r.body:7.2f}, {r.gut_ir:6.2f}, {r.matrix_sr:6.2f}, {r.gut_sr:6.2f}, {total:7.2f}")
 
     print()
     print(f"Max step-to-step body jump (1-min sampling): {max_jump:.4f} mg")
@@ -86,8 +86,9 @@ def test_er_mass_balance_t0():
     """At t=0 all dose sits in gut_ir + matrix (no teleport into body)."""
     dose_history = [(DOSE_TIME, 665.0)]
     r = PKModel.compute(ER_PARAMS, dose_history, DOSE_TIME)
-    assert abs(r.gut_ir + r.matrix_sr - 665.0) < 0.01, \
+    assert abs(r.gut_ir + r.matrix_sr - 665.0) < 0.01, (
         f"FAIL: mass not conserved at t=0 (gut_ir={r.gut_ir}, matrix={r.matrix_sr})"
+    )
     print(f"PASS: mass conserved at t=0 (gut_ir + matrix = {r.gut_ir + r.matrix_sr:.2f})")
 
 
@@ -98,8 +99,7 @@ def test_er_continuity_at_tdur():
     r_before = PKModel.compute(ER_PARAMS, dose_history, DOSE_TIME + timedelta(hours=8.0) - eps)
     r_after = PKModel.compute(ER_PARAMS, dose_history, DOSE_TIME + timedelta(hours=8.0) + eps)
     jump = r_after.body - r_before.body
-    print(f"Continuity at T_dur: body(8h-eps)={r_before.body:.4f}, "
-          f"body(8h+eps)={r_after.body:.4f}, jump={jump:.6f}")
+    print(f"Continuity at T_dur: body(8h-eps)={r_before.body:.4f}, body(8h+eps)={r_after.body:.4f}, jump={jump:.6f}")
     assert abs(jump) < 0.01, f"FAIL: discontinuity at T_dur ({jump:.6f})"
     print("PASS: continuous at t = T_dur")
 
@@ -108,8 +108,7 @@ def test_ir_mass_balance_t0():
     """IR model: at t=0 all dose sits in the gut compartment."""
     dose_history = [(DOSE_TIME, 100.0)]
     r = PKModel.compute(IR_PARAMS, dose_history, DOSE_TIME)
-    assert abs(r.gut_ir - 100.0) < 0.01, \
-        f"FAIL: IR mass not conserved at t=0 (gut={r.gut_ir})"
+    assert abs(r.gut_ir - 100.0) < 0.01, f"FAIL: IR mass not conserved at t=0 (gut={r.gut_ir})"
     print(f"PASS: IR mass conserved at t=0 (gut = {r.gut_ir:.2f})")
 
 
@@ -131,10 +130,8 @@ def test_ir_decay_matches_recalc():
 
     print(f"IR decay check: decay_ir body={body_decayed:.4f} gut={gut_decayed:.4f}")
     print(f"IR recalc check: compute  body={r3.body:.4f} gut={r3.gut_ir:.4f}")
-    assert abs(body_decayed - r3.body) < 0.1, \
-        f"FAIL: IR body decay mismatch ({body_decayed:.4f} vs {r3.body:.4f})"
-    assert abs(gut_decayed - r3.gut_ir) < 0.1, \
-        f"FAIL: IR gut decay mismatch ({gut_decayed:.4f} vs {r3.gut_ir:.4f})"
+    assert abs(body_decayed - r3.body) < 0.1, f"FAIL: IR body decay mismatch ({body_decayed:.4f} vs {r3.body:.4f})"
+    assert abs(gut_decayed - r3.gut_ir) < 0.1, f"FAIL: IR gut decay mismatch ({gut_decayed:.4f} vs {r3.gut_ir:.4f})"
     print("PASS: IR decay_ir matches full recalculation")
 
 

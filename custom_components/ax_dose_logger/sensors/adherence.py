@@ -89,12 +89,8 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         # Restore history_start_date from last state
         last_state_obj = await self.async_get_last_state()
         if last_state_obj:
-            if (
-                last_state_obj.attributes.get("history_start_date")
-            ):
-                self._history_start_date = dt_util.parse_datetime(
-                    last_state_obj.attributes["history_start_date"]
-                )
+            if last_state_obj.attributes.get("history_start_date"):
+                self._history_start_date = dt_util.parse_datetime(last_state_obj.attributes["history_start_date"])
         # Anchor to earliest dose from coordinator dose_history
         if self.coordinator.data and self.coordinator.data.dose_history:
             earliest = min(ts for ts, _ in self.coordinator.data.dose_history)
@@ -173,15 +169,15 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             check_date = (now - timedelta(days=day_offset)).date()
             for target_hour, target_minute in reversed(parsed_times):
                 expected_time = datetime.combine(
-                    check_date, time(target_hour, target_minute),
+                    check_date,
+                    time(target_hour, target_minute),
                     tzinfo=now.tzinfo,
                 )
                 if expected_time < cutoff:
                     return None
 
                 dose_covers = any(
-                    abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds()
-                    for ts in timestamps
+                    abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds() for ts in timestamps
                 )
 
                 if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
@@ -194,9 +190,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     def _find_last_missed_regular_interval(self, now, cutoff, grace_td, timestamps):
         """Find most recent missed slot for Regular Interval tracking."""
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        hours_between = entry.options.get(
-            "hours_between_doses", entry.data.get("hours_between_doses", 24)
-        )
+        hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24))
         interval_td = timedelta(hours=hours_between)
 
         if not timestamps:
@@ -227,10 +221,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         slot_time = anchor
         while slot_time >= cutoff:
-            dose_covers = any(
-                abs((ts - slot_time).total_seconds()) <= grace_td.total_seconds()
-                for ts in timestamps
-            )
+            dose_covers = any(abs((ts - slot_time).total_seconds()) <= grace_td.total_seconds() for ts in timestamps)
             if not dose_covers:
                 return slot_time
             slot_time -= interval_td
@@ -239,28 +230,26 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     def _find_last_missed_cyclic(self, now, cutoff, grace_td, timestamps):
         """Find most recent missed slot for Cyclic/Calendar Pattern tracking."""
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        dose_time_str = entry.options.get(
-            "dose_time", entry.data.get("dose_time", "08:00")
-        )
+        dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
 
         try:
             dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             dose_hour, dose_minute = 8, 0
 
         day_offset = 0
         while True:
             check_date = (now - timedelta(days=day_offset)).date()
             expected_time = datetime.combine(
-                check_date, time(dose_hour, dose_minute),
+                check_date,
+                time(dose_hour, dose_minute),
                 tzinfo=now.tzinfo,
             )
             if expected_time < cutoff:
                 return None
 
             dose_covers = any(
-                abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds()
-                for ts in timestamps
+                abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds() for ts in timestamps
             )
 
             if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
@@ -299,15 +288,15 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
             for target_hour, target_minute in reversed(parsed_times):
                 expected_time = datetime.combine(
-                    check_date, time(target_hour, target_minute),
+                    check_date,
+                    time(target_hour, target_minute),
                     tzinfo=now.tzinfo,
                 )
                 if expected_time < cutoff:
                     return actual, expected
 
                 dose_covers = any(
-                    abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds()
-                    for ts in timestamps
+                    abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds() for ts in timestamps
                 )
 
                 if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
@@ -324,9 +313,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     def _count_slots_regular_interval(self, now, cutoff, grace_td, timestamps):
         """Count actual and expected dose slots for Regular Interval tracking."""
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        hours_between = entry.options.get(
-            "hours_between_doses", entry.data.get("hours_between_doses", 24)
-        )
+        hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24))
         interval_td = timedelta(hours=hours_between)
 
         if not timestamps:
@@ -368,13 +355,11 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     def _count_slots_cyclic(self, now, cutoff, grace_td, timestamps):
         """Count actual and expected dose slots for Cyclic/Calendar Pattern."""
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        dose_time_str = entry.options.get(
-            "dose_time", entry.data.get("dose_time", "08:00")
-        )
+        dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
 
         try:
             dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             dose_hour, dose_minute = 8, 0
 
         actual = 0
@@ -383,15 +368,15 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         while True:
             check_date = (now - timedelta(days=day_offset)).date()
             expected_time = datetime.combine(
-                check_date, time(dose_hour, dose_minute),
+                check_date,
+                time(dose_hour, dose_minute),
                 tzinfo=now.tzinfo,
             )
             if expected_time < cutoff:
                 break
 
             dose_covers = any(
-                abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds()
-                for ts in timestamps
+                abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds() for ts in timestamps
             )
 
             if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
@@ -420,28 +405,22 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if self._tracking_type == TRACKING_CYCLIC:
             days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
             days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
-            anchor_str = entry.options.get(
-                "cycle_anchor_date", entry.data.get("cycle_anchor_date")
-            )
-            dose_time_str = entry.options.get(
-                "dose_time", entry.data.get("dose_time", "08:00")
-            )
+            anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
+            dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
             try:
                 anchor_date = date.fromisoformat(anchor_str)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 anchor_date = now.date()
             try:
                 dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-            except (ValueError, AttributeError):
+            except ValueError, AttributeError:
                 dose_hour, dose_minute = 8, 0
             cycle_length = days_on + days_off
             if cycle_length <= 0:
                 cycle_length = 1
             days_since_anchor = (now.date() - anchor_date).days
             position_in_cycle = days_since_anchor % cycle_length
-            dose_time_today = now.replace(
-                hour=dose_hour, minute=dose_minute, second=0, microsecond=0
-            )
+            dose_time_today = now.replace(hour=dose_hour, minute=dose_minute, second=0, microsecond=0)
             if position_in_cycle >= days_on:
                 days_until_next_on = cycle_length - position_in_cycle
                 return dose_time_today + timedelta(days=days_until_next_on)
@@ -468,11 +447,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 "reason": "PRN medications do not track adherence",
                 "window_days": self._window_days,
                 "timestamps": [ts.isoformat() for ts in recent],
-                "history_start_date": (
-                    self._history_start_date.isoformat()
-                    if self._history_start_date
-                    else None
-                ),
+                "history_start_date": (self._history_start_date.isoformat() if self._history_start_date else None),
             }
             return
 
@@ -497,17 +472,11 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         valid_timestamps = [ts for ts in timestamps if ts >= extended_cutoff]
 
         if self._tracking_type == TRACKING_TIME_OF_DAY:
-            actual, expected = self._count_slots_time_of_day(
-                now, base_cutoff, grace_td, valid_timestamps
-            )
+            actual, expected = self._count_slots_time_of_day(now, base_cutoff, grace_td, valid_timestamps)
         elif self._tracking_type == TRACKING_REGULAR_INTERVAL:
-            actual, expected = self._count_slots_regular_interval(
-                now, base_cutoff, grace_td, valid_timestamps
-            )
+            actual, expected = self._count_slots_regular_interval(now, base_cutoff, grace_td, valid_timestamps)
         elif self._tracking_type == TRACKING_CYCLIC:
-            actual, expected = self._count_slots_cyclic(
-                now, base_cutoff, grace_td, valid_timestamps
-            )
+            actual, expected = self._count_slots_cyclic(now, base_cutoff, grace_td, valid_timestamps)
         else:
             actual, expected = 0, 0
 
@@ -524,11 +493,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "effective_window_days": round(effective_window_days, 1),
             "grace_hours": grace_hours,
             "timestamps": [ts.isoformat() for ts in valid_timestamps],
-            "history_start_date": (
-                self._history_start_date.isoformat()
-                if self._history_start_date
-                else None
-            ),
+            "history_start_date": (self._history_start_date.isoformat() if self._history_start_date else None),
         }
         if expected == 0 and self._tracking_type != TRACKING_AS_NEEDED:
             attrs["reason"] = "No scheduled doses in window"

@@ -17,7 +17,6 @@ from homeassistant.const import UnitOfTime
 from homeassistant.core import callback
 
 from ..const import (
-    TRACKING_AS_NEEDED,
     TRACKING_CYCLIC,
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
@@ -60,7 +59,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if last_state and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 self._attr_native_value = int(float(last_state.state))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
 
     @callback
@@ -128,9 +127,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         min_gap_minutes = 24 * 60
         for i in range(len(parsed_times)):
             for j in range(i + 1, len(parsed_times)):
-                gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (
-                    parsed_times[i][0] * 60 + parsed_times[i][1]
-                )
+                gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (parsed_times[i][0] * 60 + parsed_times[i][1])
                 min_gap_minutes = min(min_gap_minutes, gap)
         grace_minutes = max(30, min_gap_minutes // 2)
         grace_td = timedelta(minutes=grace_minutes)
@@ -161,9 +158,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
     def _compute_overdue_regular_interval(self, entry, now, timestamps):
         """Return last_dose + hours_between if overdue, else None."""
-        hours_between = entry.options.get(
-            "hours_between_doses", entry.data.get("hours_between_doses", 0)
-        )
+        hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
         if not timestamps or hours_between <= 0:
             return None
 
@@ -184,12 +179,12 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         try:
             anchor_date = date.fromisoformat(anchor_str)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             anchor_date = now.date()
 
         try:
             dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             dose_hour, dose_minute = 8, 0
 
         # Not on an ON day → not overdue

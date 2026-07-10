@@ -73,11 +73,11 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
             try:
                 anchor_date = date.fromisoformat(anchor_str)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 anchor_date = now.date()
             try:
                 dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-            except (ValueError, AttributeError):
+            except ValueError, AttributeError:
                 dose_hour, dose_minute = 8, 0
 
             cycle_length = days_on + days_off
@@ -151,7 +151,9 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             min_gap_minutes = 24 * 60
             for i in range(len(parsed_times)):
                 for j in range(i + 1, len(parsed_times)):
-                    gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (parsed_times[i][0] * 60 + parsed_times[i][1])
+                    gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (
+                        parsed_times[i][0] * 60 + parsed_times[i][1]
+                    )
                     min_gap_minutes = min(min_gap_minutes, gap)
             grace_minutes = max(30, min_gap_minutes // 2)
         else:
@@ -172,6 +174,4 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         first_hour, first_minute = parsed_times[0]
         tomorrow = now + timedelta(days=1)
-        self._attr_native_value = tomorrow.replace(
-            hour=first_hour, minute=first_minute, second=0, microsecond=0
-        )
+        self._attr_native_value = tomorrow.replace(hour=first_hour, minute=first_minute, second=0, microsecond=0)

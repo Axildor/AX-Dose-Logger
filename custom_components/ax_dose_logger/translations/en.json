@@ -2,12 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a Medication",
-        "description": "*This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.*\n\nName your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
+        "title": "Add a Device",
+        "description": "Choose what to track: a medication on a schedule, a drink (caffeine/alcohol), or open Drink Settings to edit global metabolic constants.",
         "data": {
-          "medication_name": "Medication Name",
-          "tracking_type": "Tracking Type",
-          "release_type": "Release Type"
+          "device_category": "Device Category"
         }
       },
       "regular_interval": {
@@ -18,14 +16,16 @@
           "hours_between_doses": "Dose Interval",
           "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity"
+          "enable_calendar": "Calendar Entity",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "hours_between_doses": "Minimum hours between consecutive doses.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
         }
       },
       "time_of_day": {
@@ -36,14 +36,16 @@
           "doses_per_day": "How Many Times per Day",
           "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity"
+          "enable_calendar": "Calendar Entity",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. You'll set the exact times on the next screen.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
         }
       },
       "time_of_day_times": {
@@ -96,12 +98,14 @@
         "data": {
           "initial_stock": "Inventory",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
         }
       },
       "cyclic": {
@@ -115,7 +119,8 @@
           "dose_time": "Dose Time",
           "pill_limit": "Pill Limit",
           "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity"
+          "enable_calendar": "Calendar Entity",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
@@ -125,12 +130,13 @@
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 1 pill in 24 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
         }
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n[Pharmacokinetics Search Guide](https://github.com/Axildor/AX-Dose-Logger#pharmacokinetics-search-guide)",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n{pk_search_url}",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
@@ -191,6 +197,67 @@
             }
           }
         }
+      },
+      "user_medicine": {
+        "title": "Add a Medication",
+        "description": "*This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.*\n\nName your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
+        "data": {
+          "medication_name": "Medication Name",
+          "tracking_type": "Tracking Type",
+          "release_type": "Release Type"
+        }
+      },
+      "drink_setup": {
+        "title": "Drink Setup",
+        "description": "Configure a drink to track. Each drink becomes its own device with a log button and local statistics.",
+        "data": {
+          "name": "Name",
+          "drink_type": "Drink Type",
+          "unit_of_measurement": "Unit of Measurement",
+          "initial_stock": "Initial Stock"
+        },
+        "data_description": {
+          "name": "A name for this drink, e.g. Morning Espresso or Evening Beer.",
+          "drink_type": "Choose Caffeine or Alcohol. Determines which master tracker receives the dose.",
+          "unit_of_measurement": "For example: Bags, Cans, Bottles, Cups",
+          "initial_stock": "Number of units currently available."
+        }
+      },
+      "drink_cooldown": {
+        "title": "Cooldown Timer",
+        "description": "Optional lockout between drinks. The limit is always 1 — only one drink per window.",
+        "data": {
+          "cooldown_window": "Cooldown Window"
+        },
+        "data_description": {
+          "cooldown_window": "Optional: Enforce a time limit lockout between drinks, in hours. Set to 0 to disable. Limit is always 1."
+        }
+      },
+      "drink_caffeine": {
+        "title": "Caffeine Details",
+        "description": "Enter the caffeine content and how long it typically takes to finish this drink.",
+        "data": {
+          "caffeine_mg": "Caffeine (mg)",
+          "drinking_duration": "Time to Finish Drink"
+        },
+        "data_description": {
+          "caffeine_mg": "Total caffeine in this drink, in milligrams.",
+          "drinking_duration": "Typical time to finish this drink, in minutes. Governs the absorption window for the PK curve."
+        }
+      },
+      "drink_alcohol": {
+        "title": "Alcohol Details",
+        "description": "Enter the volume, ABV, and how long it typically takes to finish this drink. The ethanol mass is calculated automatically (volume × ABV × 0.789).",
+        "data": {
+          "volume_ml": "Volume (ml)",
+          "abv_percent": "ABV (%)",
+          "drinking_duration": "Time to Finish Drink"
+        },
+        "data_description": {
+          "volume_ml": "Volume of this drink in milliliters.",
+          "abv_percent": "Alcohol by volume percentage. Used with volume to calculate grams of ethanol.",
+          "drinking_duration": "Typical time to finish this drink, in minutes. Governs the absorption window for the PK curve."
+        }
       }
     }
   },
@@ -227,7 +294,8 @@
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
           "pill_limit": "Pill Limit",
-          "enable_calendar": "Calendar Entity"
+          "enable_calendar": "Calendar Entity",
+          "daily_limit": "24h Dose Limit"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
@@ -257,7 +325,8 @@
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity.",
-          "tracking_type": "How this medication is scheduled."
+          "tracking_type": "How this medication is scheduled.",
+          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Used by the Amount in Last 24h sensor to show remaining headroom. Set 0 for no limit (the sensor still shows the 24h total)."
         }
       },
       "schedule": {
@@ -313,7 +382,7 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n[Pharmacokinetics Search Guide](https://github.com/Axildor/AX-Dose-Logger#pharmacokinetics-search-guide)",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n{pk_search_url}",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
@@ -374,6 +443,38 @@
             }
           }
         }
+      },
+      "drink_settings_options": {
+        "title": "Drink Settings",
+        "description": "Edit the global metabolic constants used by the Master Trackers.\n\nThe defaults are **biological population averages**. Medications, genetic factors, and health conditions can significantly alter your individual metabolism.",
+        "data": {
+          "global_caffeine_half_life": "Caffeine Half-Life",
+          "global_caffeine_tmax": "Caffeine Time to Peak",
+          "global_alcohol_elimination_rate": "Alcohol Elimination Rate",
+          "caffeine_daily_limit_mg": "Caffeine 24h Limit",
+          "alcohol_daily_limit_g": "Alcohol 24h Limit"
+        },
+        "data_description": {
+          "global_caffeine_half_life": "Hours for the body to eliminate half the caffeine. Population average: 5.0 h.",
+          "global_caffeine_tmax": "Hours after ingestion until caffeine concentration peaks. Population average: 0.75 h.",
+          "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h.",
+          "caffeine_daily_limit_mg": "Maximum caffeine (mg) allowed in the last 24 hours. FDA recommended limit: 400 mg/day for healthy adults. Lower for lighter body mass, pregnancy, or caffeine sensitivity. Set 0 to disable the limit.",
+          "alcohol_daily_limit_g": "Maximum ethanol (g) allowed in the last 24 hours. No FDA limit exists. US Dietary Guidelines: ~14 g/day for women, ~28 g/day for men (1 standard drink ~14 g ethanol). Set 0 to disable the limit."
+        }
+      },
+      "drink_options": {
+        "title": "Drink Options",
+        "description": "Edit this drink's cooldown, dose strength, and drinking duration. Name and drink type are immutable.",
+        "data": {
+          "cooldown_window": "Cooldown Window",
+          "dose_strength": "Dose Strength",
+          "drinking_duration": "Time to Finish Drink"
+        },
+        "data_description": {
+          "cooldown_window": "Optional lockout between drinks, in hours. Set to 0 to disable.",
+          "dose_strength": "Caffeine (mg) or ethanol (g) per drink. For alcohol this is the Widmark mass: volume × ABV × 0.789.",
+          "drinking_duration": "Typical time to finish this drink, in minutes."
+        }
       }
     }
   },
@@ -392,19 +493,24 @@
         "sustained_release": "Sustained Release — extended-release or bi-layer tablets"
       }
     },
-    "strength_unit": {
-      "options": {
-        "mcg": "mcg — micrograms",
-        "mg": "mg — milligrams (default)",
-        "g": "g — grams"
-      }
-    },
     "tracked_symptoms": {
       "options": {
         "pain": "Pain",
         "mood": "Mood",
         "nausea": "Nausea",
         "fatigue": "Fatigue"
+      }
+    },
+    "device_category": {
+      "options": {
+        "medicine": "Medication — track pills on a schedule",
+        "drinks": "Drink — track caffeine or alcohol intake"
+      }
+    },
+    "drink_type": {
+      "options": {
+        "caffeine": "Caffeine",
+        "alcohol": "Alcohol"
       }
     }
   },
@@ -480,6 +586,40 @@
           "description": "Set to true to change a metric that has already been logged today. Defaults to false."
         }
       }
+    },
+    "log_drink": {
+      "name": "Log Drink",
+      "description": "Logs a drink for the selected granular drink device. Updates local statistics and forwards the dose to the matching Master Tracker for global PK.",
+      "fields": {
+        "entry_id": {
+          "name": "Drink",
+          "description": "The drink to log."
+        },
+        "timestamp": {
+          "name": "Timestamp",
+          "description": "Optional custom timestamp for the drink (defaults to now)."
+        }
+      }
+    },
+    "undo_drink": {
+      "name": "Undo Drink",
+      "description": "Reverts the most recently logged drink for the selected drink device, including its contribution to the Master Tracker.",
+      "fields": {
+        "entry_id": {
+          "name": "Drink",
+          "description": "The drink to undo."
+        }
+      }
+    },
+    "reset_drink": {
+      "name": "Reset Drink History",
+      "description": "Clears all drink history for the selected drink device and resets its Master Tracker contribution.",
+      "fields": {
+        "entry_id": {
+          "name": "Drink",
+          "description": "The drink to reset."
+        }
+      }
     }
   },
   "entity": {
@@ -514,8 +654,77 @@
       "days_since_first_dose": {
         "name": "Days Since First Dose"
       },
+      "days_left": {
+        "name": "Days left"
+      },
+      "days_left_est": {
+        "name": "Est. days left"
+      },
+      "days_left_est_master_caffeine": {
+        "name": "Est. days left"
+      },
+      "days_left_est_master_alcohol": {
+        "name": "Est. days left"
+      },
       "adherence": {
         "name": "Adherence ({window} Days)"
+      },
+      "total_caffeine_in_body": {
+        "name": "Amount in Body"
+      },
+      "total_alcohol_in_body": {
+        "name": "Amount in Body"
+      },
+      "drink_total": {
+        "name": "Total Drinks"
+      },
+      "drink_last_dose": {
+        "name": "Last Drink"
+      },
+      "drink_master_last_dose_caffeine": {
+        "name": "Last Caffeine"
+      },
+      "drink_master_last_dose_alcohol": {
+        "name": "Last Alcohol"
+      },
+      "drink_cooldown": {
+        "name": "Drinks Available"
+      },
+      "drink_avg_doses": {
+        "name": "Avg Daily Drinks ({window} Days)"
+      },
+      "drink_master_avg_caffeine": {
+        "name": "Avg Daily Caffeine ({window} Days)"
+      },
+      "drink_master_avg_alcohol": {
+        "name": "Avg Daily Alcohol ({window} Days)"
+      },
+      "sleep_disruption_caffeine": {
+        "name": "Sleep Disruption"
+      },
+      "sleep_disruption_alcohol": {
+        "name": "Sleep Disruption"
+      },
+      "estimated_low_time_caffeine": {
+        "name": "Low - Timestamp"
+      },
+      "estimated_low_time_alcohol": {
+        "name": "Low - Timestamp"
+      },
+      "low_hours_until_caffeine": {
+        "name": "Low - Hours Until"
+      },
+      "low_hours_until_alcohol": {
+        "name": "Low - Hours Until"
+      },
+      "pill_daily_amount": {
+        "name": "Amount in Last 24h"
+      },
+      "drink_master_daily_amount_caffeine": {
+        "name": "Amount in Last 24h"
+      },
+      "drink_master_daily_amount_alcohol": {
+        "name": "Amount in Last 24h"
       }
     },
     "button": {
@@ -533,6 +742,12 @@
       },
       "cover_last_missed": {
         "name": "Mark Last Adherence Taken"
+      },
+      "log_drink": {
+        "name": "Log Drink"
+      },
+      "undo_drink": {
+        "name": "Undo Drink"
       }
     },
     "number": {
@@ -541,6 +756,12 @@
       },
       "add_refill": {
         "name": "Add Refill"
+      },
+      "drink_stock": {
+        "name": "Inventory"
+      },
+      "drink_add_refill": {
+        "name": "Add Stock"
       }
     },
     "calendar": {

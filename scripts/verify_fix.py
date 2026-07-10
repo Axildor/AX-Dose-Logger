@@ -5,6 +5,7 @@ Verify the FIXED concentration.py produces a continuous, mass-conserving curve.
 Extracts the _recalculate_er math by stubbing the HA dependencies and calling
 the real method with the user's parameters.
 """
+
 import os
 import sys
 
@@ -26,9 +27,16 @@ sys.modules["homeassistant.util.dt"] = ha_util_dt
 
 ha_comp = types.ModuleType("homeassistant.components")
 ha_comp_sensor = types.ModuleType("homeassistant.components.sensor")
-class _RestoreSensor: pass
+
+
+class _RestoreSensor:
+    pass
+
+
 class _SensorStateClass:
     MEASUREMENT = "measurement"
+
+
 ha_comp_sensor.RestoreSensor = _RestoreSensor
 ha_comp_sensor.SensorStateClass = _SensorStateClass
 ha.components = ha_comp_sensor
@@ -41,7 +49,12 @@ ha_disp.async_dispatcher_connect = lambda *a, **k: lambda: None
 ha_disp.async_dispatcher_send = lambda *a, **k: None
 ha_helpers.dispatcher = ha_disp
 ha_dev = types.ModuleType("homeassistant.helpers.device_registry")
-class _DeviceInfo(dict): pass
+
+
+class _DeviceInfo(dict):
+    pass
+
+
 ha_dev.DeviceInfo = _DeviceInfo
 ha_helpers.device_registry = ha_dev
 ha_ev = types.ModuleType("homeassistant.helpers.event")
@@ -69,7 +82,14 @@ pl.__path__ = [os.path.abspath("custom_components/ax_dose_logger")]
 sys.modules["custom_components.ax_dose_logger"] = pl
 const_mod = types.ModuleType("custom_components.ax_dose_logger.const")
 const_mod.DOMAIN = "ax_dose_logger"
-const_mod.PK_DEFAULTS = {"bioavailability":100,"ir_fraction":100,"zero_order_duration":0,"release_half_life":0,"lag_time":0,"ir_hours_to_peak":1.0}
+const_mod.PK_DEFAULTS = {
+    "bioavailability": 100,
+    "ir_fraction": 100,
+    "zero_order_duration": 0,
+    "release_half_life": 0,
+    "lag_time": 0,
+    "ir_hours_to_peak": 1.0,
+}
 sys.modules["custom_components.ax_dose_logger.const"] = const_mod
 sensors_pkg = types.ModuleType("custom_components.ax_dose_logger.sensors")
 sensors_pkg.__path__ = [os.path.abspath("custom_components/ax_dose_logger/sensors")]
@@ -83,17 +103,33 @@ from custom_components.ax_dose_logger.sensors.concentration import PillConcentra
 # Build a fake entry
 class FakeEntry:
     entry_id = "test"
-    data = {"medication_name":"test","release_type":"Sustained Release","strength":665,"half_life":2,"hours_to_peak":2.8}
-    options = {"strength":665,"half_life":2,"hours_to_peak":2.8,"bioavailability":100,
-               "ir_fraction":31,"zero_order_duration":8,"release_half_life":0,"lag_time":0,
-               "ir_hours_to_peak":1.0,"strength_unit":"mg"}
+    data = {
+        "medication_name": "test",
+        "release_type": "Sustained Release",
+        "strength": 665,
+        "half_life": 2,
+        "hours_to_peak": 2.8,
+    }
+    options = {
+        "strength": 665,
+        "half_life": 2,
+        "hours_to_peak": 2.8,
+        "bioavailability": 100,
+        "ir_fraction": 31,
+        "zero_order_duration": 8,
+        "release_half_life": 0,
+        "lag_time": 0,
+        "ir_hours_to_peak": 1.0,
+        "strength_unit": "mg",
+    }
+
 
 sensor = PillConcentrationSensor(FakeEntry())
 sensor.hass = None  # not used in _recalculate_er
 sensor.async_write_ha_state = lambda: None
 
 # Single dose at t=0
-dose_time = datetime(2026,6,13,18,28,0)
+dose_time = datetime(2026, 6, 13, 18, 28, 0)
 sensor._dose_history = [(dose_time, 665.0)]
 
 print("=== Fixed concentration.py: ER curve (user params) ===")
@@ -140,6 +176,6 @@ sensor._recalculate_er(now=dose_time + timedelta(hours=8.0) - eps)
 b_before = sensor._current_mass
 sensor._recalculate_er(now=dose_time + timedelta(hours=8.0) + eps)
 b_after = sensor._current_mass
-print(f"Continuity at T_dur: body(8h-eps)={b_before:.4f}, body(8h+eps)={b_after:.4f}, jump={b_after-b_before:.6f}")
+print(f"Continuity at T_dur: body(8h-eps)={b_before:.4f}, body(8h+eps)={b_after:.4f}, jump={b_after - b_before:.6f}")
 assert abs(b_after - b_before) < 0.01, "FAIL: discontinuity at T_dur"
 print("PASS: continuous at t = T_dur")
