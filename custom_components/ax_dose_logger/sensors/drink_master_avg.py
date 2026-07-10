@@ -101,21 +101,15 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         await super().async_added_to_hass()
         last_state_obj = await self.async_get_last_state()
         if last_state_obj and last_state_obj.attributes.get("history_start_date"):
-            self._history_start_date = dt_util.parse_datetime(
-                last_state_obj.attributes["history_start_date"]
-            )
+            self._history_start_date = dt_util.parse_datetime(last_state_obj.attributes["history_start_date"])
         # Anchor to the earliest aggregated dose from the master coordinator.
         if self._coordinator.data and self._coordinator.data.dose_history:
-            self._history_start_date = min(
-                ts for ts, _, _ in self._coordinator.data.dose_history
-            )
+            self._history_start_date = min(ts for ts, _, _ in self._coordinator.data.dose_history)
         if self._history_start_date is None:
             self._history_start_date = dt_util.now()
         self._update_state()
         self.async_write_ha_state()
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -139,16 +133,12 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
 
         # As-needed average: doses in window / window days.
-        self._attr_native_value = round(
-            len(valid_timestamps) / actual_window_days, 1
-        )
+        self._attr_native_value = round(len(valid_timestamps) / actual_window_days, 1)
         self._attr_extra_state_attributes = {
             "window_days": self._window_days,
             "effective_window_days": round(actual_window_days, 1),
             "doses_in_window": len(valid_timestamps),
-            "history_start_date": self._history_start_date.isoformat()
-            if self._history_start_date
-            else None,
+            "history_start_date": self._history_start_date.isoformat() if self._history_start_date else None,
             "substance": self._substance,
             "drink_master": True,
         }

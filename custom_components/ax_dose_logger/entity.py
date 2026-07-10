@@ -41,9 +41,7 @@ class AxDoseLoggerEntity(CoordinatorEntity[AxDoseLoggerCoordinator]):
         super().__init__(coordinator)
         self._entry = entry
         self._entry_id = entry.entry_id
-        self._med_name = entry.data.get(
-            "medication_name", entry.data.get("name", entry.title)
-        )
+        self._med_name = entry.data.get("medication_name", entry.data.get("name", entry.title))
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=self._med_name,

@@ -54,9 +54,7 @@ ATTR_OVERRIDE: Final = "override"
 # Base schema — most services require entry_id via ConfigEntrySelector
 SERVICE_BASE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_ENTRY_ID): selector.ConfigEntrySelector(
-            {"integration": DOMAIN}
-        ),
+        vol.Required(ATTR_ENTRY_ID): selector.ConfigEntrySelector({"integration": DOMAIN}),
     }
 )
 
@@ -95,9 +93,7 @@ def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordina
     return hass.data[DOMAIN][entry_id]["coordinator"]
 
 
-def _get_coordinator_for_entity(
-    hass: HomeAssistant, entity_id: str
-) -> tuple[AxDoseLoggerCoordinator, str]:
+def _get_coordinator_for_entity(hass: HomeAssistant, entity_id: str) -> tuple[AxDoseLoggerCoordinator, str]:
     """
     Resolve an effectiveness entity_id to its coordinator and metric key.
 
@@ -111,17 +107,11 @@ def _get_coordinator_for_entity(
     ent_reg = er.async_get(hass)
     entry = ent_reg.async_get(entity_id)
     if entry is None:
-        raise HomeAssistantError(
-            f"Entity '{entity_id}' not found in the entity registry."
-        )
+        raise HomeAssistantError(f"Entity '{entity_id}' not found in the entity registry.")
     if entry.platform != DOMAIN:
-        raise HomeAssistantError(
-            f"Entity '{entity_id}' does not belong to the {DOMAIN} integration."
-        )
+        raise HomeAssistantError(f"Entity '{entity_id}' does not belong to the {DOMAIN} integration.")
     if entry.config_entry_id is None:
-        raise HomeAssistantError(
-            f"Entity '{entity_id}' has no associated config entry."
-        )
+        raise HomeAssistantError(f"Entity '{entity_id}' has no associated config entry.")
 
     coordinator = _get_coordinator(hass, entry.config_entry_id)
 
@@ -129,8 +119,7 @@ def _get_coordinator_for_entity(
     state = hass.states.get(entity_id)
     if state is None or "metric_key" not in (state.attributes or {}):
         raise HomeAssistantError(
-            f"Entity '{entity_id}' has no metric_key attribute. "
-            "Ensure it is an effectiveness tracking entity."
+            f"Entity '{entity_id}' has no metric_key attribute. Ensure it is an effectiveness tracking entity."
         )
     metric_key = state.attributes["metric_key"]
 
@@ -222,41 +211,25 @@ def async_setup_services(hass: HomeAssistant) -> None:
         return
 
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
-    hass.services.async_register(
-        DOMAIN, SERVICE_TAKE_DOSE, _async_take_dose, schema=SERVICE_TAKE_DOSE_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_TAKE_DOSE, _async_take_dose, schema=SERVICE_TAKE_DOSE_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
-    hass.services.async_register(
-        DOMAIN, SERVICE_UNDO_DOSE, _async_undo_dose, schema=SERVICE_BASE_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_UNDO_DOSE, _async_undo_dose, schema=SERVICE_BASE_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
-    hass.services.async_register(
-        DOMAIN, SERVICE_RESET, _async_reset, schema=SERVICE_BASE_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_RESET, _async_reset, schema=SERVICE_BASE_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
-    hass.services.async_register(
-        DOMAIN, SERVICE_ADHERENCE_RESET, _async_adherence_reset, schema=SERVICE_BASE_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_ADHERENCE_RESET, _async_adherence_reset, schema=SERVICE_BASE_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
     hass.services.async_register(
         DOMAIN, SERVICE_ADHERENCE_OVERRIDE, _async_adherence_override, schema=SERVICE_BASE_SCHEMA
     )
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_METRIC, _async_set_metric, schema=SERVICE_SET_METRIC_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_SET_METRIC, _async_set_metric, schema=SERVICE_SET_METRIC_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
-    hass.services.async_register(
-        DOMAIN, SERVICE_LOG_DRINK, _async_log_drink, schema=SERVICE_LOG_DRINK_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_LOG_DRINK, _async_log_drink, schema=SERVICE_LOG_DRINK_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
-    hass.services.async_register(
-        DOMAIN, SERVICE_UNDO_DRINK, _async_undo_drink, schema=SERVICE_BASE_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_UNDO_DRINK, _async_undo_drink, schema=SERVICE_BASE_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
-    hass.services.async_register(
-        DOMAIN, SERVICE_RESET_DRINK, _async_reset_drink, schema=SERVICE_BASE_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_RESET_DRINK, _async_reset_drink, schema=SERVICE_BASE_SCHEMA)
 
 
 def async_unload_services(hass: HomeAssistant) -> None:

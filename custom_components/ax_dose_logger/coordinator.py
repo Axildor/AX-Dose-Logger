@@ -106,7 +106,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
                     dt = dt_util.parse_datetime(ts_str)
                     if dt:
                         dose_history.append((dt, float(strength_val)))
-                except (ValueError, TypeError, IndexError):
+                except ValueError, TypeError, IndexError:
                     continue
 
         last_dose = dose_history[-1][0] if dose_history else None
@@ -223,12 +223,20 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             strength=float(opts.get("strength", data.get("strength", 0))),
             half_life=float(opts.get("half_life", data.get("half_life", 0))),
             hours_to_peak=float(opts.get("hours_to_peak", data.get("hours_to_peak", 0.0))),
-            bioavailability=float(opts.get("bioavailability", data.get("bioavailability", PK_DEFAULTS["bioavailability"]))),
+            bioavailability=float(
+                opts.get("bioavailability", data.get("bioavailability", PK_DEFAULTS["bioavailability"]))
+            ),
             ir_fraction=float(opts.get("ir_fraction", data.get("ir_fraction", PK_DEFAULTS["ir_fraction"]))),
-            zero_order_duration=float(opts.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"]))),
-            release_half_life=float(opts.get("release_half_life", data.get("release_half_life", PK_DEFAULTS["release_half_life"]))),
+            zero_order_duration=float(
+                opts.get("zero_order_duration", data.get("zero_order_duration", PK_DEFAULTS["zero_order_duration"]))
+            ),
+            release_half_life=float(
+                opts.get("release_half_life", data.get("release_half_life", PK_DEFAULTS["release_half_life"]))
+            ),
             lag_time=float(opts.get("lag_time", data.get("lag_time", PK_DEFAULTS["lag_time"]))),
-            ir_hours_to_peak=float(opts.get("ir_hours_to_peak", data.get("ir_hours_to_peak", PK_DEFAULTS["ir_hours_to_peak"]))),
+            ir_hours_to_peak=float(
+                opts.get("ir_hours_to_peak", data.get("ir_hours_to_peak", PK_DEFAULTS["ir_hours_to_peak"]))
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -244,9 +252,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         if timestamp is None:
             timestamp = dt_util.now()
 
-        strength = float(
-            self._entry.options.get("strength", self._entry.data.get("strength", 0))
-        )
+        strength = float(self._entry.options.get("strength", self._entry.data.get("strength", 0)))
         self.data.dose_history.append((timestamp, strength))
         self.data.last_dose_time = timestamp
         self._save()
@@ -266,9 +272,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         if not self.data.dose_history:
             return
         self.data.dose_history.pop()
-        self.data.last_dose_time = (
-            self.data.dose_history[-1][0] if self.data.dose_history else None
-        )
+        self.data.last_dose_time = self.data.dose_history[-1][0] if self.data.dose_history else None
         self._save()
 
         # Fire legacy signal
@@ -323,16 +327,12 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         Stock management is independent of dose history — this just
         fires the legacy signal so ``PillStockNumber`` can increment.
         """
-        async_dispatcher_send(
-            self.hass, f"pill_add_stock_{self._entry.entry_id}", amount
-        )
+        async_dispatcher_send(self.hass, f"pill_add_stock_{self._entry.entry_id}", amount)
 
     # ------------------------------------------------------------------
     # Daily-locked metric API
     # ------------------------------------------------------------------
-    async def async_set_metric(
-        self, metric_key: str, value: float, override: bool = False
-    ) -> None:
+    async def async_set_metric(self, metric_key: str, value: float, override: bool = False) -> None:
         """
         Set a daily-locked effectiveness metric value.
 
@@ -347,8 +347,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
 
         if existing and existing.get("date") == today and not override:
             raise HomeAssistantError(
-                f"Metric '{metric_key}' already set to {existing['value']} today. "
-                "Use override to change it."
+                f"Metric '{metric_key}' already set to {existing['value']} today. Use override to change it."
             )
 
         self.data.metric_values[metric_key] = {"date": today, "value": float(value)}
@@ -385,18 +384,13 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
     @callback
     def _save(self) -> None:
         """Serialize current dose history and schedule a debounced store save."""
-        serialized = [
-            [ts.isoformat(), strength]
-            for ts, strength in self.data.dose_history
-        ]
+        serialized = [[ts.isoformat(), strength] for ts, strength in self.data.dose_history]
         self._store.schedule_save_history(self._entry.entry_id, serialized)
 
     @callback
     def _save_metrics(self) -> None:
         """Serialize current metric values and schedule a debounced store save."""
-        self._store.schedule_save_metrics(
-            self._entry.entry_id, self.data.metric_values
-        )
+        self._store.schedule_save_metrics(self._entry.entry_id, self.data.metric_values)
 
     # ------------------------------------------------------------------
     # Accessors for entities

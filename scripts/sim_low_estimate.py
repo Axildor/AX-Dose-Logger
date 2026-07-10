@@ -11,6 +11,7 @@ so the simulation is deterministic.  Reproduces the sensor gate logic from
 
 Run:  python3 scripts/sim_low_estimate.py
 """
+
 import os
 import sys
 from datetime import datetime, timedelta, timezone

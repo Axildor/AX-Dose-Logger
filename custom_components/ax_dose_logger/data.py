@@ -15,4 +15,3 @@ type AxDoseLoggerConfigEntry = ConfigEntry[AxDoseLoggerData]
 @dataclass
 class AxDoseLoggerData:
     """Data for the AX Dose Logger integration."""
-

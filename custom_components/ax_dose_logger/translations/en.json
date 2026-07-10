@@ -136,7 +136,7 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n[Pharmacokinetics Search Guide](https://github.com/Axildor/AX-Dose-Logger#pharmacokinetics-search-guide)",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n{pk_search_url}",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
@@ -382,7 +382,7 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n[Pharmacokinetics Search Guide](https://github.com/Axildor/AX-Dose-Logger#pharmacokinetics-search-guide)",
+        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n{pk_search_url}",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
@@ -491,13 +491,6 @@
       "options": {
         "instant_release": "Instant Release — most drugs, don't change if unsure",
         "sustained_release": "Sustained Release — extended-release or bi-layer tablets"
-      }
-    },
-    "strength_unit": {
-      "options": {
-        "μg": "μg — micrograms",
-        "mg": "mg — milligrams (default)",
-        "g": "g — grams"
       }
     },
     "tracked_symptoms": {
@@ -777,7 +770,5 @@
       }
     }
   },
-  "abort": {
-    "already_configured": "Drink Settings is already configured. Open the existing entry via Configure to edit the global metabolic constants."
-  }
+  "abort": {}
 }

@@ -62,6 +62,7 @@ __all__ = [
 # Granular per-drink coordinator
 # =====================================================================
 
+
 @dataclass
 class DrinkCoordinatorData:
     """Snapshot of derived state read by granular drink sensors."""
@@ -109,7 +110,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
                 dt = dt_util.parse_datetime(ts_str)
                 if dt:
                     dose_history.append((dt, float(strength_val)))
-            except (ValueError, TypeError, IndexError):
+            except ValueError, TypeError, IndexError:
                 continue
         last_dose = dose_history[-1][0] if dose_history else None
         self.data = DrinkCoordinatorData(
@@ -209,9 +210,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         if not self.data.dose_history:
             return
         removed = self.data.dose_history.pop()
-        self.data.last_dose_time = (
-            self.data.dose_history[-1][0] if self.data.dose_history else None
-        )
+        self.data.last_dose_time = self.data.dose_history[-1][0] if self.data.dose_history else None
         self._save()
 
         drink_type = self._entry.data.get("drink_type")
@@ -267,16 +266,14 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
     @callback
     def _save(self) -> None:
         """Serialize current dose history and schedule a debounced store save."""
-        serialized = [
-            [ts.isoformat(), strength]
-            for ts, strength in self.data.dose_history
-        ]
+        serialized = [[ts.isoformat(), strength] for ts, strength in self.data.dose_history]
         self._store.schedule_save_history(self._entry.entry_id, serialized)
 
 
 # =====================================================================
 # Per-substance master coordinator
 # =====================================================================
+
 
 @dataclass
 class DrinkMasterCoordinatorData:
@@ -356,13 +353,21 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         opts = settings_entry.options
         data = settings_entry.data
         self._caffeine_half_life = float(
-            opts.get("global_caffeine_half_life", data.get("global_caffeine_half_life", GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]))
+            opts.get(
+                "global_caffeine_half_life",
+                data.get("global_caffeine_half_life", GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]),
+            )
         )
         self._caffeine_tmax = float(
-            opts.get("global_caffeine_tmax", data.get("global_caffeine_tmax", GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]))
+            opts.get(
+                "global_caffeine_tmax", data.get("global_caffeine_tmax", GLOBAL_PK_DEFAULTS["global_caffeine_tmax"])
+            )
         )
         self._alcohol_elimination_rate = float(
-            opts.get("global_alcohol_elimination_rate", data.get("global_alcohol_elimination_rate", GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]))
+            opts.get(
+                "global_alcohol_elimination_rate",
+                data.get("global_alcohol_elimination_rate", GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]),
+            )
         )
 
     async def _async_setup(self) -> None:
@@ -375,7 +380,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
                 dt = dt_util.parse_datetime(ts_str)
                 if dt:
                     doses.append((dt, float(strength_val), float(t_dur_val)))
-            except (ValueError, TypeError, IndexError):
+            except ValueError, TypeError, IndexError:
                 continue
         last_dose = doses[-1][0] if doses else None
         body_mass = float(stored.get("body_mass", 0.0))
@@ -421,9 +426,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
 
         if self._substance == DRINK_TYPE_CAFFEINE:
             body_mass, pk_result = self._compute_caffeine(data.dose_history, now)
-            peak_body_mass, peak_time = self._forecast_caffeine_peak(
-                data.dose_history, now, body_mass
-            )
+            peak_body_mass, peak_time = self._forecast_caffeine_peak(data.dose_history, now, body_mass)
         else:
             body_mass, pk_result = self._compute_alcohol(data, now)
             # Alcohol absorbs instantly — the peak is the dose moment (now
@@ -553,8 +556,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         # the full t_dur is a safe upper bound and keeps the window inclusive.
         t_max = self._caffeine_tmax
         peak_window_end = max(
-            dose_time + timedelta(hours=t_dur + t_max)
-            for dose_time, _strength, t_dur in dose_history
+            dose_time + timedelta(hours=t_dur + t_max) for dose_time, _strength, t_dur in dose_history
         )
         if peak_window_end <= now:
             # All doses absorbed — the current mass is the post-peak value.
@@ -581,9 +583,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
     # ------------------------------------------------------------------
     # Alcohol PK — zero-order elimination incremental simulation
     # ------------------------------------------------------------------
-    def _compute_alcohol(
-        self, data: DrinkMasterCoordinatorData, now: datetime
-    ) -> tuple[float, PKResult | None]:
+    def _compute_alcohol(self, data: DrinkMasterCoordinatorData, now: datetime) -> tuple[float, PKResult | None]:
         """Zero-order elimination: body -= rate * elapsed; doses add instantly.
 
         State (body_mass + last_decay) is persisted.  The 1-min tick advances
@@ -637,9 +637,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             return
         removed = self.data.dose_history.pop()
         removed_strength = removed[1]
-        self.data.last_dose_time = (
-            self.data.dose_history[-1][0] if self.data.dose_history else None
-        )
+        self.data.last_dose_time = self.data.dose_history[-1][0] if self.data.dose_history else None
         if self._substance == DRINK_TYPE_ALCOHOL:
             self.data.body_mass = max(0.0, self.data.body_mass - removed_strength)
         self._save()
@@ -669,10 +667,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         """Serialize current master state and schedule a debounced store save."""
         data = self.data
         serialized = {
-            "doses": [
-                [ts.isoformat(), strength, t_dur]
-                for ts, strength, t_dur in data.dose_history
-            ],
+            "doses": [[ts.isoformat(), strength, t_dur] for ts, strength, t_dur in data.dose_history],
             "body_mass": data.body_mass,
             "last_decay": self._last_decay.isoformat() if self._last_decay else None,
         }
@@ -759,9 +754,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
     # the predicted Low-band timestamp in the Log Drink popup BEFORE the
     # user commits to a drink.  Pure function: does NOT mutate self.data.
     # ------------------------------------------------------------------
-    def predict_low_time_if_dose(
-        self, dose_strength: float, t_dur_hours: float
-    ) -> datetime | None:
+    def predict_low_time_if_dose(self, dose_strength: float, t_dur_hours: float) -> datetime | None:
         """Predict the wall-clock time body-mass would enter the Low band if a
         hypothetical dose were logged now.
 
@@ -805,9 +798,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
                 *self.data.dose_history,
                 (now, float(dose_strength), float(t_dur_hours)),
             ]
-            peak_mass, peak_time = self._forecast_caffeine_peak(
-                hypothetical, now, current_mass
-            )
+            peak_mass, peak_time = self._forecast_caffeine_peak(hypothetical, now, current_mass)
             if peak_time is None or peak_mass <= target:
                 return None
             half_life = self._caffeine_half_life

@@ -60,16 +60,10 @@ def _get_structural_options(entry: AxDoseLoggerConfigEntry) -> dict:
     ``entry.data`` (matching the pattern used in sensor.py / calendar.py).
     """
     return {
-        "enable_calendar": entry.options.get(
-            "enable_calendar", entry.data.get("enable_calendar", True)
-        ),
-        "enable_adherence": entry.options.get(
-            "enable_adherence", entry.data.get("enable_adherence", True)
-        ),
+        "enable_calendar": entry.options.get("enable_calendar", entry.data.get("enable_calendar", True)),
+        "enable_adherence": entry.options.get("enable_adherence", entry.data.get("enable_adherence", True)),
         "tracking_type": entry.data.get("tracking_type"),
-        "tracked_symptoms": entry.options.get(
-            "tracked_symptoms", entry.data.get("tracked_symptoms", [])
-        ),
+        "tracked_symptoms": entry.options.get("tracked_symptoms", entry.data.get("tracked_symptoms", [])),
     }
 
 
@@ -148,9 +142,7 @@ async def _setup_drink_masters(hass: HomeAssistant, settings_entry: AxDoseLogger
             masters[substance].update_global_constants(settings_entry)
             await masters[substance].async_config_entry_first_refresh()
         else:
-            master = DrinkMasterCoordinator(
-                hass, substance, store, store_key, settings_entry
-            )
+            master = DrinkMasterCoordinator(hass, substance, store, store_key, settings_entry)
             master.update_global_constants(settings_entry)
             masters[substance] = master
             await master.async_config_entry_first_refresh()
@@ -281,13 +273,12 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
             if current_unit in ("mcg", "µg"):
                 unit_store["strength_unit"] = "μg"
 
-    hass.config_entries.async_update_entry(
-        config_entry, data=new_data, options=new_options, version=CURRENT_VERSION
-    )
+    hass.config_entries.async_update_entry(config_entry, data=new_data, options=new_options, version=CURRENT_VERSION)
 
     LOGGER.info(
         "Migration to version %s successful for %s",
-        CURRENT_VERSION, config_entry.title,
+        CURRENT_VERSION,
+        config_entry.title,
     )
 
     return True
@@ -322,9 +313,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
     if "_store" not in hass.data[DOMAIN]:
         store = AxDoseLoggerStore(hass)
         hass.data[DOMAIN]["_store"] = store  # reserve instance BEFORE await
-        hass.data[DOMAIN]["_store_load"] = hass.async_create_task(
-            store.async_load()
-        )
+        hass.data[DOMAIN]["_store_load"] = hass.async_create_task(store.async_load())
     await hass.data[DOMAIN]["_store_load"]
 
     # Register REST views (idempotent — HA ignores duplicate registrations)
@@ -361,9 +350,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
         }
         async_setup_services(hass)
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-        await hass.config_entries.async_forward_entry_setups(
-            entry, ["sensor", "button", "number"]
-        )
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button", "number"])
         return True
 
     # --- Medicine (legacy) ---
@@ -389,6 +376,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
 
 async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> None:
     """
@@ -468,6 +456,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
 
     await hass.config_entries.async_reload(entry.entry_id)
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> bool:
     device_category = entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
     # Drink Settings only forwards to sensor; drinks forward to sensor+button.
@@ -482,9 +471,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         # Remove services when the last medicine coordinator is gone.
-        if not any(
-            isinstance(v, dict) and "coordinator" in v
-            for v in hass.data.get(DOMAIN, {}).values()
-        ):
+        if not any(isinstance(v, dict) and "coordinator" in v for v in hass.data.get(DOMAIN, {}).values()):
             async_unload_services(hass)
     return unload_ok

@@ -61,21 +61,15 @@ class DrinkAvgDosesSensor(RestoreSensor):
         await super().async_added_to_hass()
         last_state_obj = await self.async_get_last_state()
         if last_state_obj and last_state_obj.attributes.get("history_start_date"):
-            self._history_start_date = dt_util.parse_datetime(
-                last_state_obj.attributes["history_start_date"]
-            )
+            self._history_start_date = dt_util.parse_datetime(last_state_obj.attributes["history_start_date"])
         # Anchor to earliest dose from coordinator dose_history.
         if self._coordinator.data and self._coordinator.data.dose_history:
-            self._history_start_date = min(
-                ts for ts, _ in self._coordinator.data.dose_history
-            )
+            self._history_start_date = min(ts for ts, _ in self._coordinator.data.dose_history)
         if self._history_start_date is None:
             self._history_start_date = dt_util.now()
         self._update_state()
         self.async_write_ha_state()
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
 
     @callback
     def _handle_coordinator_update(self) -> None:

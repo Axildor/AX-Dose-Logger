@@ -85,14 +85,11 @@ class AxDoseLoggerStore:
             self._data = data
         else:
             # New key is empty — attempt one-time migration from the legacy key.
-            legacy_store: Store = Store(
-                self._hass, STORAGE_VERSION, _LEGACY_STORAGE_KEY
-            )
+            legacy_store: Store = Store(self._hass, STORAGE_VERSION, _LEGACY_STORAGE_KEY)
             legacy_data = await legacy_store.async_load()
             if legacy_data:
                 LOGGER.info(
-                    "Migrating dose history from legacy storage key '%s' to '%s' "
-                    "(legacy key retained for rollback)",
+                    "Migrating dose history from legacy storage key '%s' to '%s' (legacy key retained for rollback)",
                     _LEGACY_STORAGE_KEY,
                     STORAGE_KEY,
                 )
@@ -151,9 +148,7 @@ class AxDoseLoggerStore:
         return self._data.get(entry_id, [])
 
     @callback
-    def schedule_save_history(
-        self, entry_id: str, history: list[list[str | float]]
-    ) -> None:
+    def schedule_save_history(self, entry_id: str, history: list[list[str | float]]) -> None:
         """Update the in-memory slice for an entry and schedule a debounced save.
 
         Replaces the previous ``async_set_history`` (which awaited a full
@@ -162,9 +157,7 @@ class AxDoseLoggerStore:
         and HA flushes any pending write during the stop sequence.
         """
         self._data[entry_id] = history
-        self._store.async_delay_save(
-            lambda: self._data, _SAVE_DEBOUNCE_SECONDS
-        )
+        self._store.async_delay_save(lambda: self._data, _SAVE_DEBOUNCE_SECONDS)
 
     @callback
     def get_metrics(self, entry_id: str) -> dict[str, dict]:
@@ -176,14 +169,10 @@ class AxDoseLoggerStore:
         return self._metric_data.get(entry_id, {})
 
     @callback
-    def schedule_save_metrics(
-        self, entry_id: str, metrics: dict[str, dict]
-    ) -> None:
+    def schedule_save_metrics(self, entry_id: str, metrics: dict[str, dict]) -> None:
         """Update the in-memory metric slice for an entry and schedule a debounced save."""
         self._metric_data[entry_id] = metrics
-        self._metric_store.async_delay_save(
-            lambda: self._metric_data, _SAVE_DEBOUNCE_SECONDS
-        )
+        self._metric_store.async_delay_save(lambda: self._metric_data, _SAVE_DEBOUNCE_SECONDS)
 
     # ------------------------------------------------------------------
     # Drink master storage (caffeine/alcohol aggregated PK)

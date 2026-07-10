@@ -55,9 +55,9 @@ async def async_setup_entry(
             name = raw.strip()
             if name:
                 skey = sanitize_key(name)
-                entities.append(PillEffectivenessSlider(
-                    entry, coordinator, f"custom_{skey}", name, DEFAULT_METRIC_ICON
-                ))
+                entities.append(
+                    PillEffectivenessSlider(entry, coordinator, f"custom_{skey}", name, DEFAULT_METRIC_ICON)
+                )
 
     async_add_entities(entities)
 
@@ -76,10 +76,13 @@ async def _setup_drink_numbers(
     """
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     initial_stock = entry.data.get("initial_stock", 0)
-    async_add_entities([
-        DrinkStockNumber(entry, coordinator, initial_stock),
-        DrinkAddStockNumber(entry, coordinator),
-    ])
+    async_add_entities(
+        [
+            DrinkStockNumber(entry, coordinator, initial_stock),
+            DrinkAddStockNumber(entry, coordinator),
+        ]
+    )
+
 
 class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
     _attr_has_entity_name = True
@@ -100,9 +103,7 @@ class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
         # Listen to legacy dispatcher signals for stock-specific events
         # (pill_add_stock). Dose taken/undo are handled via coordinator
         # updates in _handle_coordinator_update.
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, f"pill_add_stock_{self._entry_id}", self.add_stock)
-        )
+        self.async_on_remove(async_dispatcher_connect(self.hass, f"pill_add_stock_{self._entry_id}", self.add_stock))
         last_state = await self.async_get_last_number_data()
         if last_state and last_state.native_value is not None:
             self._attr_native_value = last_state.native_value
@@ -139,6 +140,7 @@ class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
     def add_stock(self, amount: float, *args, **kwargs):
         self._attr_native_value += amount
         self.async_write_ha_state()
+
 
 class PillAddStockNumber(AxDoseLoggerEntity, NumberEntity):
     _attr_has_entity_name = True
@@ -187,6 +189,7 @@ class PillAddStockNumber(AxDoseLoggerEntity, NumberEntity):
         self._attr_native_value = 0.0
         self._reset_timer = None
         self.async_write_ha_state()
+
 
 class PillEffectivenessSlider(AxDoseLoggerEntity, NumberEntity):
     """
@@ -268,9 +271,7 @@ class PillEffectivenessSlider(AxDoseLoggerEntity, NumberEntity):
         dialog with an Override button that calls the ``set_metric`` service
         with ``override=true``.
         """
-        await self.coordinator.async_set_metric(
-            self._metric_key, value, override=False
-        )
+        await self.coordinator.async_set_metric(self._metric_key, value, override=False)
 
 
 # =====================================================================
@@ -396,9 +397,7 @@ class DrinkAddStockNumber(AxDoseLoggerEntity, NumberEntity):
         if value > 0:
             self._attr_native_value = value
             self.async_write_ha_state()
-            async_dispatcher_send(
-                self.hass, f"drink_add_stock_{self._entry_id}", value
-            )
+            async_dispatcher_send(self.hass, f"drink_add_stock_{self._entry_id}", value)
             self._cancel_reset_timer()
             self._reset_timer = async_call_later(
                 self.hass,

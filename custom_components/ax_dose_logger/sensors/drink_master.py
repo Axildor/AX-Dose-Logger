@@ -97,9 +97,7 @@ class DrinkMasterSensor(RestoreSensor):
         last_state = await self.async_get_last_sensor_data()
         if last_state and last_state.native_value is not None:
             self._attr_native_value = float(last_state.native_value)
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         # Push the current coordinator state immediately.
         self._handle_coordinator_update()
 

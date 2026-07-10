@@ -61,14 +61,10 @@ class PillDailyAmountSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         object in-place on options-flow saves).
         """
         entry = self._entry
-        strength_unit = entry.options.get(
-            "strength_unit", entry.data.get("strength_unit", "mg")
-        )
+        strength_unit = entry.options.get("strength_unit", entry.data.get("strength_unit", "mg"))
         self._strength_unit = strength_unit
         self._attr_native_unit_of_measurement = strength_unit
-        self._daily_limit = float(
-            entry.options.get("daily_limit", entry.data.get("daily_limit", 0))
-        )
+        self._daily_limit = float(entry.options.get("daily_limit", entry.data.get("daily_limit", 0)))
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()

@@ -29,11 +29,13 @@ async def async_setup_entry(
     category = entry.data.get("device_category")
     if category == DEVICE_CATEGORY_DRINKS:
         coordinator = _get_drink_coordinator(hass, entry.entry_id)
-        async_add_entities([
-            DrinkLogButton(entry, coordinator),
-            DrinkResetButton(entry, coordinator),
-            DrinkUndoButton(entry, coordinator),
-        ])
+        async_add_entities(
+            [
+                DrinkLogButton(entry, coordinator),
+                DrinkResetButton(entry, coordinator),
+                DrinkUndoButton(entry, coordinator),
+            ]
+        )
         return
 
     # --- Medicine (legacy) ---
@@ -77,6 +79,7 @@ class PillTakeButton(AxDoseLoggerEntity, ButtonEntity):
         coordinator = _get_coordinator(self.hass, self._entry_id)
         await coordinator.async_take_dose(now)
 
+
 class PillResetButton(AxDoseLoggerEntity, ButtonEntity):
     _attr_has_entity_name = True
 
@@ -91,6 +94,7 @@ class PillResetButton(AxDoseLoggerEntity, ButtonEntity):
         """When pressed, clear all dose history via the coordinator."""
         coordinator = _get_coordinator(self.hass, self._entry_id)
         await coordinator.async_reset()
+
 
 class PillUndoButton(AxDoseLoggerEntity, ButtonEntity):
     """Button entity that reverts the most recently logged dose."""

@@ -44,16 +44,16 @@ class PKParams:
     recalculation is performed (parameters may change via the options flow).
     """
 
-    release_type: str           # "instant_release" | "sustained_release"
-    strength: float             # mg per dose (raw; bioavailability applied at compute time)
-    half_life: float            # elimination half-life (hours)
-    hours_to_peak: float        # SR absorption time-to-peak (hours)
-    bioavailability: float      # % (0–100)
-    ir_fraction: float          # % of dose in the IR coat (0–100, ER only)
+    release_type: str  # "instant_release" | "sustained_release"
+    strength: float  # mg per dose (raw; bioavailability applied at compute time)
+    half_life: float  # elimination half-life (hours)
+    hours_to_peak: float  # SR absorption time-to-peak (hours)
+    bioavailability: float  # % (0–100)
+    ir_fraction: float  # % of dose in the IR coat (0–100, ER only)
     zero_order_duration: float  # T_dur: zero-order release window (hours, ER only)
-    release_half_life: float    # SR matrix first-order tail half-life (hours, ER only)
-    lag_time: float             # absorption lag (minutes)
-    ir_hours_to_peak: float     # IR coat absorption time-to-peak (hours, ER only)
+    release_half_life: float  # SR matrix first-order tail half-life (hours, ER only)
+    lag_time: float  # absorption lag (minutes)
+    ir_hours_to_peak: float  # IR coat absorption time-to-peak (hours, ER only)
 
 
 @dataclass(frozen=True)
@@ -65,12 +65,12 @@ class PKResult:
     ``gut_sr`` are always 0, and ``kr`` is always 0.
     """
 
-    body: float       # A_B: drug in the central (body) compartment (mg)
-    gut_ir: float     # A_G_IR: IR gut compartment (mg)
+    body: float  # A_B: drug in the central (body) compartment (mg)
+    gut_ir: float  # A_G_IR: IR gut compartment (mg)
     matrix_sr: float  # A_M_SR: SR matrix compartment (mg)
-    gut_sr: float     # A_G_SR: SR gut compartment (mg)
-    ka: float         # SR absorption rate constant (h⁻¹), cached for attributes
-    kr: float         # SR matrix first-order release rate (h⁻¹), cached for attributes
+    gut_sr: float  # A_G_SR: SR gut compartment (mg)
+    ka: float  # SR absorption rate constant (h⁻¹), cached for attributes
+    kr: float  # SR matrix first-order release rate (h⁻¹), cached for attributes
 
 
 class PKModel:
@@ -127,7 +127,7 @@ class PKModel:
                     high = mid_ka
                 else:
                     low = mid_ka
-            except (ValueError, ZeroDivisionError):
+            except ValueError, ZeroDivisionError:
                 low = mid_ka
         return (low + high) / 2
 
@@ -135,8 +135,7 @@ class PKModel:
     # Public entry point
     # ------------------------------------------------------------------
     @staticmethod
-    def compute(params: PKParams, dose_history: Sequence[tuple[datetime, float]],
-                now: datetime) -> PKResult:
+    def compute(params: PKParams, dose_history: Sequence[tuple[datetime, float]], now: datetime) -> PKResult:
         """
         Recalculate all compartments from the full dose history.
 
@@ -152,8 +151,7 @@ class PKModel:
     # IR model (2-compartment Bateman)
     # ------------------------------------------------------------------
     @staticmethod
-    def _compute_ir(params: PKParams, dose_history: Sequence[tuple[datetime, float]],
-                    now: datetime) -> PKResult:
+    def _compute_ir(params: PKParams, dose_history: Sequence[tuple[datetime, float]], now: datetime) -> PKResult:
         """Standard 2-compartment IR model (Bateman equation) via superposition."""
         k_e = math.log(2) / params.half_life if params.half_life > 0 else 0
         k_a = PKModel.solve_ka(params.hours_to_peak, k_e) if params.hours_to_peak > 0 else 0
@@ -177,9 +175,7 @@ class PKModel:
             if k_a > 0 and abs(k_a - k_e) > _EPS:
                 # Two-compartment Bateman equation (distinct rates)
                 total_gut += effective_dose * math.exp(-k_a * t_eff)
-                total_body += effective_dose * k_a / (k_a - k_e) * (
-                    math.exp(-k_e * t_eff) - math.exp(-k_a * t_eff)
-                )
+                total_body += effective_dose * k_a / (k_a - k_e) * (math.exp(-k_e * t_eff) - math.exp(-k_a * t_eff))
             elif k_a > 0:
                 # Limiting case k_a ≈ k_e
                 total_gut += effective_dose * math.exp(-k_a * t_eff)
@@ -203,8 +199,7 @@ class PKModel:
     # ER model (4-compartment hybrid IR + SR)
     # ------------------------------------------------------------------
     @staticmethod
-    def _compute_er(params: PKParams, dose_history: Sequence[tuple[datetime, float]],
-                    now: datetime) -> PKResult:
+    def _compute_er(params: PKParams, dose_history: Sequence[tuple[datetime, float]], now: datetime) -> PKResult:
         """
         4-compartment ER model (hybrid IR coat + SR matrix).
 
@@ -265,9 +260,7 @@ class PKModel:
             if D_IR > 0:
                 if k_a_ir > 0 and abs(k_a_ir - k_e) > _EPS:
                     total_gut_ir += D_IR * math.exp(-k_a_ir * t_eff)
-                    total_body += D_IR * k_a_ir / (k_a_ir - k_e) * (
-                        math.exp(-k_e * t_eff) - math.exp(-k_a_ir * t_eff)
-                    )
+                    total_body += D_IR * k_a_ir / (k_a_ir - k_e) * (math.exp(-k_e * t_eff) - math.exp(-k_a_ir * t_eff))
                 elif k_a_ir > 0:
                     total_gut_ir += D_IR * math.exp(-k_a_ir * t_eff)
                     total_body += D_IR * k_a_ir * t_eff * math.exp(-k_a_ir * t_eff)
@@ -286,14 +279,14 @@ class PKModel:
 
                     if k_a > 0 and abs(k_a - k_e) > _EPS:
                         total_gut_sr += (R0 / k_a) * (1 - math.exp(-k_a * t_eff))
-                        total_body += (R0 / k_e) * (1 - math.exp(-k_e * t_eff)) - \
-                                      (R0 * k_a) / ((k_a - k_e) * k_e) * (
-                                          math.exp(-k_e * t_eff) - math.exp(-k_a * t_eff)
-                                      )
+                        total_body += (R0 / k_e) * (1 - math.exp(-k_e * t_eff)) - (R0 * k_a) / ((k_a - k_e) * k_e) * (
+                            math.exp(-k_e * t_eff) - math.exp(-k_a * t_eff)
+                        )
                     elif k_a > 0:
                         total_gut_sr += (R0 / k_a) * (1 - math.exp(-k_a * t_eff))
-                        total_body += (R0 / k_e) * (1 - math.exp(-k_e * t_eff)) - \
-                                      (R0 / k_e) * k_a * t_eff * math.exp(-k_e * t_eff)
+                        total_body += (R0 / k_e) * (1 - math.exp(-k_e * t_eff)) - (R0 / k_e) * k_a * t_eff * math.exp(
+                            -k_e * t_eff
+                        )
                     else:
                         total_gut_sr += R0 * t_eff
                         if k_e > 0:
@@ -307,14 +300,14 @@ class PKModel:
 
                     if k_a > 0 and abs(k_a - k_e) > _EPS:
                         G_SR_at_T = (R0 / k_a) * (1 - math.exp(-k_a * T_dur))
-                        B_SR_at_T = (R0 / k_e) * (1 - math.exp(-k_e * T_dur)) - \
-                                    (R0 * k_a) / ((k_a - k_e) * k_e) * (
-                                        math.exp(-k_e * T_dur) - math.exp(-k_a * T_dur)
-                                    )
+                        B_SR_at_T = (R0 / k_e) * (1 - math.exp(-k_e * T_dur)) - (R0 * k_a) / ((k_a - k_e) * k_e) * (
+                            math.exp(-k_e * T_dur) - math.exp(-k_a * T_dur)
+                        )
                     elif k_a > 0:
                         G_SR_at_T = (R0 / k_a) * (1 - math.exp(-k_a * T_dur))
-                        B_SR_at_T = (R0 / k_e) * (1 - math.exp(-k_e * T_dur)) - \
-                                    (R0 / k_e) * k_a * T_dur * math.exp(-k_e * T_dur)
+                        B_SR_at_T = (R0 / k_e) * (1 - math.exp(-k_e * T_dur)) - (R0 / k_e) * k_a * T_dur * math.exp(
+                            -k_e * T_dur
+                        )
                     else:
                         G_SR_at_T = R0 * T_dur
                         if k_e > 0:
@@ -332,13 +325,12 @@ class PKModel:
 
                     # --- Forward-decay of Phase 1 state (ALWAYS applies) ---
                     if k_a > 0 and abs(k_a - k_e) > _EPS:
-                        total_body += B_SR_at_T * math.exp(-k_e * tau) + \
-                                      G_SR_at_T * k_a / (k_a - k_e) * (
-                                          math.exp(-k_e * tau) - math.exp(-k_a * tau))
+                        total_body += B_SR_at_T * math.exp(-k_e * tau) + G_SR_at_T * k_a / (k_a - k_e) * (
+                            math.exp(-k_e * tau) - math.exp(-k_a * tau)
+                        )
                         total_gut_sr += G_SR_at_T * math.exp(-k_a * tau)
                     elif k_a > 0:
-                        total_body += B_SR_at_T * math.exp(-k_e * tau) + \
-                                      G_SR_at_T * k_a * tau * math.exp(-k_e * tau)
+                        total_body += B_SR_at_T * math.exp(-k_e * tau) + G_SR_at_T * k_a * tau * math.exp(-k_e * tau)
                         total_gut_sr += G_SR_at_T * math.exp(-k_a * tau)
                     else:
                         total_body += B_SR_at_T * math.exp(-k_e * tau) if k_e > 0 else B_SR_at_T
@@ -346,27 +338,45 @@ class PKModel:
                     # --- Additional matrix first-order release (ONLY when k_r > 0) ---
                     if k_r > 0 and M_SR_at_T > 1e-9 and k_a > 0 and abs(k_a - k_e) > _EPS:
                         if abs(k_r - k_e) > _EPS and abs(k_r - k_a) > _EPS:
-                            total_body += k_r * M_SR_at_T * k_a / (k_a - k_e) * (
-                                (math.exp(-k_e * tau) - math.exp(-k_a * tau)) / (k_r - k_e) -
-                                (math.exp(-k_r * tau) - math.exp(-k_a * tau)) / (k_r - k_a)
+                            total_body += (
+                                k_r
+                                * M_SR_at_T
+                                * k_a
+                                / (k_a - k_e)
+                                * (
+                                    (math.exp(-k_e * tau) - math.exp(-k_a * tau)) / (k_r - k_e)
+                                    - (math.exp(-k_r * tau) - math.exp(-k_a * tau)) / (k_r - k_a)
+                                )
                             )
                         elif abs(k_r - k_e) <= _EPS and abs(k_r - k_a) > _EPS:
-                            total_body += k_r * M_SR_at_T * k_a / (k_a - k_e) * (
-                                tau * math.exp(-k_e * tau) +
-                                (math.exp(-k_a * tau) - math.exp(-k_e * tau)) / (k_a - k_e)
+                            total_body += (
+                                k_r
+                                * M_SR_at_T
+                                * k_a
+                                / (k_a - k_e)
+                                * (
+                                    tau * math.exp(-k_e * tau)
+                                    + (math.exp(-k_a * tau) - math.exp(-k_e * tau)) / (k_a - k_e)
+                                )
                             )
                         elif abs(k_r - k_a) <= _EPS and abs(k_r - k_e) > _EPS:
-                            total_body += k_r * k_a * M_SR_at_T / (k_a - k_e) * (
-                                (math.exp(-k_e * tau) - math.exp(-k_a * tau)) / (k_a - k_e) -
-                                tau * math.exp(-k_a * tau)
+                            total_body += (
+                                k_r
+                                * k_a
+                                * M_SR_at_T
+                                / (k_a - k_e)
+                                * (
+                                    (math.exp(-k_e * tau) - math.exp(-k_a * tau)) / (k_a - k_e)
+                                    - tau * math.exp(-k_a * tau)
+                                )
                             )
                         else:
                             k = (k_r + k_a + k_e) / 3.0
                             total_body += k * k * M_SR_at_T * tau * tau / 2.0 * math.exp(-k * tau)
 
                         if abs(k_a - k_r) > _EPS:
-                            total_gut_sr += k_r * M_SR_at_T / (k_a - k_r) * (
-                                math.exp(-k_r * tau) - math.exp(-k_a * tau)
+                            total_gut_sr += (
+                                k_r * M_SR_at_T / (k_a - k_r) * (math.exp(-k_r * tau) - math.exp(-k_a * tau))
                             )
                         else:
                             total_gut_sr += k_r * M_SR_at_T * tau * math.exp(-k_a * tau)
@@ -377,9 +387,7 @@ class PKModel:
 
                     elif k_r > 0 and M_SR_at_T > 1e-9:
                         if k_e > 0 and abs(k_r - k_e) > _EPS:
-                            total_body += k_r * M_SR_at_T / (k_r - k_e) * (
-                                math.exp(-k_e * tau) - math.exp(-k_r * tau)
-                            )
+                            total_body += k_r * M_SR_at_T / (k_r - k_e) * (math.exp(-k_e * tau) - math.exp(-k_r * tau))
                         elif k_e > 0:
                             total_body += k_r * M_SR_at_T * tau * math.exp(-k_e * tau)
                         else:
@@ -390,27 +398,38 @@ class PKModel:
                 total_matrix_sr += D_SR * math.exp(-k_r * t_eff)
 
                 if abs(k_r - k_a) > _EPS:
-                    total_gut_sr += D_SR * k_r / (k_r - k_a) * (
-                        math.exp(-k_a * t_eff) - math.exp(-k_r * t_eff)
-                    )
+                    total_gut_sr += D_SR * k_r / (k_r - k_a) * (math.exp(-k_a * t_eff) - math.exp(-k_r * t_eff))
                 else:
                     total_gut_sr += D_SR * k_r * t_eff * math.exp(-k_a * t_eff)
 
                 if k_a > 0 and abs(k_a - k_e) > _EPS:
                     if abs(k_r - k_e) > _EPS and abs(k_r - k_a) > _EPS:
-                        total_body += D_SR * k_r * k_a * (
-                            math.exp(-k_e * t_eff) / ((k_r - k_e) * (k_a - k_e)) +
-                            math.exp(-k_r * t_eff) / ((k_e - k_r) * (k_a - k_r)) +
-                            math.exp(-k_a * t_eff) / ((k_e - k_a) * (k_r - k_a))
+                        total_body += (
+                            D_SR
+                            * k_r
+                            * k_a
+                            * (
+                                math.exp(-k_e * t_eff) / ((k_r - k_e) * (k_a - k_e))
+                                + math.exp(-k_r * t_eff) / ((k_e - k_r) * (k_a - k_r))
+                                + math.exp(-k_a * t_eff) / ((k_e - k_a) * (k_r - k_a))
+                            )
                         )
                     elif abs(k_r - k_a) <= _EPS:
                         k = k_r
-                        total_body += D_SR * k * k / ((k - k_e) ** 2) * (
-                            math.exp(-k_e * t_eff) - math.exp(-k * t_eff) * (1 + (k - k_e) * t_eff)
+                        total_body += (
+                            D_SR
+                            * k
+                            * k
+                            / ((k - k_e) ** 2)
+                            * (math.exp(-k_e * t_eff) - math.exp(-k * t_eff) * (1 + (k - k_e) * t_eff))
                         )
                     elif abs(k_r - k_e) <= _EPS:
-                        total_body += D_SR * k_r * k_a / ((k_a - k_e) ** 2) * (
-                            math.exp(-k_e * t_eff) * (1 + (k_a - k_e) * t_eff) - math.exp(-k_a * t_eff)
+                        total_body += (
+                            D_SR
+                            * k_r
+                            * k_a
+                            / ((k_a - k_e) ** 2)
+                            * (math.exp(-k_e * t_eff) * (1 + (k_a - k_e) * t_eff) - math.exp(-k_a * t_eff))
                         )
                 elif k_a > 0:
                     if abs(k_r - k_a) > _EPS:
@@ -419,9 +438,7 @@ class PKModel:
                         k = k_r
                         total_body += D_SR * k * k * t_eff * t_eff / 2.0 * math.exp(-k * t_eff)
                 elif k_e > 0 and abs(k_r - k_e) > _EPS:
-                    total_body += D_SR * k_r / (k_r - k_e) * (
-                        math.exp(-k_e * t_eff) - math.exp(-k_r * t_eff)
-                    )
+                    total_body += D_SR * k_r / (k_r - k_e) * (math.exp(-k_e * t_eff) - math.exp(-k_r * t_eff))
                 elif k_e > 0:
                     total_body += D_SR * k_r * t_eff * math.exp(-k_e * t_eff)
                 else:
@@ -432,9 +449,7 @@ class PKModel:
                 # Treat SR fraction as instant release merged into the IR path.
                 if k_a > 0 and abs(k_a - k_e) > _EPS:
                     total_gut_sr += D_SR * math.exp(-k_a * t_eff)
-                    total_body += D_SR * k_a / (k_a - k_e) * (
-                        math.exp(-k_e * t_eff) - math.exp(-k_a * t_eff)
-                    )
+                    total_body += D_SR * k_a / (k_a - k_e) * (math.exp(-k_e * t_eff) - math.exp(-k_a * t_eff))
                 elif k_a > 0:
                     total_gut_sr += D_SR * math.exp(-k_a * t_eff)
                     total_body += D_SR * k_a * t_eff * math.exp(-k_a * t_eff)
@@ -456,8 +471,7 @@ class PKModel:
     # Incremental IR decay (2-min timer optimization)
     # ------------------------------------------------------------------
     @staticmethod
-    def decay_ir(params: PKParams, body: float, gut: float,
-                 elapsed_hours: float) -> tuple[float, float]:
+    def decay_ir(params: PKParams, body: float, gut: float, elapsed_hours: float) -> tuple[float, float]:
         """
         Decay the IR model compartments by ``elapsed_hours`` using the
         exact Bateman equation.
@@ -477,7 +491,7 @@ class PKModel:
             new_body = body * math.exp(-k_e * elapsed_hours)
         else:
             new_gut = gut * math.exp(-k_a * elapsed_hours)
-            new_body = (body * math.exp(-k_e * elapsed_hours) +
-                        (gut * k_a / (k_a - k_e)) *
-                        (math.exp(-k_e * elapsed_hours) - math.exp(-k_a * elapsed_hours)))
+            new_body = body * math.exp(-k_e * elapsed_hours) + (gut * k_a / (k_a - k_e)) * (
+                math.exp(-k_e * elapsed_hours) - math.exp(-k_a * elapsed_hours)
+            )
         return new_body, new_gut

@@ -118,9 +118,7 @@ class DrinkMasterDailyAmountSensor(RestoreSensor):
             self._attr_native_value = float(last_state.native_value)
         self._update_state()
         self.async_write_ha_state()
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
 
     @callback
     def _handle_coordinator_update(self) -> None:

@@ -84,8 +84,8 @@ DRINK_MASTER_STORE_KEYS: dict[str, str] = {
 
 # --- Global PK defaults (Drink Settings singleton) ---
 GLOBAL_PK_DEFAULTS: dict[str, float] = {
-    "global_caffeine_half_life": 5.0,        # hours
-    "global_caffeine_tmax": 0.75,            # hours
+    "global_caffeine_half_life": 5.0,  # hours
+    "global_caffeine_tmax": 0.75,  # hours
     "global_alcohol_elimination_rate": 8.0,  # g/h
 }
 
@@ -157,8 +157,8 @@ def generate_default_dose_times(n: int) -> list[str]:
     if n in DEFAULT_DOSE_TIMES:
         return DEFAULT_DOSE_TIMES[n]
     # Spread n times evenly from 07:00 to 21:00 (14-hour window)
-    start_minutes = 7 * 60   # 07:00
-    end_minutes = 21 * 60     # 21:00
+    start_minutes = 7 * 60  # 07:00
+    end_minutes = 21 * 60  # 21:00
     span = end_minutes - start_minutes
     times: list[str] = []
     for i in range(n):
@@ -176,14 +176,10 @@ def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:
     Falls back to the legacy time_of_day field for entries that haven't been
     migrated yet, and ultimately defaults to ["08:00"].
     """
-    dose_times = entry.options.get(
-        "dose_times", entry.data.get("dose_times", None)
-    )
+    dose_times = entry.options.get("dose_times", entry.data.get("dose_times", None))
     # Legacy fallback: single time_of_day string
     if dose_times is None:
-        old_time = entry.options.get(
-            "time_of_day", entry.data.get("time_of_day", "08:00")
-        )
+        old_time = entry.options.get("time_of_day", entry.data.get("time_of_day", "08:00"))
         dose_times = [old_time] if old_time else ["08:00"]
 
     parsed: list[tuple[int, int]] = []
@@ -191,7 +187,7 @@ def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:
         try:
             parts = ts.split(":")
             parsed.append((int(parts[0]), int(parts[1])))
-        except (ValueError, AttributeError, IndexError):
+        except ValueError, AttributeError, IndexError:
             parsed.append((8, 0))
     parsed.sort()
     return parsed

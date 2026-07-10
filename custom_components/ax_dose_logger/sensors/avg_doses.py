@@ -159,13 +159,9 @@ class PillAvgDosesSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         today = _local_date(now)
 
         if self._tracking_type == TRACKING_CYCLIC:
-            scheduled_days, covered_days = self._count_cyclic_days(
-                now, base_cutoff, dose_dates, today
-            )
+            scheduled_days, covered_days = self._count_cyclic_days(now, base_cutoff, dose_dates, today)
         else:
-            scheduled_days, covered_days = self._count_daily_days(
-                base_cutoff, dose_dates, today
-            )
+            scheduled_days, covered_days = self._count_daily_days(base_cutoff, dose_dates, today)
 
         if scheduled_days > 0:
             self._attr_native_value = round(covered_days / scheduled_days, 1)

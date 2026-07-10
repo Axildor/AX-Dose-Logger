@@ -92,9 +92,7 @@ class DrinkMasterLastDoseSensor(RestoreSensor):
             parsed = dt_util.parse_datetime(last_state_obj.state)
             if parsed:
                 self._attr_native_value = parsed
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         # Push the current coordinator state immediately.
         self._handle_coordinator_update()
 

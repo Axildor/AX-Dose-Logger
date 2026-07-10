@@ -38,9 +38,9 @@ from datetime import datetime
 # with the user — the original "mg" wording for alcohol was a typo).
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import (
-   RestoreSensor,
-   SensorDeviceClass,
-   SensorStateClass,
+    RestoreSensor,
+    SensorDeviceClass,
+    SensorStateClass,
 )
 from homeassistant.const import UnitOfTime
 from homeassistant.core import callback
@@ -160,9 +160,7 @@ class DrinkMasterSleepDisruptionSensor(RestoreSensor):
         if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
             # Restore the textual band; attributes are recomputed below.
             self._attr_native_value = last_state.state
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         # Push the current coordinator state immediately.
         self._handle_coordinator_update()
 
@@ -256,9 +254,7 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
             restored = dt_util.parse_datetime(last_state.state)
             if restored is not None:
                 self._attr_native_value = restored
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         # Push the current coordinator state immediately.
         self._handle_coordinator_update()
 
@@ -375,13 +371,11 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
         ):
             try:
                 self._attr_native_value = float(last_state.state)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 # Non-numeric restored state — ignore; the coordinator push
                 # below recomputes the correct value immediately.
                 pass
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         # Push the current coordinator state immediately.
         self._handle_coordinator_update()
 
@@ -417,9 +411,7 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
         # Longer-horizon countdown to the sleep-safe None band.
         estimated_none_hours: float | None = None
         if anchor_mass > self._none_threshold:
-            eta_none = self._coordinator.estimate_time_to_body_mass(
-                self._none_threshold
-            )
+            eta_none = self._coordinator.estimate_time_to_body_mass(self._none_threshold)
             if eta_none is not None:
                 estimated_none_hours = round(eta_none.total_seconds() / 3600.0, 1)
 

@@ -73,24 +73,18 @@ class DrinkCooldownSensor(RestoreSensor):
         if last_state_obj is not None:
             try:
                 self._attr_native_value = int(float(last_state_obj.state))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 self._attr_native_value = 1
             if last_state_obj.attributes:
                 self._attr_extra_state_attributes = {
                     "cooldown_ends_at": last_state_obj.attributes.get("cooldown_ends_at"),
                     "last_dose_time": last_state_obj.attributes.get("last_dose_time"),
-                    "cooldown_window_hours": float(
-                        last_state_obj.attributes.get("cooldown_window_hours", 0.0) or 0.0
-                    ),
-                    "within_cooldown": bool(
-                        last_state_obj.attributes.get("within_cooldown", False)
-                    ),
+                    "cooldown_window_hours": float(last_state_obj.attributes.get("cooldown_window_hours", 0.0) or 0.0),
+                    "within_cooldown": bool(last_state_obj.attributes.get("within_cooldown", False)),
                     "substance": self._substance,
                     "device_type": "drink",
                 }
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         self._handle_coordinator_update()
 
     @callback

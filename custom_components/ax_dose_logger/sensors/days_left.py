@@ -125,9 +125,7 @@ class PillDaysLeftSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         # Resolve the PillStockNumber entity_id via the entity registry.
         ent_reg = er.async_get(self.hass)
-        self._stock_entity_id = ent_reg.async_get_entity_id(
-            "number", DOMAIN, f"{self._entry_id}_stock"
-        )
+        self._stock_entity_id = ent_reg.async_get_entity_id("number", DOMAIN, f"{self._entry_id}_stock")
         if self._stock_entity_id:
             self._unsub_stock = async_track_state_change_event(
                 self.hass, self._stock_entity_id, self._stock_state_changed
@@ -166,7 +164,7 @@ class PillDaysLeftSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return 0.0
         try:
             return max(0.0, float(state.state))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return 0.0
 
     def _doses_per_day_scheduled(self) -> float:
@@ -254,9 +252,7 @@ class DrinkDaysLeftSensor(RestoreSensor):
     _attr_should_poll = False
     _attr_translation_key = "days_left_est"
 
-    def __init__(
-        self, entry: ConfigEntry, coordinator: DrinkCoordinator
-    ) -> None:
+    def __init__(self, entry: ConfigEntry, coordinator: DrinkCoordinator) -> None:
         self._entry = entry
         self._coordinator = coordinator
         self._substance = entry.data.get("drink_type")
@@ -278,18 +274,14 @@ class DrinkDaysLeftSensor(RestoreSensor):
             self._attr_native_value = float(last_state.native_value)
 
         ent_reg = er.async_get(self.hass)
-        self._stock_entity_id = ent_reg.async_get_entity_id(
-            "number", DOMAIN, f"{self._entry.entry_id}_drink_stock"
-        )
+        self._stock_entity_id = ent_reg.async_get_entity_id("number", DOMAIN, f"{self._entry.entry_id}_drink_stock")
         if self._stock_entity_id:
             self._unsub_stock = async_track_state_change_event(
                 self.hass, self._stock_entity_id, self._stock_state_changed
             )
         self._update_state()
         self.async_write_ha_state()
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up the stock state-change subscription."""
@@ -321,7 +313,7 @@ class DrinkDaysLeftSensor(RestoreSensor):
             return 0.0
         try:
             return max(0.0, float(state.state))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return 0.0
 
     def _doses_per_day_avg(self) -> float | None:
@@ -430,9 +422,7 @@ class DrinkMasterDaysLeftSensor(RestoreSensor):
             )
         self._update_state()
         self.async_write_ha_state()
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up the stock state-change subscription."""
@@ -470,9 +460,7 @@ class DrinkMasterDaysLeftSensor(RestoreSensor):
                 continue
             if entry.data.get("drink_type") != self._substance:
                 continue
-            eid = ent_reg.async_get_entity_id(
-                "number", DOMAIN, f"{entry.entry_id}_drink_stock"
-            )
+            eid = ent_reg.async_get_entity_id("number", DOMAIN, f"{entry.entry_id}_drink_stock")
             if eid:
                 ids.append(eid)
         self._stock_entity_ids = ids
@@ -490,7 +478,7 @@ class DrinkMasterDaysLeftSensor(RestoreSensor):
                 continue
             try:
                 total += max(0.0, float(state.state))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
         return total
 

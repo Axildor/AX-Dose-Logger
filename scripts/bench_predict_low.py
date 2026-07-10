@@ -4,6 +4,7 @@
 No HA imports — monkeypatches dt_util + bypasses __init__ (see sim_low_estimate.py).
 Run:  python3 scripts/bench_predict_low.py
 """
+
 import os
 import sys
 import time
@@ -71,4 +72,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

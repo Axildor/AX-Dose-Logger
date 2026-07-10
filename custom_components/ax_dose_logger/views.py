@@ -81,9 +81,11 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
                 # the frontend bar graph only consumes [iso, strength].
                 payload = [[d[0], d[1]] for d in doses if len(d) >= 2]
                 _LOGGER.info(
-                    "ax_dose_logger history REST: master device_id=%s substance=%s "
-                    "returned %d doses (store had %d)",
-                    device_id, substance, len(payload), len(doses),
+                    "ax_dose_logger history REST: master device_id=%s substance=%s returned %d doses (store had %d)",
+                    device_id,
+                    substance,
+                    len(payload),
+                    len(doses),
                 )
                 return self.json(payload)
 
@@ -97,7 +99,9 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
         history = store.get_history(entry_id)
         _LOGGER.info(
             "ax_dose_logger history REST: device_id=%s entry_id=%s returned %d doses",
-            device_id, entry_id, len(history),
+            device_id,
+            entry_id,
+            len(history),
         )
         return self.json(history)
 
@@ -147,9 +151,7 @@ class AxDoseLoggerPredictLowView(HomeAssistantView):
                 )
                 return self.json({"low_time": None})
 
-            config_entry: ConfigEntry | None = hass.config_entries.async_get_entry(
-                entry.config_entry_id
-            )
+            config_entry: ConfigEntry | None = hass.config_entries.async_get_entry(entry.config_entry_id)
             if config_entry is None:
                 return self.json({"low_time": None})
 
@@ -190,14 +192,17 @@ class AxDoseLoggerPredictLowView(HomeAssistantView):
             )
             payload = {"low_time": low_time.isoformat() if low_time else None}
             _LOGGER.info(
-                "ax_dose_logger predict_low REST: entity=%s substance=%s strength=%s "
-                "low_time=%s",
-                entity_id, substance, dose_strength, payload["low_time"],
+                "ax_dose_logger predict_low REST: entity=%s substance=%s strength=%s low_time=%s",
+                entity_id,
+                substance,
+                dose_strength,
+                payload["low_time"],
             )
             return self.json(payload)
         except Exception as err:  # noqa: BLE001 — defensive; never 500 the popup
             _LOGGER.warning(
                 "ax_dose_logger predict_low REST: error for entity %s: %s",
-                entity_id, err,
+                entity_id,
+                err,
             )
             return self.json({"low_time": None})
