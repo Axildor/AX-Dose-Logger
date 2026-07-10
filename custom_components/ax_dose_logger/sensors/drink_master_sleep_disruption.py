@@ -25,6 +25,7 @@ can filter them out.
 from __future__ import annotations
 
 import math
+from datetime import datetime
 
 # Per-substance metadata + ordered disruption bands.
 #
@@ -35,10 +36,13 @@ import math
 #
 # Units: caffeine body-mass is in mg; alcohol body-mass is in g (confirmed
 # with the user — the original "mg" wording for alcohol was a typo).
-from datetime import datetime
-
 import homeassistant.util.dt as dt_util
-from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
+from homeassistant.components.sensor import (
+   RestoreSensor,
+   SensorDeviceClass,
+   SensorStateClass,
+)
+from homeassistant.const import UnitOfTime
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 
@@ -46,6 +50,7 @@ from ..const import (
     ALCOHOL_TRACKER_ID,
     CAFFEINE_TRACKER_ID,
     DOMAIN,
+    DRINK_LOW_THRESHOLD,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
 )
@@ -58,6 +63,8 @@ _TRACKER_INFO = {
         "disruption_translation_key": "sleep_disruption_caffeine",
         "estimated_low_unique_id": "drink_master_estimated_low_time_caffeine",
         "estimated_low_translation_key": "estimated_low_time_caffeine",
+        "low_hours_until_unique_id": "drink_master_low_hours_until_caffeine",
+        "low_hours_until_translation_key": "low_hours_until_caffeine",
         "icon": "mdi:bed-clock",
         "unit": "mg",
         # (upper_bound_exclusive, label) — bare labels, no unit suffix.
@@ -70,7 +77,10 @@ _TRACKER_INFO = {
         # Upper bound of the None band (sleep-safe threshold).
         "none_threshold": 10.0,
         # Upper bound of the Low band — the Estimated Low Time target.
-        "low_threshold": 11.0,
+        # Reads from the shared DRINK_LOW_THRESHOLD constant (single source of
+        # truth; the master coordinator's predict_low_time_if_dose uses the
+        # same value so the popup prediction matches the sensor's target).
+        "low_threshold": DRINK_LOW_THRESHOLD[DRINK_TYPE_CAFFEINE],
     },
     DRINK_TYPE_ALCOHOL: {
         "tracker_id": ALCOHOL_TRACKER_ID,
@@ -78,6 +88,8 @@ _TRACKER_INFO = {
         "disruption_translation_key": "sleep_disruption_alcohol",
         "estimated_low_unique_id": "drink_master_estimated_low_time_alcohol",
         "estimated_low_translation_key": "estimated_low_time_alcohol",
+        "low_hours_until_unique_id": "drink_master_low_hours_until_alcohol",
+        "low_hours_until_translation_key": "low_hours_until_alcohol",
         "icon": "mdi:glass-wine",
         "unit": "g",
         "bands": [
@@ -89,7 +101,8 @@ _TRACKER_INFO = {
         # None band: 0 g (sleep-safe threshold).
         "none_threshold": 0.0,
         # Upper bound of the Low band — the Estimated Low Time target.
-        "low_threshold": 1.0,
+        # Reads from the shared DRINK_LOW_THRESHOLD constant (see caffeine note).
+        "low_threshold": DRINK_LOW_THRESHOLD[DRINK_TYPE_ALCOHOL],
     },
 }
 
@@ -251,20 +264,36 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Recompute the estimated Low + None wall-clock times on updates."""
+        """Recompute the estimated Low + None wall-clock times on updates.
+
+        The gate anchors on the **forecasted peak body mass** for caffeine
+        (``data.peak_body_mass``), not the instantaneous ``body_mass``.  At
+        the moment a caffeine dose is logged the current body mass is still
+        ~0 (absorption has not started), so gating on the current mass would
+        keep the sensor ``unknown`` for ~30 min until absorption raises the
+        mass above the Low threshold.  Anchoring on the forecasted peak
+        matches the design of :meth:`estimate_time_to_body_mass` (which
+        already anchors at the peak internally) and makes the sensor emit a
+        real predicted time the instant a dose is logged — the intended
+        behaviour of the predictive Low feature.  For alcohol
+        ``peak_body_mass == body_mass`` (instant absorption), so the gate is
+        unchanged.
+        """
         data = self._coordinator.data
         if data is None:
             return
         mass = float(data.body_mass)
+        # Caffeine forecasts the peak; alcohol's peak == current body mass.
+        anchor_mass = float(data.peak_body_mass) if data.peak_body_mass else mass
 
         estimated_low_time: datetime | None = None
-        if mass > self._low_threshold:
+        if anchor_mass > self._low_threshold:
             eta_low = self._coordinator.estimate_time_to_body_mass(self._low_threshold)
             if eta_low is not None:
                 estimated_low_time = dt_util.now() + eta_low
 
         estimated_none_time: datetime | None = None
-        if mass > self._none_threshold:
+        if anchor_mass > self._none_threshold:
             eta_none = self._coordinator.estimate_time_to_body_mass(self._none_threshold)
             if eta_none is not None:
                 estimated_none_time = dt_util.now() + eta_none
@@ -278,5 +307,129 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
             "role": "estimated_low_time",
             "low_threshold": self._low_threshold,
             "estimated_none_time": estimated_none_time,
+        }
+        self.async_write_ha_state()
+
+
+class DrinkMasterLowHoursUntilSensor(RestoreSensor):
+    """DURATION countdown sensor — hours until the body-mass enters Low.
+
+    A numeric companion to :class:`DrinkMasterEstimatedLowTimeSensor` for users
+    who prefer a countdown over a wall-clock timestamp.  The ``native_value``
+    is the number of hours remaining until the body-mass decays into the *Low*
+    band (the first sleep-relevant improvement milestone), rounded to 1
+    decimal.  ``None`` (unknown) when the body-mass is already in the Low band
+    or lower — no countdown is needed once you have arrived.
+
+    Carries ``estimated_none_hours`` as an attribute — the longer-horizon
+    countdown to the sleep-safe None band (``None`` once in the None band).
+
+    Reuses the per-substance ``low_threshold`` (the upper bound of the Low
+    band, already the Estimated Low Time target) + the coordinator's existing
+    ``estimate_time_to_body_mass(target)`` method — no coordinator / store /
+    migration changes.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
+        """Initialize the Low - Hours Until countdown sensor."""
+        info = _TRACKER_INFO[coordinator.substance]
+        self._coordinator = coordinator
+        self._substance = coordinator.substance
+        self._low_threshold = info["low_threshold"]
+        self._none_threshold = info["none_threshold"]
+        self._unit = info["unit"]
+        self._attr_unique_id = info["low_hours_until_unique_id"]
+        self._attr_translation_key = info["low_hours_until_translation_key"]
+        self._attr_icon = "mdi:timer-sand"
+        # Stable device identifiers — standalone virtual Master Tracker
+        # device, not tied to entry_id (mirrors the sibling sensors).
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, info["tracker_id"])},
+            manufacturer="AX Dose Logger",
+            model="Master Tracker",
+        )
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "drink_master": True,  # Frontend filter marker
+            "role": "low_hours_until",  # Frontend classifier (survives entity_id renames)
+            "low_threshold": self._low_threshold,
+            "low_threshold_unit": self._unit,
+            "estimated_none_hours": None,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Restore last state, then subscribe to the master coordinator."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in (
+            None,
+            "unknown",
+            "unavailable",
+        ):
+            try:
+                self._attr_native_value = float(last_state.state)
+            except (TypeError, ValueError):
+                # Non-numeric restored state — ignore; the coordinator push
+                # below recomputes the correct value immediately.
+                pass
+        self.async_on_remove(
+            self._coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+        # Push the current coordinator state immediately.
+        self._handle_coordinator_update()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Recompute the hours-until-Low + hours-until-None countdowns.
+
+        The gate anchors on the **forecasted peak body mass** for caffeine
+        (``data.peak_body_mass``), not the instantaneous ``body_mass`` — see
+        the matching note on :class:`DrinkMasterEstimatedLowTimeSensor`.  At
+        the moment a caffeine dose is logged the current body mass is still
+        ~0 (absorption not started), so gating on the current mass would keep
+        the countdown ``unknown`` until absorption raises the mass above the
+        threshold.  Anchoring on the forecasted peak emits a real countdown
+        the instant a dose is logged.  For alcohol ``peak_body_mass ==
+        body_mass``, so the gate is unchanged.
+        """
+        data = self._coordinator.data
+        if data is None:
+            return
+        mass = float(data.body_mass)
+        # Caffeine forecasts the peak; alcohol's peak == current body mass.
+        anchor_mass = float(data.peak_body_mass) if data.peak_body_mass else mass
+
+        # Hours until the body-mass decays into the Low band.
+        # None when already in Low or below (no countdown needed).
+        hours_until_low: float | None = None
+        if anchor_mass > self._low_threshold:
+            eta_low = self._coordinator.estimate_time_to_body_mass(self._low_threshold)
+            if eta_low is not None:
+                hours_until_low = round(eta_low.total_seconds() / 3600.0, 1)
+
+        # Longer-horizon countdown to the sleep-safe None band.
+        estimated_none_hours: float | None = None
+        if anchor_mass > self._none_threshold:
+            eta_none = self._coordinator.estimate_time_to_body_mass(
+                self._none_threshold
+            )
+            if eta_none is not None:
+                estimated_none_hours = round(eta_none.total_seconds() / 3600.0, 1)
+
+        self._attr_native_value = hours_until_low
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "drink_master": True,
+            "role": "low_hours_until",
+            "low_threshold": self._low_threshold,
+            "low_threshold_unit": self._unit,
+            "estimated_none_hours": estimated_none_hours,
         }
         self.async_write_ha_state()

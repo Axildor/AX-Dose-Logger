@@ -24,7 +24,7 @@ from .data import AxDoseLoggerConfigEntry
 from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from .services import async_setup_services, async_unload_services
 from .store import AxDoseLoggerStore
-from .views import AxDoseLoggerHistoryView
+from .views import AxDoseLoggerHistoryView, AxDoseLoggerPredictLowView
 
 PLATFORMS = ["sensor", "button", "number", "calendar"]
 
@@ -327,8 +327,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
         )
     await hass.data[DOMAIN]["_store_load"]
 
-    # Register REST view (idempotent — HA ignores duplicate registrations)
+    # Register REST views (idempotent — HA ignores duplicate registrations)
     hass.http.register_view(AxDoseLoggerHistoryView())
+    hass.http.register_view(AxDoseLoggerPredictLowView())
 
     device_category = entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
 

@@ -63,6 +63,19 @@ DRINK_TYPES: list[str] = [
 CAFFEINE_TRACKER_ID = "caffeine_tracker"
 ALCOHOL_TRACKER_ID = "alcohol_tracker"
 
+# --- Per-substance Low band upper bound (sleep-relevant decay target) ---
+# Single source of truth shared by DrinkMasterEstimatedLowTimeSensor /
+# DrinkMasterLowHoursUntilSensor (sensors/drink_master_sleep_disruption.py)
+# and DrinkMasterCoordinator.predict_low_time_if_dose (drink_coordinator.py).
+# Caffeine body-mass is in mg; alcohol body-mass is in g.
+# The Low band is the first sleep-relevant improvement milestone (the body-mass
+# level below which sleep disruption is considered low) — more realistic to
+# watch than the asymptotic None band.
+DRINK_LOW_THRESHOLD: dict[str, float] = {
+    DRINK_TYPE_CAFFEINE: 11.0,
+    DRINK_TYPE_ALCOHOL: 1.0,
+}
+
 # Drink master store key suffix per substance type
 DRINK_MASTER_STORE_KEYS: dict[str, str] = {
     DRINK_TYPE_CAFFEINE: "ax_dose_logger_drink_master_caffeine",

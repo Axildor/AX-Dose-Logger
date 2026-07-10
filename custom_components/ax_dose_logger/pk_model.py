@@ -25,6 +25,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 
 __all__ = ["PKModel", "PKParams", "PKResult"]
 
@@ -84,6 +85,19 @@ class PKModel:
     # ------------------------------------------------------------------
     # Absorption-rate solver
     # ------------------------------------------------------------------
+    # ``solve_ka`` is a pure function of ``(t_max, k_e)`` and runs a 50-step
+    # binary search, but every caller passes the same handful of constant
+    # pairs (one per substance / medicine config — derived from ``half_life``
+    # + ``hours_to_peak`` which only change via an options-flow save).  Without
+    # caching it was recomputed on *every* ``PKModel.compute`` call — i.e. once
+    # per mini-bolus per dose per sweep step, which made the Log Drink popup's
+    # predict-low path take ~15s.  The module-level ``@lru_cache`` below memoises
+    # it: the first call for a given ``(t_max, k_e)`` pays the 50-iteration
+    # search; every subsequent call with the same args is an O(1) dict lookup.
+    # The cache is bounded (``maxsize=128``) — far more than the few distinct
+    # config pairs in practice — and is cleared implicitly on HA restart (the
+    # module is re-imported).  Numerically identical results (pure function).
+    @lru_cache(maxsize=128)
     @staticmethod
     def solve_ka(t_max: float, k_e: float) -> float:
         """
@@ -96,6 +110,11 @@ class PKModel:
 
         which has no closed-form solution for ``k_a``, so a binary search
         is used.
+
+        Memoised via :func:`functools.lru_cache` — the result depends only on
+        ``(t_max, k_e)``, which are constant for a given substance / medicine
+        config, so repeated calls (one per mini-bolus per dose per sweep step)
+        collapse to a single 50-iteration search per distinct pair.
         """
         low, high = 0.0001, 20.0
         for _ in range(50):

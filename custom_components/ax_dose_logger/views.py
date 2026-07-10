@@ -12,7 +12,9 @@ correctly.  The per-substance store lives in ``store.get_drink_master()``.
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     ALCOHOL_TRACKER_ID,
@@ -20,6 +22,8 @@ from .const import (
     DOMAIN,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
+)
+from .const import (
     LOGGER as _LOGGER,
 )
 
@@ -96,3 +100,104 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
             device_id, entry_id, len(history),
         )
         return self.json(history)
+
+
+class AxDoseLoggerPredictLowView(HomeAssistantView):
+    """Predict the Low-band wall-clock time if a drink were logged now.
+
+    URL: /api/ax_dose_logger/predict_low?entity_id=<button.log_drink_entity_id>
+    Method: GET
+    Auth: Bearer token (requires_auth = True)
+    Response: JSON ``{"low_time": iso_string | null}``
+
+    Resolves the log-drink button entity to its granular drink config entry,
+    reads ``dose_strength`` + ``drinking_duration`` from the entry, finds the
+    matching :class:`DrinkMasterCoordinator` by ``drink_type``, and calls its
+    pure what-if :meth:`predict_low_time_if_dose`.  The coordinator state is
+    never mutated — this is a read-only prediction for the Log Drink popup.
+    """
+
+    url = "/api/ax_dose_logger/predict_low"
+    name = "api:ax_dose_logger:predict_low"
+    requires_auth = True
+
+    async def get(self, request: web.Request) -> web.Response:
+        """Return the predicted Low-band timestamp for the given drink button.
+
+        The PK what-if (``predict_low_time_if_dose``) is a synchronous,
+        CPU-bound full-history recompute, so it is offloaded to the executor
+        to avoid blocking the event loop.  Any unexpected exception is
+        caught and returned as ``{"low_time": null}`` so the frontend always
+        receives a 200 and renders ``Low: —`` instead of hanging on the
+        ``Low: …`` loading placeholder that a 500 would produce.
+        """
+        hass = request.app["hass"]
+        entity_id = request.query.get("entity_id")
+        if not entity_id:
+            return self.json({"low_time": None})
+
+        try:
+            # Resolve entity_id -> config entry via the entity registry.
+            ent_reg = er.async_get(hass)
+            entry = ent_reg.async_get(entity_id)
+            if entry is None or not entry.config_entry_id:
+                _LOGGER.info(
+                    "ax_dose_logger predict_low REST: entity %s not in registry",
+                    entity_id,
+                )
+                return self.json({"low_time": None})
+
+            config_entry: ConfigEntry | None = hass.config_entries.async_get_entry(
+                entry.config_entry_id
+            )
+            if config_entry is None:
+                return self.json({"low_time": None})
+
+            # Only granular drink entries carry dose_strength + drinking_duration.
+            if config_entry.data.get("device_category") != "drinks":
+                return self.json({"low_time": None})
+
+            substance = config_entry.data.get("drink_type")
+            masters = hass.data.get(DOMAIN, {}).get("_drink_masters", {})
+            coordinator = masters.get(substance)
+            if coordinator is None:
+                _LOGGER.info(
+                    "ax_dose_logger predict_low REST: no master coordinator for %s",
+                    substance,
+                )
+                return self.json({"low_time": None})
+
+            dose_strength = float(
+                config_entry.options.get(
+                    "dose_strength",
+                    config_entry.data.get("dose_strength", 0),
+                )
+            )
+            drinking_duration_min = float(
+                config_entry.options.get(
+                    "drinking_duration",
+                    config_entry.data.get("drinking_duration", 15),
+                )
+            )
+
+            # Offload the synchronous PK what-if to the executor — it does a
+            # full-history Bateman recompute (N mini-boluses * len(history))
+            # which is CPU-bound and must not block the event loop.
+            low_time = await hass.async_add_executor_job(
+                coordinator.predict_low_time_if_dose,
+                dose_strength,
+                drinking_duration_min / 60.0,
+            )
+            payload = {"low_time": low_time.isoformat() if low_time else None}
+            _LOGGER.info(
+                "ax_dose_logger predict_low REST: entity=%s substance=%s strength=%s "
+                "low_time=%s",
+                entity_id, substance, dose_strength, payload["low_time"],
+            )
+            return self.json(payload)
+        except Exception as err:  # noqa: BLE001 — defensive; never 500 the popup
+            _LOGGER.warning(
+                "ax_dose_logger predict_low REST: error for entity %s: %s",
+                entity_id, err,
+            )
+            return self.json({"low_time": None})

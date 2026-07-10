@@ -661,6 +661,18 @@
       "days_since_first_dose": {
         "name": "Days Since First Dose"
       },
+      "days_left": {
+        "name": "Days left"
+      },
+      "days_left_est": {
+        "name": "Est. days left"
+      },
+      "days_left_est_master_caffeine": {
+        "name": "Est. days left"
+      },
+      "days_left_est_master_alcohol": {
+        "name": "Est. days left"
+      },
       "adherence": {
         "name": "Adherence ({window} Days)"
       },
@@ -701,10 +713,16 @@
         "name": "Sleep Disruption"
       },
       "estimated_low_time_caffeine": {
-        "name": "Estimated Low Time"
+        "name": "Low - Timestamp"
       },
       "estimated_low_time_alcohol": {
-        "name": "Estimated Low Time"
+        "name": "Low - Timestamp"
+      },
+      "low_hours_until_caffeine": {
+        "name": "Low - Hours Until"
+      },
+      "low_hours_until_alcohol": {
+        "name": "Low - Hours Until"
       },
       "pill_daily_amount": {
         "name": "Amount in Last 24h"

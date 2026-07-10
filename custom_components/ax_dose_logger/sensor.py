@@ -14,6 +14,11 @@ from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from .sensors.adherence import PillAdherenceSensor
 from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.concentration import PillConcentrationSensor
+from .sensors.days_left import (
+    DrinkDaysLeftSensor,
+    DrinkMasterDaysLeftSensor,
+    PillDaysLeftSensor,
+)
 from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
 from .sensors.drink_avg_doses import DrinkAvgDosesSensor
 from .sensors.drink_cooldown import DrinkCooldownSensor
@@ -24,6 +29,7 @@ from .sensors.drink_master_daily_amount import DrinkMasterDailyAmountSensor
 from .sensors.drink_master_last_dose import DrinkMasterLastDoseSensor
 from .sensors.drink_master_sleep_disruption import (
     DrinkMasterEstimatedLowTimeSensor,
+    DrinkMasterLowHoursUntilSensor,
     DrinkMasterSleepDisruptionSensor,
 )
 from .sensors.drink_total import DrinkTotalSensor
@@ -80,6 +86,11 @@ async def _setup_medicine_sensors(
         entities.append(PillOverdueSensor(entry, coordinator))
     entities.append(PillStrengthSensor(entry, coordinator))
     entities.append(PillDaysSinceFirstDoseSensor(entry, coordinator))
+    # Days-left inventory-burn indicator.  Scheduled medications show
+    # "Days left" (config-derived doses/day); As-Needed medications show
+    # "Est. days left" (7-day average doses/day).  Created for all tracking
+    # types since it reads the Pills Left stock number entity directly.
+    entities.append(PillDaysLeftSensor(entry, coordinator))
     enable_adherence = entry.options.get(
         "enable_adherence", entry.data.get("enable_adherence", tracking_type != TRACKING_AS_NEEDED)
     )
@@ -111,6 +122,10 @@ async def _setup_drink_sensors(
         DrinkAvgDosesSensor(entry, coordinator, 30),
         DrinkAvgDosesSensor(entry, coordinator, 365),
     ]
+    # Est. days left — inventory burn from 7-day average doses/day.  Reads
+    # the matching DrinkStockNumber entity, so it's created for every drink
+    # regardless of cooldown configuration.
+    entities.append(DrinkDaysLeftSensor(entry, coordinator))
     # Cooldown sensor is only created when a cooldown window is configured,
     # so drinks without a cooldown have no dead sensor entity. The card reads
     # this entity (native 0/1 + cooldown_ends_at) to soft-disable the Log
@@ -154,16 +169,22 @@ async def _setup_drink_settings_sensors(
         entities.append(DrinkMasterLastDoseSensor(entry, master))
         entities.append(DrinkMasterSleepDisruptionSensor(entry, master))
         entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master))
+        entities.append(DrinkMasterLowHoursUntilSensor(entry, master))
         entities.append(DrinkMasterDailyAmountSensor(entry, master))
         for window in (7, 14, 30, 365):
             entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
+        # Est. days left — aggregates every granular drink inventory of this
+        # substance (resolved via the entity registry) + the 7-day master avg.
+        entities.append(DrinkMasterDaysLeftSensor(entry, master, hass))
     if DRINK_TYPE_ALCOHOL in masters:
         master = masters[DRINK_TYPE_ALCOHOL]
         entities.append(DrinkMasterSensor(entry, master))
         entities.append(DrinkMasterLastDoseSensor(entry, master))
         entities.append(DrinkMasterSleepDisruptionSensor(entry, master))
         entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master))
+        entities.append(DrinkMasterLowHoursUntilSensor(entry, master))
         entities.append(DrinkMasterDailyAmountSensor(entry, master))
         for window in (7, 14, 30, 365):
             entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
+        entities.append(DrinkMasterDaysLeftSensor(entry, master, hass))
     async_add_entities(entities)

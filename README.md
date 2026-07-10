@@ -24,6 +24,7 @@ The **Drink Settings** singleton (global metabolic constants + the two Master Tr
 Each configured drink becomes its own **Granular Drink Device** (e.g. "Morning Espresso", "Evening Beer") with the same Control and Configuration entity set as a medication:
 
 - A **Log Drink** control button. **Pressing this is what activates the Master Tracker PK engines** — each press forwards the drink's `dose_strength` + `drinking_duration` to the matching substance's Master Tracker coordinator. When a cooldown window is configured, the backend never blocks a log (override is always available); the lockout is exposed as a soft warning via the **Drinks Available** sensor (see below) for the Lovelace card to surface.
+- The Lovelace card's **Log Drink popup** shows a predictive **"Low: hh:mm"** line under each drink name — the wall-clock time the body-mass is expected to drop into the *Low* sleep band *if that drink were logged now*. Lets you abort a drink based on its predicted sleep impact before pressing. "Low: —" means the drink would not lift body-mass above the Low band (no predicted descent — a safe drink). The prediction is fetched live from the backend on dialog open and never mutates real state.
 - An **Undo Drink** control button (reverts the last drink + its master contribution)
 - A **Reset History** configuration button (clears the drink's local history + master contribution)
 - A **Stock Left** control number (counts down by 1 per Log Drink press, using your configured unit of measurement, e.g. Cups/Cans/Bottles)
@@ -52,12 +53,14 @@ Attributes:
 
 When you press **Log Drink**, the dose is forwarded to the matching **Master Tracker** virtual device, which draws the global decay curve:
 
-- **Caffeine Tracker** — hosts `sensor.total_caffeine_in_body` (mg, displayed as **Amount in Body**), `sensor.sleep_disruption` (categorical), `sensor.estimated_low_time` (timestamp), and `sensor.amount_in_last_24h` (mg, sliding 24-hour window). Uses a discretized uniform-absorption model: each drink is split into mini-boluses spread across its `drinking_duration`, each absorbed via the IR Bateman equation with the global half-life and tmax. Linear PK → exact superposition across all caffeine drinks.
-- **Alcohol Tracker** — hosts `sensor.total_alcohol_in_body` (g, displayed as **Amount in Body**), `sensor.sleep_disruption` (categorical), `sensor.estimated_low_time` (timestamp), and `sensor.amount_in_last_24h` (g, sliding 24-hour window). Uses zero-order (Michaelis-Menten saturated) elimination at a configurable grams-per-hour rate. Doses add instantly; elimination advances on every tick.
+- **Caffeine Tracker** — hosts `sensor.total_caffeine_in_body` (mg, displayed as **Amount in Body**), `sensor.sleep_disruption` (categorical), `sensor.estimated_low_time` (displayed as **Low - Timestamp**, a timestamp), `sensor.low_hours_until` (displayed as **Low - Hours Until**, a countdown), and `sensor.amount_in_last_24h` (mg, sliding 24-hour window). Uses a discretized uniform-absorption model: each drink is split into mini-boluses spread across its `drinking_duration`, each absorbed via the IR Bateman equation with the global half-life and tmax. Linear PK → exact superposition across all caffeine drinks.
+- **Alcohol Tracker** — hosts `sensor.total_alcohol_in_body` (g, displayed as **Amount in Body**), `sensor.sleep_disruption` (categorical), `sensor.estimated_low_time` (displayed as **Low - Timestamp**, a timestamp), `sensor.low_hours_until` (displayed as **Low - Hours Until**, a countdown), and `sensor.amount_in_last_24h` (g, sliding 24-hour window). Uses zero-order (Michaelis-Menten saturated) elimination at a configurable grams-per-hour rate. Doses add instantly; elimination advances on every tick.
 
 Each Master Tracker also exposes a **Sleep Disruption** sensor — a categorical readout (`None` / `Low` / `Moderate` / `High`) of how much the current body-mass load is likely to disrupt sleep. The state is a bare label (no unit suffix); the threshold ranges are documented in the tables below. The band is recomputed on every coordinator push (dose event or 1-min decay tick) so it tracks clearance in real time.
 
-A companion **Estimated Low Time** timestamp sensor (`sensor.estimated_low_time`) predicts the wall-clock time at which the body-mass will decay into the *Low* band — the first sleep-relevant improvement milestone and more realistic to watch than the asymptotic None band. It carries `estimated_none_time` (the sleep-safe moment) as an attribute.
+A companion **Low - Timestamp** timestamp sensor (`sensor.estimated_low_time` — entity id preserved for backward compatibility) predicts the wall-clock time at which the body-mass will decay into the *Low* band — the first sleep-relevant improvement milestone and more realistic to watch than the asymptotic None band. It carries `estimated_none_time` (the sleep-safe moment) as an attribute. The Lovelace card displays it as `HH:MM` (24-hour, no date or seconds); HA's own more-info/dialog still shows the full date+time because the sensor keeps its `TIMESTAMP` device class (so automations can parse it and the history graph works).
+
+A matched **Low - Hours Until** countdown sensor (`sensor.low_hours_until`) is a numeric `DURATION` (hours) sensor that counts down the hours remaining until the body-mass enters the *Low* band — for users who prefer a countdown over a wall-clock timestamp. Its state is `None` (unknown) once the body-mass is already in the Low band or lower. It carries `estimated_none_hours` (the longer-horizon countdown to the sleep-safe None band) as an attribute. Caffeine uses first-order decay (t = ln(M/threshold) ÷ ke); alcohol uses zero-order linear decay (t = (M − threshold) ÷ rate).
 
 #### Amount in Last 24h — Master Trackers
 
@@ -100,9 +103,13 @@ When a limit is set (> 0), the sensor exposes a `remaining` attribute (`daily_li
 
 The Sleep Disruption sensor's extra state attributes expose the raw `body_mass` + unit, the `next_band` it will drop into, and `minutes_until_next_band` (estimated decay time to the next-lower band). Caffeine uses first-order decay (t = ln(M/threshold) ÷ ke); alcohol uses zero-order linear decay (t = (M − threshold) ÷ rate).
 
-#### Estimated Low Time — Attributes
+#### Low - Timestamp — Attributes
 
-The **Estimated Low Time** sensor (`sensor.estimated_low_time`) is a timestamp sensor whose state is the ISO-8601 wall-clock time the body-mass is predicted to reach the Low band. It exposes `estimated_none_time` (the sleep-safe moment when the body-mass enters the None band) as an attribute. When the body-mass is already in the Low band (or lower), the state is `None` (unknown); `estimated_none_time` is `None` once the body-mass is in the None band. Caffeine uses first-order decay (t = ln(M/threshold) ÷ ke); alcohol uses zero-order linear decay (t = (M − threshold) ÷ rate).
+The **Low - Timestamp** sensor (`sensor.estimated_low_time` — entity id preserved for backward compatibility) is a timestamp sensor whose state is the ISO-8601 wall-clock time the body-mass is predicted to reach the Low band. It exposes `estimated_none_time` (the sleep-safe moment when the body-mass enters the None band) as an attribute. When the body-mass is already in the Low band (or lower), the state is `None` (unknown); `estimated_none_time` is `None` once the body-mass is in the None band. Caffeine uses first-order decay (t = ln(M/threshold) ÷ ke); alcohol uses zero-order linear decay (t = (M − threshold) ÷ rate).
+
+#### Low - Hours Until — Attributes
+
+The **Low - Hours Until** sensor (`sensor.low_hours_until`) is a numeric `DURATION` (hours) countdown to the same Low-band milestone. Its state is the hours remaining (1 decimal) until the body-mass decays into the Low band, or `None` (unknown) once already in Low or below. It exposes `estimated_none_hours` (the longer-horizon countdown to the sleep-safe None band; `None` once in the None band) + `low_threshold` + `low_threshold_unit` (mg / g) as attributes. Caffeine uses first-order decay; alcohol uses zero-order linear decay — same formulas as the Low - Timestamp sensor, just expressed as a countdown rather than a wall-clock time.
 
 ### Configuring a Drink
 
@@ -132,6 +139,10 @@ In addition to the **Log Drink** button, three services are available for automa
 The `ax_dose_logger_drink_taken` bus event fires on every log with `{entry_id, drink_type, dose_strength, drink_name}` for automations (e.g. "if caffeine in body > 200mg, dim lights").
 
 > **Note:** The Master Tracker devices expose a `drink_master: true` + `substance` attribute so the AX Dose Logger Card can identify them and render the dedicated Drinks card (Drinks / Graph / Inventory / Stats / Tools panes). Granular drink devices expose a `device_type: "drink"` + `substance` attribute so the card can group drinks by substance for the Log Drink popup, Inventory, and Tools panels.
+
+#### Est. days left — Granular Drinks & Master Trackers
+
+Both granular drink devices and the Master Tracker devices expose an **Est. days left** sensor that answers "at the current consumption rate, how many days will my inventory last?" Each granular drink divides its own Inventory by its 7-day average doses/day; the Master Tracker sums **every** granular drink inventory of that substance and divides by the aggregated 7-day average doses/day. The state is `unknown` until enough history exists to compute a 7-day average. Key attributes: `stock`, `doses_per_day`, `estimation` (always `true` for drinks), `window_days` (`7`). The sensor reads the live `RestoreNumber` inventory entity/entities and refreshes instantly on a log, undo, add-stock, or manual edit (no polling).
 
 ---
 
@@ -376,6 +387,7 @@ Each medication shows up as a **Device** in Home Assistant. Replace `ibuprofen` 
 | 365-Day Adherence | `sensor.ibuprofen_adherence_365_days` | Adherence % over 365 days | `actual_doses`, `expected_doses`, `grace_hours` |
 | Steady State | `sensor.ibuprofen_days_to_steady_state` | Days remaining to 90% steady state — scheduled medications only, requires PK fields | `theoretical_max_mg`, `current_percentage`, `last_dose_timestamp` |
 | Strength | `sensor.ibuprofen_strength` | Configured per-dose strength (mg) | — |
+| Days left / Est. days left | `sensor.ibuprofen_days_left` (scheduled) or `sensor.ibuprofen_days_left_est` (As Needed) | How many days the current inventory lasts. Scheduled medications divide Pills Left by the configured doses/day (integer days). As-Needed medications divide by the 7-day average doses/day (1 decimal; `unknown` when no history yet) | `stock`, `doses_per_day`, `estimation`, `window_days` |
 
 > **PK fields note:** The Amount in Body sensor only produces meaningful values when **Dose Strength** and **Elimination Half-Life** are configured (non-zero). If left at 0, it reports `0`. The Steady State sensor additionally requires a fixed dosing interval and is only created for scheduled medications (Regular Interval, Time of Day, Cyclic) — it is not available for As Needed medications.
 

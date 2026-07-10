@@ -36,6 +36,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     DOMAIN,
+    DRINK_LOW_THRESHOLD,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
     GLOBAL_PK_DEFAULTS,
@@ -293,6 +294,14 @@ class DrinkMasterCoordinatorData:
     # Resolved lazily from config entries via the device registry — kept as
     # a set of entry_ids here and translated to names by the sensor.
     contributing_entry_ids: set[str] = field(default_factory=set)
+    # Forecasted peak body mass + the wall-clock time it occurs.  Used by
+    # ``estimate_time_to_body_mass`` so the Estimated Low Time / Sleep
+    # Disruption sensors predict from the calculated peak rather than the
+    # still-rising current amount in body (see ``_forecast_caffeine_peak``).
+    # For alcohol (instant absorption) peak_body_mass == body_mass and
+    # peak_time == the recompute ``now`` — the peak is already in the past.
+    peak_body_mass: float = 0.0
+    peak_time: datetime | None = None
 
 
 class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
@@ -381,11 +390,22 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             last_dose_time=last_dose,
             body_mass=body_mass,
         )
+        # Forecast the caffeine peak + its wall-clock time so self.data is
+        # fully valid (peak_body_mass / peak_time populated) the instant
+        # setup returns.  Without this, the cached peak fields stay at the
+        # dataclass defaults (0.0 / None) until the first periodic
+        # ``_async_update_data`` run, so any sensor push or ``predict_low``
+        # REST call in that brief window sees ``peak_time is None`` and
+        # returns ``None`` (sensors read ``unknown``; popup stays "Low: …").
+        # Calling ``_recompute_data`` here is idempotent — it recomputes the
+        # body mass from the loaded dose history (caffeine) or applies the
+        # zero-order elimination advance (alcohol) and caches the peak.
+        self.data = self._recompute_data()
         LOGGER.debug(
             "DrinkMasterCoordinator setup (%s): %d doses, body=%.2f",
             self._substance,
             len(doses),
-            body_mass,
+            self.data.body_mass,
         )
 
     # ------------------------------------------------------------------
@@ -401,8 +421,15 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
 
         if self._substance == DRINK_TYPE_CAFFEINE:
             body_mass, pk_result = self._compute_caffeine(data.dose_history, now)
+            peak_body_mass, peak_time = self._forecast_caffeine_peak(
+                data.dose_history, now, body_mass
+            )
         else:
             body_mass, pk_result = self._compute_alcohol(data, now)
+            # Alcohol absorbs instantly — the peak is the dose moment (now
+            # in the past) and the current body_mass is the post-peak value.
+            peak_body_mass = body_mass
+            peak_time = now
 
         return DrinkMasterCoordinatorData(
             dose_history=data.dose_history,
@@ -410,6 +437,8 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             body_mass=body_mass,
             pk_result=pk_result,
             contributing_entry_ids=data.contributing_entry_ids,
+            peak_body_mass=peak_body_mass,
+            peak_time=peak_time,
         )
 
     def _push_update(self) -> None:
@@ -482,6 +511,72 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             kr=0.0,
         )
         return total_body, pk_result
+
+    # ------------------------------------------------------------------
+    # Caffeine peak forecast (absorption-aware Estimated Low Time anchor)
+    # ------------------------------------------------------------------
+    # The Estimated Low Time / Sleep Disruption sensors predict the wall-clock
+    # moment the body-mass decays into a lower band.  Anchoring that estimate
+    # at the *current* body mass is only valid once absorption has finished
+    # (post-peak exponential tail); during absorption the mass is still rising
+    # toward a future peak, so the estimate would climb on every 1-min tick
+    # ("counts up until the caffeine peaks").  Instead we forecast the peak
+    # body mass + its wall-clock time once per refresh and cache it on the
+    # dataclass; ``estimate_time_to_body_mass`` then anchors at the peak.
+    #
+    # The absorption window ends at the latest mini-bolus peak time across all
+    # doses (drinking_duration + caffeine t_max).  We sample the deterministic
+    # ``_compute_caffeine`` curve at a coarse 5-min step up to that window end
+    # to locate the maximum.  The window is short (typically 0.25–2 h), so the
+    # sweep is ≤ ~24 evaluations and is shared across all estimate callers via
+    # the cached dataclass fields (not recomputed per call).
+    _CAFFEINE_PEAK_SAMPLE_STEP = timedelta(minutes=5)
+
+    def _forecast_caffeine_peak(
+        self,
+        dose_history: list[tuple[datetime, float, float]],
+        now: datetime,
+        current_mass: float,
+    ) -> tuple[float, datetime]:
+        """Return ``(peak_body_mass, peak_time)`` for the caffeine curve.
+
+        When every dose is fully absorbed (``now`` past the absorption window)
+        the peak is in the past, so ``(current_mass, now)`` is returned — the
+        downstream exponential-tail estimate is then mathematically identical
+        to the prior current-mass-anchored behaviour (backward compatible).
+        """
+        if not dose_history:
+            return current_mass, now
+
+        # Latest mini-bolus peak time = dose_time + drinking_duration + t_max.
+        # The last mini-bolus is emitted at dose_time + (N-1)/N * t_dur; using
+        # the full t_dur is a safe upper bound and keeps the window inclusive.
+        t_max = self._caffeine_tmax
+        peak_window_end = max(
+            dose_time + timedelta(hours=t_dur + t_max)
+            for dose_time, _strength, t_dur in dose_history
+        )
+        if peak_window_end <= now:
+            # All doses absorbed — the current mass is the post-peak value.
+            return current_mass, now
+
+        # Sample the deterministic PK curve from `now` to `peak_window_end`.
+        peak_mass = current_mass
+        peak_time = now
+        step = self._CAFFEINE_PEAK_SAMPLE_STEP
+        sample_time = now
+        while sample_time <= peak_window_end:
+            sample_mass, _ = self._compute_caffeine(dose_history, sample_time)
+            if sample_mass > peak_mass:
+                peak_mass = sample_mass
+                peak_time = sample_time
+            sample_time += step
+        # Always evaluate the window end exactly (the loop may step past it).
+        end_mass, _ = self._compute_caffeine(dose_history, peak_window_end)
+        if end_mass > peak_mass:
+            peak_mass = end_mass
+            peak_time = peak_window_end
+        return peak_mass, peak_time
 
     # ------------------------------------------------------------------
     # Alcohol PK — zero-order elimination incremental simulation
@@ -609,30 +704,47 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
     def estimate_time_to_body_mass(self, target: float) -> timedelta | None:
         """Estimate the time for ``body_mass`` to decay to ``target``.
 
-        Caffeine uses first-order elimination (Bateman tail -> exponential
-        decay):  t = ln(M / target) / ke,  ke = ln(2) / half_life.
+        Caffeine predicts from the **forecasted peak** (see
+        ``_forecast_caffeine_peak``): ``total_eta = time_to_peak +
+        ln(peak_mass / target) / ke`` where ``ke = ln(2) / half_life``.
+        Anchoring at the peak (rather than the still-rising current body
+        mass) keeps the estimate stable through the absorption phase instead
+        of climbing on every 1-min tick.  Once the peak has passed
+        (``peak_time <= now``) the formula reduces to the prior pure-tail
+        exponential estimate — backward compatible.
 
         Alcohol uses zero-order elimination (linear):  t = (M - target) /
-        elimination_rate.  Body mass asymptotically approaches 0 g.
+        elimination_rate.  Alcohol absorbs instantly so the peak is the dose
+        moment (already past) and the current body_mass is the post-peak
+        value — no peak forecast needed.
 
-        Returns ``None`` when the target is already met (``body_mass <=
-        target``) or when the relevant PK constant is unavailable / zero.
+        Returns ``None`` when the target is already met (``peak_body_mass <=
+        target`` for caffeine / ``body_mass <= target`` for alcohol) or when
+        the relevant PK constant is unavailable / zero.
         """
-        mass = self.data.body_mass
-        if mass <= target:
-            return None
         if self._substance == DRINK_TYPE_CAFFEINE:
+            peak_mass = self.data.peak_body_mass
+            peak_time = self.data.peak_time
+            if peak_time is None or peak_mass <= target:
+                return None
             half_life = self._caffeine_half_life
             if not half_life or half_life <= 0:
                 return None
             ke = math.log(2) / half_life  # per hour
             if ke <= 0:
                 return None
-            hours = math.log(mass / target) / ke
-            if hours < 0:
+            now = dt_util.now()
+            time_to_peak = peak_time - now
+            if time_to_peak.total_seconds() < 0:
+                time_to_peak = timedelta(0)
+            decay_hours = math.log(peak_mass / target) / ke
+            if decay_hours < 0:
                 return None
-            return timedelta(hours=hours)
+            return time_to_peak + timedelta(hours=decay_hours)
         if self._substance == DRINK_TYPE_ALCOHOL:
+            mass = self.data.body_mass
+            if mass <= target:
+                return None
             rate = self._alcohol_elimination_rate
             if not rate or rate <= 0:
                 return None
@@ -640,4 +752,88 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             if hours < 0:
                 return None
             return timedelta(hours=hours)
+        return None
+
+    # ------------------------------------------------------------------
+    # What-if prediction — used by the REST predict_low endpoint to show
+    # the predicted Low-band timestamp in the Log Drink popup BEFORE the
+    # user commits to a drink.  Pure function: does NOT mutate self.data.
+    # ------------------------------------------------------------------
+    def predict_low_time_if_dose(
+        self, dose_strength: float, t_dur_hours: float
+    ) -> datetime | None:
+        """Predict the wall-clock time body-mass would enter the Low band if a
+        hypothetical dose were logged now.
+
+        Builds a throwaway dose list (current history + the new dose) and
+        forecasts the peak + Low-band ETA from it.  ``self.data`` is never
+        mutated, so a user who closes the popup without pressing the drink
+        button has no side effect on the real coordinator state.
+
+        Caffeine: forecasts the post-dose peak (``_forecast_caffeine_peak``
+        already accepts a ``dose_history`` param) then applies the same
+        ``time_to_peak + ln(peak_mass / low_threshold) / ke`` formula as
+        :meth:`estimate_time_to_body_mass`.
+
+        Alcohol: instant absorption means the post-dose body mass is
+        ``current_body + strength``; ETA is linear zero-order elimination.
+
+        Returns ``None`` when the post-dose peak/body never exceeds the Low
+        threshold — the drink would not lift the user above Low, so there is
+        no predicted descent (the popup renders "Low: —" in that case).
+
+        Also returns ``None`` when ``self.data`` is not yet populated (master
+        coordinator before its first refresh completes or during a reload
+        window) — the REST endpoint then returns ``{"low_time": null}`` and
+        the popup renders ``Low: —`` instead of hanging on the ``Low: …``
+        loading placeholder that an ``AttributeError`` 500 would produce.
+        """
+        if self.data is None:
+            return None
+        target = DRINK_LOW_THRESHOLD.get(self._substance)
+        if target is None:
+            return None
+        now = dt_util.now()
+
+        if self._substance == DRINK_TYPE_CAFFEINE:
+            # Current body mass from a fresh recompute (cheap; the 1-min tick
+            # already keeps self.data fresh, but recompute guarantees the
+            # hypothetical peak is anchored at the live curve, not a stale
+            # cached body_mass that may predate the last tick).
+            current_mass, _ = self._compute_caffeine(self.data.dose_history, now)
+            hypothetical = [
+                *self.data.dose_history,
+                (now, float(dose_strength), float(t_dur_hours)),
+            ]
+            peak_mass, peak_time = self._forecast_caffeine_peak(
+                hypothetical, now, current_mass
+            )
+            if peak_time is None or peak_mass <= target:
+                return None
+            half_life = self._caffeine_half_life
+            if not half_life or half_life <= 0:
+                return None
+            ke = math.log(2) / half_life  # per hour
+            if ke <= 0:
+                return None
+            time_to_peak = peak_time - now
+            if time_to_peak.total_seconds() < 0:
+                time_to_peak = timedelta(0)
+            decay_hours = math.log(peak_mass / target) / ke
+            if decay_hours < 0:
+                return None
+            return now + time_to_peak + timedelta(hours=decay_hours)
+
+        if self._substance == DRINK_TYPE_ALCOHOL:
+            post_mass = self.data.body_mass + float(dose_strength)
+            if post_mass <= target:
+                return None
+            rate = self._alcohol_elimination_rate
+            if not rate or rate <= 0:
+                return None
+            hours = (post_mass - target) / rate
+            if hours < 0:
+                return None
+            return now + timedelta(hours=hours)
+
         return None

@@ -53,6 +53,7 @@ class DrinkMasterSensor(RestoreSensor):
 
     _attr_has_entity_name = False  # Master Tracker device name is the entity name
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0  # default to no decimal places in HA UI
     _attr_should_poll = False
 
     def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:

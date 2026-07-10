@@ -22,7 +22,7 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = self._strength_unit
-        self._attr_suggested_display_precision = 1
+        self._attr_suggested_display_precision = 0
         self._attr_native_value = 0.0
         self._attr_extra_state_attributes = {"last_updated": None, "gut_mass": 0.0, "ka": 0.0, "lag_time": 0.0}
 
