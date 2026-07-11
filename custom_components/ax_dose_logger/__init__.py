@@ -273,6 +273,20 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
             if current_unit in ("mcg", "µg"):
                 unit_store["strength_unit"] = "μg"
 
+    if config_entry.version <= 13:
+        # Version 14: Remove the Master Tracker "Est. days left" aggregate
+        # sensor (DrinkMasterDaysLeftSensor). The Master Tracker has no
+        # single inventory of its own — summing every granular drink's stock
+        # is misleading on the aggregate device. The per-granular-drink
+        # DrinkDaysLeftSensor remains (it powers the Inventory panel's
+        # per-drink "Est. days left" 2nd line). Remove the two master
+        # entities from the registry so they don't linger as "unavailable".
+        # Only the Drink Settings singleton owns these sensors.
+        if new_data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS:
+            ent_reg = er.async_get(hass)
+            _remove_entity(ent_reg, "sensor", "drink_master_days_left_caffeine")
+            _remove_entity(ent_reg, "sensor", "drink_master_days_left_alcohol")
+
     hass.config_entries.async_update_entry(config_entry, data=new_data, options=new_options, version=CURRENT_VERSION)
 
     LOGGER.info(

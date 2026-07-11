@@ -660,12 +660,6 @@
       "days_left_est": {
         "name": "Est. days left"
       },
-      "days_left_est_master_caffeine": {
-        "name": "Est. days left"
-      },
-      "days_left_est_master_alcohol": {
-        "name": "Est. days left"
-      },
       "adherence": {
         "name": "Adherence ({window} Days)"
       },

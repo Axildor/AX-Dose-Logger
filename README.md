@@ -259,7 +259,8 @@ Each Master Tracker hosts the following sensors:
 | **Amount in Last 24h** | `sensor.amount_in_last_24h` | Sliding 24-hour window — total strength of that substance consumed in the past 24 hours (mg caffeine / g alcohol). Aggregates **every** logged drink of that substance. |
 | **Last Drink** | `sensor.<substance>_last_drink` | Timestamp of the most recent drink of that substance across all granular drink devices. |
 | **Daily Average** | rolling avg sensors | 7/14/30/365-day daily-average sensors aggregating every drink of that substance. |
-| **Est. Days Left** | days left sensor | Sums every granular drink inventory of that substance and divides by the aggregated 7-day average. `unknown` until enough history exists. |
+
+> **No "Days Left" sensor on the Master Tracker.** The aggregate device has no single inventory of its own, so a days-left reading would be misleading. Each granular drink device has its own **Est. Days Left** sensor (see the Drinks section), and the Inventory panel surfaces it per drink.
 
 **Low - Timestamp** carries `estimated_none_time` (the sleep-safe moment when body-mass enters the None band) as an attribute. **Low - Hours Until** carries `estimated_none_hours` (the longer-horizon countdown to the sleep-safe None band) + `low_threshold` + `low_threshold_unit` as attributes. Both become `None` once the body-mass is in the None band.
 
