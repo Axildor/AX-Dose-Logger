@@ -68,6 +68,7 @@ def _time_to_str(value) -> str:
                 pass
     return "08:00"
 
+
 _STOCK_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0, max=9999, step=1, unit_of_measurement="pills", mode=sel.NumberSelectorMode.BOX)
 )

@@ -201,7 +201,7 @@ def parse_dose_time(value) -> tuple[int, int]:
         try:
             parts = value.split(":")
             return (int(parts[0]), int(parts[1]))
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return (8, 0)
     return (8, 0)
 

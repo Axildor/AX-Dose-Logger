@@ -120,9 +120,7 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                     "lag_time": self._build_pk_params().lag_time,
                 }
         elif (
-            self.coordinator.data
-            and self.coordinator.data.concentration is None
-            and self.coordinator.data.dose_history
+            self.coordinator.data and self.coordinator.data.concentration is None and self.coordinator.data.dose_history
         ):
             # Elimination disabled (half_life is 0) with doses logged —
             # no meaningful concentration; render ``unknown`` (N/A).
