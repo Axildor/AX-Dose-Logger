@@ -13,6 +13,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
 from ..schedule import get_next_dose_time
@@ -232,10 +233,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
 
-        try:
-            dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-        except ValueError, AttributeError:
-            dose_hour, dose_minute = 8, 0
+        dose_hour, dose_minute = parse_dose_time(dose_time_str)
 
         day_offset = 0
         while True:
@@ -357,10 +355,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
 
-        try:
-            dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-        except ValueError, AttributeError:
-            dose_hour, dose_minute = 8, 0
+        dose_hour, dose_minute = parse_dose_time(dose_time_str)
 
         actual = 0
         expected = 0
@@ -411,10 +406,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 anchor_date = date.fromisoformat(anchor_str)
             except ValueError, TypeError:
                 anchor_date = now.date()
-            try:
-                dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-            except ValueError, AttributeError:
-                dose_hour, dose_minute = 8, 0
+            dose_hour, dose_minute = parse_dose_time(dose_time_str)
             cycle_length = days_on + days_off
             if cycle_length <= 0:
                 cycle_length = 1

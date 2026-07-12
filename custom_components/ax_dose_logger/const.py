@@ -1,6 +1,7 @@
 """Constants for ax_dose_logger."""
 
 import re
+from datetime import time as time_sys
 from logging import Logger, getLogger
 from typing import TYPE_CHECKING
 
@@ -10,7 +11,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "ax_dose_logger"
-CURRENT_VERSION = 13
+CURRENT_VERSION = 14
 
 # --- Tracking type constants ---
 TRACKING_REGULAR_INTERVAL = "regular_interval"
@@ -173,6 +174,38 @@ def generate_default_dose_times(n: int) -> list[str]:
     return times
 
 
+def parse_dose_time(value) -> tuple[int, int]:
+    """Parse a dose-time value into a ``(hour, minute)`` tuple.
+
+    Accepts every form the config flow may store:
+
+    * ``datetime.time`` — the actual return type of HA's ``TimeSelector``
+      (``cv.time`` parses the frontend string into ``time(h, m, s)``;
+      ``cast(str, data)`` in the selector is a typing-only no-op, so a
+      ``time`` object is what lands in ``entry.data["dose_time"]``).
+    * ``"HH:MM"`` or ``"HH:MM:SS"`` string — the canonical serialized
+      form, produced by :func:`_time_to_str` in the config flow and by
+      legacy/YAML entries.
+    * ``None`` / empty / unparseable — falls back to ``(8, 0)`` to match
+      the config-flow schema default (and the prior inline fallbacks).
+
+    Centralizing this here removes 7 duplicated ``try/except .split(":")``
+    blocks across ``next_dose``, ``overdue``, ``adherence``, ``calendar``,
+    and ``get_dose_times`` — all of which silently fell back to ``(8, 0)``
+    when a ``datetime.time`` object lacked ``.split``, causing every
+    non-08:00 scheduled dose time to be ignored (bug 3).
+    """
+    if isinstance(value, time_sys):
+        return (value.hour, value.minute)
+    if isinstance(value, str) and value:
+        try:
+            parts = value.split(":")
+            return (int(parts[0]), int(parts[1]))
+        except ValueError, IndexError:
+            return (8, 0)
+    return (8, 0)
+
+
 def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:
     """
     Parse dose_times from config entry, returning sorted list of (hour, minute) pairs.
@@ -186,13 +219,7 @@ def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:
         old_time = entry.options.get("time_of_day", entry.data.get("time_of_day", "08:00"))
         dose_times = [old_time] if old_time else ["08:00"]
 
-    parsed: list[tuple[int, int]] = []
-    for ts in dose_times:
-        try:
-            parts = ts.split(":")
-            parsed.append((int(parts[0]), int(parts[1])))
-        except ValueError, AttributeError, IndexError:
-            parsed.append((8, 0))
+    parsed: list[tuple[int, int]] = [parse_dose_time(ts) for ts in dose_times]
     parsed.sort()
     return parsed
 

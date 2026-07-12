@@ -10,6 +10,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
 from ..sliding_window import compute_safe_to_take, is_on_day
@@ -75,10 +76,7 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 anchor_date = date.fromisoformat(anchor_str)
             except ValueError, TypeError:
                 anchor_date = now.date()
-            try:
-                dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-            except ValueError, AttributeError:
-                dose_hour, dose_minute = 8, 0
+            dose_hour, dose_minute = parse_dose_time(dose_time_str)
 
             cycle_length = days_on + days_off
             if cycle_length <= 0:

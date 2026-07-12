@@ -16,7 +16,6 @@ from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.concentration import PillConcentrationSensor
 from .sensors.days_left import (
     DrinkDaysLeftSensor,
-    DrinkMasterDaysLeftSensor,
     PillDaysLeftSensor,
 )
 from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
@@ -173,9 +172,6 @@ async def _setup_drink_settings_sensors(
         entities.append(DrinkMasterDailyAmountSensor(entry, master))
         for window in (7, 14, 30, 365):
             entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
-        # Est. days left — aggregates every granular drink inventory of this
-        # substance (resolved via the entity registry) + the 7-day master avg.
-        entities.append(DrinkMasterDaysLeftSensor(entry, master, hass))
     if DRINK_TYPE_ALCOHOL in masters:
         master = masters[DRINK_TYPE_ALCOHOL]
         entities.append(DrinkMasterSensor(entry, master))
@@ -186,5 +182,4 @@ async def _setup_drink_settings_sensors(
         entities.append(DrinkMasterDailyAmountSensor(entry, master))
         for window in (7, 14, 30, 365):
             entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
-        entities.append(DrinkMasterDaysLeftSensor(entry, master, hass))
     async_add_entities(entities)

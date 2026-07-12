@@ -14,5 +14,5 @@
   "loggers": [
     "ax_dose_logger"
   ],
-  "version": "3.1.0"
+  "version": "1.0.0"
 }

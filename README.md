@@ -126,7 +126,7 @@ You choose a **Release Type** when adding a medication:
 - **Instant Release** — Three parameters: Dose Strength (mg), Elimination Half-Life (h), and Time to Peak Concentration (h; set to 0 for immediate-release). Uses a two-compartment (Bateman) model. An optional Lag Time (min) can model delayed-release formulations.
 - **Sustained Release** — Adds Bioavailability (%), Initial Release (%), Sustained Release Duration (h), Release Half-Life (h), and Lag Time (min) to model hybrid extended-release formulations with both fast-acting and slow-release components.
 
-Leave all PK values at 0 to disable concentration tracking. The Amount in Body sensor reports `0` when PK fields are not configured.
+Leave all PK values at 0 to disable concentration tracking. The Amount in Body sensor reports `unknown` (shown as N/A) when Elimination Half-Life is left at 0 — a concentration without elimination has no meaningful value, so the sensor no longer shows an infinitely accumulating number.
 
 > **Note:** The sensor reports **drug amount in the body (mg)**, not blood concentration. Converting to concentration would require the volume of distribution, which varies from person to person.
 
@@ -259,7 +259,8 @@ Each Master Tracker hosts the following sensors:
 | **Amount in Last 24h** | `sensor.amount_in_last_24h` | Sliding 24-hour window — total strength of that substance consumed in the past 24 hours (mg caffeine / g alcohol). Aggregates **every** logged drink of that substance. |
 | **Last Drink** | `sensor.<substance>_last_drink` | Timestamp of the most recent drink of that substance across all granular drink devices. |
 | **Daily Average** | rolling avg sensors | 7/14/30/365-day daily-average sensors aggregating every drink of that substance. |
-| **Est. Days Left** | days left sensor | Sums every granular drink inventory of that substance and divides by the aggregated 7-day average. `unknown` until enough history exists. |
+
+> **No "Days Left" sensor on the Master Tracker.** The aggregate device has no single inventory of its own, so a days-left reading would be misleading. Each granular drink device has its own **Est. Days Left** sensor (see the Drinks section), and the Inventory panel surfaces it per drink.
 
 **Low - Timestamp** carries `estimated_none_time` (the sleep-safe moment when body-mass enters the None band) as an attribute. **Low - Hours Until** carries `estimated_none_hours` (the longer-horizon countdown to the sleep-safe None band) + `low_threshold` + `low_threshold_unit` as attributes. Both become `None` once the body-mass is in the None band.
 
@@ -548,7 +549,7 @@ automation:
 | Sustained Release Duration | 0–72 h | Duration of the zero-order (constant-rate) release phase. Leave at 0 for matrix tablets (e.g. Paracetamol ER) — they are polymer sponges, not mechanical pumps. | 0 |
 | Release Half-Life | 0–168 h | Half-life of the first-order release from the SR matrix (the polymer sponge's physical dissolution time). For Paracetamol (Panadol/Tylenol) ER 665 mg, this is 3.0 h. | 0 |
 
-> Leave Dose Strength and Elimination Half-Life at 0 to disable concentration tracking. The Amount in Body sensor reports `0` when PK fields are not configured. The Steady State sensor is only created for scheduled medications.
+> Leave Dose Strength and Elimination Half-Life at 0 to disable concentration tracking. The Amount in Body sensor reports `unknown` (shown as N/A) when Elimination Half-Life is left at 0 — a concentration without elimination has no meaningful value, so the sensor no longer shows an infinitely accumulating number. The Steady State sensor is only created for scheduled medications.
 
 ### Step 4: Symptom & Adherence Tracking
 

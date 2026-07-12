@@ -21,6 +21,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
 from ..sliding_window import is_day_covered, is_on_day
@@ -182,10 +183,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         except ValueError, TypeError:
             anchor_date = now.date()
 
-        try:
-            dose_hour, dose_minute = map(int, dose_time_str.split(":"))
-        except ValueError, AttributeError:
-            dose_hour, dose_minute = 8, 0
+        dose_hour, dose_minute = parse_dose_time(dose_time_str)
 
         # Not on an ON day → not overdue
         if not is_on_day(entry, now.date(), now.date()):

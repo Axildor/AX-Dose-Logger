@@ -84,10 +84,20 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         (dose event or 1-min tick) and stores it in
         ``coordinator.data.concentration`` / ``coordinator.data.pk_result``.
         We read those values and format the attributes here.
+
+        When elimination is disabled (``half_life`` is 0) the coordinator
+        sets ``concentration = None`` so this sensor renders ``unknown``
+        (HA's N/A) instead of an infinitely accumulating value.  The
+        ``None`` sentinel is distinct from the ``0.0`` default used when
+        there is no dose history yet.
         """
         self._load_pk_params()
 
-        if self.coordinator.data and self.coordinator.data.pk_result is not None:
+        if (
+            self.coordinator.data
+            and self.coordinator.data.concentration is not None
+            and self.coordinator.data.pk_result is not None
+        ):
             pk = self.coordinator.data.pk_result
             self._attr_native_value = round(self.coordinator.data.concentration, 1)
 
@@ -109,7 +119,20 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                     "ka": pk.ka,
                     "lag_time": self._build_pk_params().lag_time,
                 }
+        elif (
+            self.coordinator.data and self.coordinator.data.concentration is None and self.coordinator.data.dose_history
+        ):
+            # Elimination disabled (half_life is 0) with doses logged —
+            # no meaningful concentration; render ``unknown`` (N/A).
+            self._attr_native_value = None
+            self._attr_extra_state_attributes = {
+                "last_updated": None,
+                "gut_mass": 0.0,
+                "ka": 0.0,
+                "lag_time": 0.0,
+            }
         else:
+            # No dose history yet — report 0 (legacy behaviour).
             self._attr_native_value = 0.0
             self._attr_extra_state_attributes = {
                 "last_updated": None,

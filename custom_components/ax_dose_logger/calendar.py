@@ -23,6 +23,7 @@ from .const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    parse_dose_time,
 )
 from .coordinator import AxDoseLoggerCoordinator
 from .data import AxDoseLoggerConfigEntry
@@ -194,10 +195,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         """Events on ON days at the configured dose_time."""
         dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
 
-        try:
-            dose_hour, dose_minute = int(dose_time_str.split(":")[0]), int(dose_time_str.split(":")[1])
-        except ValueError, AttributeError:
-            dose_hour, dose_minute = 8, 0
+        dose_hour, dose_minute = parse_dose_time(dose_time_str)
 
         events: list[CalendarEvent] = []
         tz = dt_util.now().tzinfo

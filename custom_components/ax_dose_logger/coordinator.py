@@ -53,7 +53,7 @@ class AxDoseLoggerCoordinatorData:
 
     dose_history: list[tuple[datetime, float]] = field(default_factory=list)
     last_dose_time: datetime | None = None
-    concentration: float = 0.0
+    concentration: float | None = 0.0
     pk_result: PKResult | None = None
     # Adherence-specific state (does not affect dose_history)
     adherence_overrides: list[datetime] = field(default_factory=list)
@@ -150,11 +150,21 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         data = self.data
         now = dt_util.now()
 
-        # Recompute PK concentration from full dose history
+        # Recompute PK concentration from full dose history.
+        # When elimination is disabled (half_life is 0) the Bateman model
+        # would permanently accumulate every dose with no decay — a
+        # meaningless climbing number.  Guard at the coordinator level
+        # (single source of truth for PK state) so the concentration
+        # sensor renders ``unknown`` instead of an infinitely growing
+        # value.  Matches the existing ``PillSteadyStateSensor`` guard.
         params = self._build_pk_params()
-        if data.dose_history:
+        if data.dose_history and params.half_life > 0:
             pk_result = PKModel.compute(params, data.dose_history, now)
             concentration = pk_result.body
+        elif data.dose_history:
+            # Elimination disabled (half_life is 0) — no meaningful concentration.
+            pk_result = None
+            concentration = None
         else:
             pk_result = None
             concentration = 0.0
