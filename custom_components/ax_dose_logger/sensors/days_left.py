@@ -181,12 +181,8 @@ class PillDaysLeftSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         # projection semantics of the Time-of-Day and Regular-Interval
         # branches (len(dose_times) and 24/hours_between_doses are both
         # calendar-day rates, not per-active-day rates).
-        days_on = float(
-            entry.options.get("days_on", entry.data.get("days_on", 5))
-        )
-        days_off = float(
-            entry.options.get("days_off", entry.data.get("days_off", 2))
-        )
+        days_on = float(entry.options.get("days_on", entry.data.get("days_on", 5)))
+        days_off = float(entry.options.get("days_off", entry.data.get("days_off", 2)))
         cycle_length = days_on + days_off
         if cycle_length <= 0:
             return 1.0

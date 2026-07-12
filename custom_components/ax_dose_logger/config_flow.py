@@ -1,4 +1,5 @@
 from datetime import date
+from datetime import time as time_sys
 
 import voluptuous as vol
 from homeassistant import config_entries, data_entry_flow
@@ -39,6 +40,34 @@ _ADHERENCE_SECTION_KEY = "adherence"
 _ADVANCED_PK_SECTION_KEY = "advanced_pk"
 
 # Reusable selector configs — BOX mode for all numeric fields
+
+
+def _time_to_str(value) -> str:
+    """Normalize a TimeSelector result to a canonical "HH:MM" string.
+
+    The HA ``TimeSelector`` returns a ``datetime.time`` object: ``cv.time``
+    parses the frontend string into ``time(h, m, s)`` and the selector's
+    ``cast(str, data)`` is a typing-only no-op, so a ``time`` object is what
+    the selector yields.  Config-entry data is JSON-persisted, so we store
+    the canonical string form here to keep every consumer's ``.split(":")``
+    (and the shared :func:`parse_dose_time` helper) working without needing
+    per-call-site ``datetime.time`` handling at read time.
+
+    Accepts ``datetime.time``, ``"HH:MM"``/``"HH:MM:SS"`` strings (legacy
+    or YAML-imported entries), and ``None``/empty (falls back to the
+    schema default ``"08:00"``).
+    """
+    if isinstance(value, time_sys):
+        return f"{value.hour:02d}:{value.minute:02d}"
+    if isinstance(value, str) and value:
+        parts = value.split(":")
+        if len(parts) >= 2:
+            try:
+                return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+            except ValueError:
+                pass
+    return "08:00"
+
 _STOCK_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0, max=9999, step=1, unit_of_measurement="pills", mode=sel.NumberSelectorMode.BOX)
 )
@@ -318,12 +347,14 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         defaults = generate_default_dose_times(doses_per_day)
 
         if user_input is not None:
-            # Collect dose_time_1..dose_time_N into a sorted list
+            # Collect dose_time_1..dose_time_N into a sorted list.
+            # Normalize each TimeSelector datetime.time to "HH:MM" so
+            # persisted config-entry data is JSON-clean.
             dose_times = []
             for i in range(doses_per_day):
                 key = f"dose_time_{i + 1}"
                 val = user_input.get(key, defaults[i] if i < len(defaults) else "08:00")
-                dose_times.append(val)
+                dose_times.append(_time_to_str(val))
             dose_times.sort()
             self._data["dose_times"] = dose_times
             # Remove individual dose_time_N keys from data
@@ -363,6 +394,10 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_cyclic(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
+            # Normalize the TimeSelector's datetime.time to a canonical
+            # "HH:MM" string so persisted config-entry data is JSON-clean
+            # and consumers can .split(":") without per-site handling.
+            self._data["dose_time"] = _time_to_str(self._data.get("dose_time"))
             return await self.async_step_pk()
 
         return self.async_show_form(
@@ -596,7 +631,8 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             self._data.update(user_input)
             new_tracking_type = user_input.get("tracking_type")
-            # For Time of Day (unchanged): collect dose_time_N into dose_times list
+            # For Time of Day (unchanged): collect dose_time_N into dose_times list.
+            # Normalize each TimeSelector datetime.time to "HH:MM".
             if new_tracking_type == TRACKING_TIME_OF_DAY and new_tracking_type == self._original_tracking_type:
                 doses_per_day = int(user_input.get("doses_per_day", self._entry.data.get("doses_per_day", 1)))
                 dose_times = []
@@ -604,12 +640,15 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                     key = f"dose_time_{i + 1}"
                     val = user_input.get(key)
                     if val:
-                        dose_times.append(val)
+                        dose_times.append(_time_to_str(val))
                 dose_times.sort()
                 self._data["dose_times"] = dose_times
                 # Remove individual dose_time_N keys
                 for i in range(doses_per_day):
                     self._data.pop(f"dose_time_{i + 1}", None)
+            # For Cyclic (unchanged): normalize dose_time datetime.time to "HH:MM".
+            if new_tracking_type == TRACKING_CYCLIC and new_tracking_type == self._original_tracking_type:
+                self._data["dose_time"] = _time_to_str(self._data.get("dose_time"))
             # Force calendar off for As Needed — no predictable schedule
             if new_tracking_type == TRACKING_AS_NEEDED:
                 self._data["enable_calendar"] = False
@@ -803,7 +842,7 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             for i in range(doses_per_day):
                 key = f"dose_time_{i + 1}"
                 val = user_input.get(key, defaults[i] if i < len(defaults) else "08:00")
-                dose_times.append(val)
+                dose_times.append(_time_to_str(val))
             dose_times.sort()
             self._data["dose_times"] = dose_times
             for i in range(doses_per_day):

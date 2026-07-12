@@ -126,7 +126,7 @@ You choose a **Release Type** when adding a medication:
 - **Instant Release** — Three parameters: Dose Strength (mg), Elimination Half-Life (h), and Time to Peak Concentration (h; set to 0 for immediate-release). Uses a two-compartment (Bateman) model. An optional Lag Time (min) can model delayed-release formulations.
 - **Sustained Release** — Adds Bioavailability (%), Initial Release (%), Sustained Release Duration (h), Release Half-Life (h), and Lag Time (min) to model hybrid extended-release formulations with both fast-acting and slow-release components.
 
-Leave all PK values at 0 to disable concentration tracking. The Amount in Body sensor reports `0` when PK fields are not configured.
+Leave all PK values at 0 to disable concentration tracking. The Amount in Body sensor reports `unknown` (shown as N/A) when Elimination Half-Life is left at 0 — a concentration without elimination has no meaningful value, so the sensor no longer shows an infinitely accumulating number.
 
 > **Note:** The sensor reports **drug amount in the body (mg)**, not blood concentration. Converting to concentration would require the volume of distribution, which varies from person to person.
 
@@ -549,7 +549,7 @@ automation:
 | Sustained Release Duration | 0–72 h | Duration of the zero-order (constant-rate) release phase. Leave at 0 for matrix tablets (e.g. Paracetamol ER) — they are polymer sponges, not mechanical pumps. | 0 |
 | Release Half-Life | 0–168 h | Half-life of the first-order release from the SR matrix (the polymer sponge's physical dissolution time). For Paracetamol (Panadol/Tylenol) ER 665 mg, this is 3.0 h. | 0 |
 
-> Leave Dose Strength and Elimination Half-Life at 0 to disable concentration tracking. The Amount in Body sensor reports `0` when PK fields are not configured. The Steady State sensor is only created for scheduled medications.
+> Leave Dose Strength and Elimination Half-Life at 0 to disable concentration tracking. The Amount in Body sensor reports `unknown` (shown as N/A) when Elimination Half-Life is left at 0 — a concentration without elimination has no meaningful value, so the sensor no longer shows an infinitely accumulating number. The Steady State sensor is only created for scheduled medications.
 
 ### Step 4: Symptom & Adherence Tracking
 
