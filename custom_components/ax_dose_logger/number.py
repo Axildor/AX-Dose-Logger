@@ -95,7 +95,7 @@ class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
         self._attr_native_value = float(initial_stock)
         self._attr_native_step = 1.0
         self._attr_native_min_value = 0.0
-        self._attr_native_max_value = 5000.0
+        self._attr_native_max_value = 9999.0
         self._attr_mode = NumberMode.BOX
 
     async def async_added_to_hass(self):
@@ -153,6 +153,7 @@ class PillAddStockNumber(AxDoseLoggerEntity, NumberEntity):
         self._attr_native_value = 0.0
         self._attr_native_step = 1.0
         self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 9999.0
         self._attr_mode = NumberMode.BOX
         self._reset_timer: CALLBACK_TYPE | None = None
 
@@ -372,6 +373,7 @@ class DrinkAddStockNumber(AxDoseLoggerEntity, NumberEntity):
         self._attr_native_value = 0.0
         self._attr_native_step = 1.0
         self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 9999.0
         self._attr_native_unit_of_measurement = entry.data.get(
             "unit_of_measurement", entry.data.get("unit_of_measurement")
         )

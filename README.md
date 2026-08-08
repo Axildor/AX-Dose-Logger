@@ -409,7 +409,7 @@ Each medication and drink shows up as a **Device** in Home Assistant. Replace `i
 | Number | Entity ID | Range | What It Does |
 |--------|-----------|-------|-------------|
 | Pills Left | `number.ibuprofen_pills_left` | 0–9999 | Current inventory count |
-| Add Refill | `number.ibuprofen_add_refill` | 0–∞ | Refill input (auto-resets to 0 after adding) |
+| Add Refill | `number.ibuprofen_add_refill` | 0–9999 | Refill input (auto-resets to 0 after adding) |
 | Effectiveness | `number.ibuprofen_{metric}_effectiveness` | 0–10 | Daily-locked per-metric rating slider (unknown until set, resets at midnight) |
 
 ### Calendar
