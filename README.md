@@ -119,7 +119,7 @@ If you want to understand what's happening in your body between doses, AX Dose L
 
 - **Amount in Body** — Current drug amount (mg), updated every 2 minutes, accounting for absorption and elimination. Available for all tracking types.
 - **Amount in Last 24h** — Sliding 24-hour window showing the total dose strength consumed in the last 24 hours. This is **intake** (how much you swallowed), not body load. Set an optional **24h Dose Limit** and the `remaining` attribute exposes the headroom left — for automations and the card to warn before the next dose pushes you over a daily cap. Available for all tracking types.
-- **Steady State** — Days remaining until you reach 90% steady state, with the theoretical maximum and your current percentage. **Scheduled medications only** (Regular Interval, Time of Day, Cyclic) — not available for As Needed, since steady state requires a fixed dosing interval.
+- **Steady State** — Days remaining until you reach 90% steady state, anchored to the **trough** concentration (the clinically correct marker) and the **longest** dosing gap. Once reached, the sensor stays reached across every cycle phase. Includes the theoretical peak/trough, the 90% threshold, the projected next-trough, and your current percentage. **Scheduled medications only** (Regular Interval, Time of Day, Cyclic) — not available for As Needed, since steady state requires a fixed dosing interval.
 
 You choose a **Release Type** when adding a medication:
 
@@ -387,7 +387,7 @@ Each medication and drink shows up as a **Device** in Home Assistant. Replace `i
 | 14-Day Adherence | `sensor.ibuprofen_adherence_14_days` | Adherence % over 14 days | `actual_doses`, `expected_doses`, `grace_hours` |
 | 30-Day Adherence | `sensor.ibuprofen_adherence_30_days` | Adherence % over 30 days | `actual_doses`, `expected_doses`, `grace_hours` |
 | 365-Day Adherence | `sensor.ibuprofen_adherence_365_days` | Adherence % over 365 days | `actual_doses`, `expected_doses`, `grace_hours` |
-| Steady State | `sensor.ibuprofen_days_to_steady_state` | Days remaining to 90% steady state — scheduled medications only, requires PK fields | `theoretical_max_mg`, `current_percentage`, `last_dose_timestamp` |
+| Steady State | `sensor.ibuprofen_days_to_steady_state` | Days remaining to 90% steady state (trough-anchored) — scheduled medications only, requires PK fields | `theoretical_max_mg`, `steady_state_trough_mg`, `threshold_mg`, `current_mass`, `projected_trough_mg`, `current_percentage`, `dosing_interval_hours`, `last_dose_timestamp` |
 | Strength | `sensor.ibuprofen_strength` | Configured per-dose strength (mg) | — |
 | Days Left | `sensor.ibuprofen_days_left` (scheduled) or `sensor.ibuprofen_days_left_est` (As Needed) | How many days the current inventory lasts | `stock`, `doses_per_day`, `estimation`, `window_days` |
 
@@ -791,25 +791,33 @@ The IR fraction (31% of the dose) peaks quickly at ~1.0 h via the fast kₐ_IR, 
 
 > **Availability:** The Steady State sensor is only created for **scheduled medications** (Regular Interval, Time of Day, Cyclic). It is not available for As Needed medications because steady state requires a fixed dosing interval (τ), which PRN medications do not have.
 
-The Steady State sensor calculates how many days remain until you reach 90% of pharmacokinetic steady state. For sustained-release medications, the effective dose is scaled by bioavailability (F).
+The Steady State sensor calculates how many days remain until you reach 90% of pharmacokinetic steady state, anchored to the **trough** concentration (the clinically correct marker). For sustained-release medications, the effective dose is scaled by bioavailability (F).
+
+**Dosing interval (τ):** the sensor uses the **longest nominal inter-dose gap**, not the average. This ensures the steady-state band covers the lowest trough the schedule can produce:
+- **Regular Interval** — `hours_between_doses` (uniform gap).
+- **Time of Day** — the largest circular gap between consecutive slots (e.g. 13:00 + 21:00 → 16 h, not the 12 h average).
+- **Cyclic** — `(days_off + 1) × 24` (the span from the last ON-day dose to the first ON-day dose of the next cycle; an every-second-day pill → 48 h).
 
 **Accumulation factor:**
 > R = 1 / (1 − e^(−kₑ × τ))
 
-where **τ** is the dosing interval (hours between doses).
+**Theoretical peak and trough at steady state:**
+> C_max_ss = F × D × R (peak, just after a dose)
+> C_min_ss = C_max_ss × e^(−kₑ × τ) (trough, just before the next dose)
 
-**Theoretical maximum at steady state:**
-> C_max_ss = F × D × R
+**Reached threshold:** the sensor is "at steady state" when the **projected trough** (the concentration just before the next dose, evaluated from the full PK superposition at the next-dose time) is ≥ **90% of C_min_ss**. Anchoring to the trough — and evaluating the real PK model at the next-dose time rather than the instantaneous mass — keeps the sensor stable across the intra-cycle oscillation: once reached, it *stays* reached instead of flipping back near every trough.
 
 The sensor reports one of three cases:
 
 | Current State | Calculation | Result |
 |---------------|-------------|--------|
-| **Above 110% of C_max_ss** (e.g. after a dosage reduction) | t = ln(C_current / (0.9 × C_max_ss)) / kₑ | Days until drug drops to 90% of the new steady state |
-| **Within 90–110% of C_max_ss** | — | `0.0` — steady state reached ✓ |
-| **Below 90% of C_max_ss** | remaining = (t₉₀ − t_current) / 24, where t₉₀ = −ln(0.1)/kₑ and t_current = −ln(1−p)/kₑ | Days until 90% is achieved |
+| **Above 110% of C_max_ss** (e.g. after a dosage reduction) | t = ln(C_current / threshold) / kₑ | Days until drug drops to the new trough threshold |
+| **Projected trough ≥ 90% of C_min_ss** | — | `0.0` — steady state reached ✓ |
+| **Projected trough below 90% of C_min_ss** | remaining = (t₉₀ − t_current) / 24, where t₉₀ = −ln(0.1)/kₑ and t_current = −ln(1−p)/kₑ (p = trough / C_min_ss) | Days until 90% of the trough asymptote is achieved |
 
-**Attributes exposed:** `theoretical_max_mg`, `current_percentage`, `last_dose_timestamp`
+**Lateness buffer:** because the threshold is a percentage (90% of the trough asymptote) rather than a flat time, the implied lateness tolerance scales correctly with half-life: `−ln(0.9)/kₑ` ≈ 18 min for a 2 h half-life and ≈ 3.7 h for a 24 h half-life. Short half-life drugs drop fast (brief lateness matters); long half-life drugs are forgiving. A flat 60-minute buffer would scale the wrong way.
+
+**Attributes exposed:** `theoretical_max_mg`, `steady_state_trough_mg`, `threshold_mg`, `current_mass`, `projected_trough_mg`, `current_percentage`, `dosing_interval_hours`, `last_dose_timestamp`. `current_percentage` measures progress toward the *trough* asymptote (the clinically relevant marker), not the peak.
 
 > **Note:** The 90% threshold is the standard clinical convention — steady state is considered achieved after 4–5 half-lives, which corresponds to 93.75%–96.88% accumulation. The sensor uses 90% as a conservative milestone.
 
@@ -819,16 +827,12 @@ Using the same ibuprofen configuration (t½ = 2 h, τ = 6 h):
 
 **After 1 dose (at peak, t = 1.5 h):**
 - Current body amount ≈ 119 mg
-- Percentage of steady state: 119 / 228 ≈ **52%**
-
-**After 1 dose (just before 2nd dose, t = 6 h):**
-- Current body amount ≈ 35.5 mg
-- Percentage of steady state: 35.5 / 228 ≈ **16%**
+- The single-dose projected trough (just before the 2nd dose) is far below the trough threshold → the sensor reports days remaining (not yet reached)
 
 **Time to reach 90% steady state from zero:**
 > t₉₀ = −ln(0.1) / kₑ = 2.303 / 0.347 ≈ 6.6 hours ≈ **0.3 days**
 
-In practice, with repeated dosing every 6 hours, steady state is reached within **approximately 8–10 hours** (4–5 half-lives × 2 h = 8–10 h), which the sensor calculates dynamically based on your actual dosing history.
+In practice, with repeated dosing every 6 hours, steady state is reached within **approximately 8–10 hours** (4–5 half-lives × 2 h = 8–10 h), which the sensor calculates dynamically based on your actual dosing history. Once reached, the projected trough stays ≥ 90% of C_min_ss across every cycle phase, so the sensor remains at `0.0`.
 
 ### PK Search Guide
 
@@ -897,9 +901,15 @@ Key entities and their attributes for template references:
 - `unit_of_measurement`: the medication's strength unit (mg/μg/g)
 
 **Steady State** (`sensor.ibuprofen_days_to_steady_state`)
-- State: days remaining to 90% steady state (float, 1 decimal), or `0.0` if reached
-- `theoretical_max_mg`: predicted maximum at steady state
-- `current_percentage`: current achievement as a percentage string (e.g. "52.3%")
+- State: days remaining to 90% steady state (float, 1 decimal), `0.0` if reached, or `unknown` when elimination is disabled
+- `theoretical_max_mg`: predicted peak at steady state (C_max_ss)
+- `steady_state_trough_mg`: predicted trough at steady state (C_min_ss)
+- `threshold_mg`: the 90% trough threshold the state is tested against
+- `current_mass`: instantaneous body mass
+- `projected_trough_mg`: the body mass projected to the next dose (the trough the sensor tests)
+- `current_percentage`: progress toward the trough asymptote as a percentage
+- `dosing_interval_hours`: the effective longest-gap interval (τ) used
+- `last_dose_timestamp`: the most recent dose time
 
 **Adherence** (`sensor.ibuprofen_adherence_7_days`, etc.)
 - State: adherence percentage (integer, clamped at 100%)
