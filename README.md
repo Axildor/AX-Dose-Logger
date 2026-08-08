@@ -97,7 +97,7 @@ AX Dose Logger supports four ways to track a medication, depending on how you ta
 | Mode | When to Use It | What Happens |
 |------|---------------|--------------|
 | **Regular Interval** | You take it every N hours (e.g. every 8 hours) | Schedules doses at fixed intervals from midnight. Shows a countdown to your next dose. |
-| **Time of Day** | You take it at the same time each day (e.g. 08:30 every morning) | One dose per day at the time you pick. The calendar entity shows daily events. |
+| **Time of Day** | You take it at the same time(s) each day (e.g. 08:30 every morning, or 13:00 + 21:00 for twice daily) | One or more fixed clock times per day. A dose taken late counts as the dose for the slot it's closest to (lateness extends until the next scheduled slot), and an uncovered missed slot keeps the Overdue sensor counting across midnight until you take it. The calendar entity shows daily events. |
 | **As Needed (PRN)** | You take it when you need it, but there's a limit (e.g. max 2 in 8 hours) | No fixed schedule — you log doses as you take them. The pill limit enforces a rolling window. |
 | **Cyclic / Calendar Pattern** | You take it on a cycle — some days on, some days off (e.g. 5 days on, 2 days off) | Doses only happen on ON days at the time you set. The calendar entity only shows events on ON days. |
 
@@ -341,10 +341,12 @@ Once installed, add it to your dashboard via the visual editor and pick your med
 <!-- SCREENSHOT: Card showing the Stats pane — rolling average boxes (7/14/30/365 days), adherence percentage boxes, total doses, days since first dose -->
 ![Stats pane](screenshots/stats-pane.png)
 
-**Tools pane** — Reset Adherence %, Mark Last Adherence Taken, Reset History, Undo Last Dose buttons:
+**Tools pane** — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset History, Undo Last Dose buttons:
 
-<!-- SCREENSHOT: Card showing the Tools pane — Reset Adherence %, Mark Last Adherence Taken, Reset History, Undo Last Dose buttons -->
+<!-- SCREENSHOT: Card showing the Tools pane — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset History, Undo Last Dose buttons -->
 ![Tools pane](screenshots/tools-pane.png)
+
+> **Skip Dose** clears the overdue alarm and advances the next-dose schedule for a deliberately-skipped scheduled dose (e.g. prescriber-directed "skip if dizzy", a taper step, or a drug holiday) **without logging a dose** — Amount in Body, pill inventory, total doses, and last dose are all untouched, so the pharmacokinetic graph stays clean. Adherence stays penalized (you genuinely did not take it); for a prescriber-directed skip, press **Mark Last Adherence Taken** afterwards to credit the slot. Skip Dose is only available for scheduled medications (Time of Day, Regular Interval, Cyclic); As Needed meds have no schedule to skip.
 
 For full card configuration options (color schemes, column layouts, chip customization, graph toggles), see the [AX Dose Logger Card repository](https://github.com/Axildor/AX-Dose-Logger-Card#readme).
 
@@ -399,7 +401,8 @@ Each medication and drink shows up as a **Device** in Home Assistant. Replace `i
 | Reset History | `button.ibuprofen_reset_history` | Wipe dose history (keeps inventory) |
 | Undo Dose | `button.ibuprofen_undo_dose` | Revert the most recent dose across all sensors and PK model |
 | Reset Adherence % | `button.ibuprofen_reset_adherence` | Clear adherence percentage history only — does NOT affect Amount in Body, dose count, or any other sensor |
-| Mark Last Adherence Taken | `button.ibuprofen_cover_last_missed` | Mark the most recent missed dose slot as taken for adherence calculation only — does NOT add a dose to the PK model or dose count |
+| Mark Last Adherence Taken | `button.ibuprofen_mark_last_adherence_taken` | Mark the most recent missed dose slot as taken for adherence calculation only — does NOT add a dose to the PK model or dose count |
+| Skip Dose | `button.ibuprofen_skip_dose` | Skip the current missed scheduled dose slot — clears overdue + advances next-dose without logging a dose. PK, inventory, totals, and last dose untouched; adherence stays penalized |
 
 ### Numbers
 
@@ -424,6 +427,7 @@ AX Dose Logger fires events on the Home Assistant event bus that you can use in 
 | `ax_dose_logger_dose_taken` | Any Take button is pressed | `medication_name`, `timestamp` |
 | `ax_dose_logger_dose_undone` | Any Undo button is pressed | `medication_name` |
 | `ax_dose_logger_adherence_override` | Mark Last Adherence Taken button is pressed | `entity_id` |
+| `ax_dose_logger_dose_skipped` | Skip Dose button is pressed | `entry_id`, `timestamp` |
 | `ax_dose_logger_drink_taken` | Any Log Drink button is pressed | `entry_id`, `drink_type`, `dose_strength`, `drink_name` |
 
 ### Automation Examples
@@ -865,7 +869,7 @@ Key entities and their attributes for template references:
 - `window_expires_at`: when the oldest in-window dose expires and the limit will increment (ISO datetime); `null` when not at the limit. This is the true "when can I safely take another" time, distinct from the Next Dose schedule.
 
 **Next Dose** (`sensor.ibuprofen_next_dose`)
-- State: datetime of next scheduled dose. For scheduled medications (Time of Day, Cyclic), this is always the next prescribed clock slot — taking a dose late does not drift the schedule. The safety gate (whether it's actually safe to take now) is the separate Pills Safe to Take sensor.
+- State: datetime of next scheduled dose. For scheduled medications (Time of Day, Cyclic), this is always the next prescribed clock slot — taking a dose late does not drift the schedule. For multi-dose Time of Day schedules, a dose taken late is assigned to the slot it covers (lateness extends until the next scheduled slot), so a 17:30 dose on a 13:00 + 21:00 schedule counts as the late 13:00 dose and leaves 21:00 as the next due slot. The safety gate (whether it's actually safe to take now) is the separate Pills Safe to Take sensor.
 - `safe_to_take`: number of pills safe to take right now
 
 **Amount in Body** (`sensor.ibuprofen_amount_in_body`)
@@ -930,7 +934,7 @@ If AX Dose Logger is useful to you, there's no obligation — but any support is
 ```
 custom_components/ax_dose_logger/
 ├── __init__.py          # Integration entrypoint, platform forwarding, reload handling
-├── button.py            # Take, Reset, Undo, Reset Adherence %, Mark Last Adherence Taken button entities
+├── button.py            # Take, Reset, Undo, Reset Adherence %, Mark Last Adherence Taken, Skip Dose button entities
 ├── calendar.py          # Calendar entity for expected dose times
 ├── config_flow.py       # 4-step config wizard + 3-step options flow
 ├── const.py             # Domain, logger, effectiveness metrics, release types, PK defaults
@@ -990,6 +994,7 @@ All buttons fire dispatcher signals keyed by `entry_id`. Each sensor listens to 
 | `pill_undone_{entry_id}` | Undo Button | All sensors, inventory | Revert the most recent dose |
 | `pill_adherence_reset_{entry_id}` | Reset Adherence % Button | Adherence sensors only | Clear adherence timestamps without affecting PK or other sensors |
 | `pill_adherence_override_{entry_id}` | Mark Last Adherence Taken Button | Adherence sensors only | Cover the most recent missed dose slot for adherence only |
+| `ax_dose_logger_dose_skipped` (bus) | Skip Dose Button | Overdue + Next Dose sensors | Cover the current missed slot to clear overdue + advance next-dose; does NOT affect PK, inventory, totals, or adherence |
 | `pill_add_stock_{entry_id}` | Refill Number | Inventory | Add a refill amount |
 | `concentration_updated_{entry_id}` | Concentration Sensor | Steady State Sensor | Push live drug mass for steady-state recalculation |
 

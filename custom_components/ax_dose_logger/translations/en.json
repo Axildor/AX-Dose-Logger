@@ -569,6 +569,16 @@
         }
       }
     },
+    "skip_dose": {
+      "name": "Skip Dose",
+      "description": "Skips the current missed scheduled dose slot for the selected medication. Clears the overdue alarm and advances the next-dose schedule WITHOUT logging a dose — PK concentration, pill inventory, total doses, and last dose are all untouched. Adherence stays penalized (a skip is not adherence credit); press 'Mark Last Adherence Taken' afterwards for a prescriber-directed skip.",
+      "fields": {
+        "entry_id": {
+          "name": "Medication",
+          "description": "The medication to skip the current dose slot for."
+        }
+      }
+    },
     "set_metric": {
       "name": "Set Daily Tracking Value",
       "description": "Sets a daily-locked tracking value (0–10) for the selected medication. Each item can only be set once per day unless override is true.",
@@ -736,6 +746,9 @@
       },
       "cover_last_missed": {
         "name": "Mark Last Adherence Taken"
+      },
+      "skip_dose": {
+        "name": "Skip Dose"
       },
       "log_drink": {
         "name": "Log Drink"

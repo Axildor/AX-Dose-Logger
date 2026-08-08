@@ -25,6 +25,11 @@ from .const import LOGGER, METRIC_STORE_KEY
 STORAGE_VERSION = 1
 STORAGE_KEY = "ax_dose_logger_dose_history"
 
+# Skipped-dose slots — deliberate skips persisted so a reboot does not
+# re-ring the overdue alarm for a slot the user explicitly skipped.
+SKIPPED_STORAGE_VERSION = 1
+SKIPPED_STORAGE_KEY = "ax_dose_logger_skipped_slots"
+
 # Legacy storage key from the pre-rebrand "pill_logger" domain.
 # Kept for the safer migration variant: on first load under the new key,
 # if the new key is empty we copy data from the legacy key but do NOT
@@ -68,6 +73,9 @@ class AxDoseLoggerStore:
         self._data: dict[str, list[list[str | float]]] = {}
         self._metric_store: Store = Store(hass, METRIC_STORAGE_VERSION, METRIC_STORE_KEY)
         self._metric_data: dict[str, dict[str, dict]] = {}
+        # Skipped-dose slots: { entry_id: ["iso_timestamp", ...] }
+        self._skipped_store: Store = Store(hass, SKIPPED_STORAGE_VERSION, SKIPPED_STORAGE_KEY)
+        self._skipped_data: dict[str, list[str]] = {}
         # Per-substance drink master stores (created lazily)
         self._drink_master_stores: dict[str, Store] = {}
         self._drink_master_data: dict[str, dict] = {}
@@ -113,6 +121,19 @@ class AxDoseLoggerStore:
             self._metric_data = metric_data
         else:
             self._metric_data = {}
+
+        # Load skipped-dose slots from separate store
+        skipped_data = await self._skipped_store.async_load()
+        if skipped_data:
+            self._skipped_data = skipped_data
+        else:
+            self._skipped_data = {}
+        total_skipped = sum(len(v) for v in self._skipped_data.values())
+        LOGGER.info(
+            "AX Dose Logger skipped-slots store loaded: %d entries, %d total skips",
+            len(self._skipped_data),
+            total_skipped,
+        )
 
     async def async_load_drink_master(self, substance: str, store_key: str) -> None:
         """Load (or initialize) the drink master store for a substance.
@@ -173,6 +194,28 @@ class AxDoseLoggerStore:
         """Update the in-memory metric slice for an entry and schedule a debounced save."""
         self._metric_data[entry_id] = metrics
         self._metric_store.async_delay_save(lambda: self._metric_data, _SAVE_DEBOUNCE_SECONDS)
+
+    # ------------------------------------------------------------------
+    # Skipped-dose slots (deliberate skips, not real doses)
+    # ------------------------------------------------------------------
+    @callback
+    def get_skipped(self, entry_id: str) -> list[str]:
+        """Get skipped-dose slot timestamps for a specific entry.
+
+        Returns ["iso_timestamp", ...].
+        """
+        return self._skipped_data.get(entry_id, [])
+
+    @callback
+    def schedule_save_skipped(self, entry_id: str, skipped: list[str]) -> None:
+        """Update the in-memory skipped-slots slice and schedule a debounced save.
+
+        Mirrors ``schedule_save_history``: replaces the per-entry slice and
+        uses ``Store.async_delay_save`` so rapid skips coalesce into one
+        write and HA flushes any pending write during the stop sequence.
+        """
+        self._skipped_data[entry_id] = skipped
+        self._skipped_store.async_delay_save(lambda: self._skipped_data, _SAVE_DEBOUNCE_SECONDS)
 
     # ------------------------------------------------------------------
     # Drink master storage (caffeine/alcohol aggregated PK)

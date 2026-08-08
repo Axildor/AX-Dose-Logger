@@ -24,6 +24,7 @@ from ..const import (
     parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
+from ..schedule import LATENESS_UNTIL_NEXT_SLOT, compute_slot_assignments
 from ..sliding_window import is_day_covered, is_on_day
 
 
@@ -70,10 +71,19 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         self.async_write_ha_state()
 
     def _get_timestamps(self) -> list:
-        """Read dose timestamps from the coordinator."""
-        if self.coordinator.data:
-            return [ts for ts, _ in self.coordinator.data.dose_history]
-        return []
+        """Read dose timestamps + skipped slots from the coordinator.
+
+        Deliberately-skipped slots are merged in so a skip covers the
+        missed scheduled slot and clears the overdue alarm (and advances
+        next_dose) WITHOUT logging a real dose. This is the inverse of the
+        adherence sensor, which deliberately ignores skipped slots so a
+        skip stays penalized (the patient genuinely did not ingest it).
+        """
+        if not self.coordinator.data:
+            return []
+        real = [ts for ts, _ in self.coordinator.data.dose_history]
+        skipped = list(self.coordinator.data.skipped_slots)
+        return real + skipped
 
     def _update_state(self):
         now = dt_util.now()
@@ -103,56 +113,49 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     # ── Time of Day ────────────────────────────────────────────────────
 
     def _compute_overdue_time_of_day(self, entry, now, timestamps):
-        """Return the most recent missed slot time, or None if all covered."""
+        """Return the most recent missed slot time, or None if all covered.
+
+        Uses the shared greedy slot-assignment model (see
+        :func:`compute_slot_assignments`) so a dose taken late for slot A
+        but before the next slot B is assigned to A (clearing its
+        overdue), not stolen by B.  The timeline spans 2 days back so a
+        missed slot from yesterday keeps counting across midnight instead
+        of resetting at 00:01.
+
+        ``early_grace`` is ``max(30, min_gap // 2)`` minutes — a dose this
+        far before its slot still covers it (genuine early dose).
+        Lateness extends until the next scheduled slot, so any dose
+        between two slots is the late dose for the earlier one.
+        """
         parsed_times = get_dose_times(entry)
         if not parsed_times:
             return None
 
-        # Single daily dose: use day-level coverage so a late-but-taken
-        # dose clears overdue, matching pill_limit's 24h rolling window.
-        # This avoids the impossible "LIMIT REACHED + OVERDUE" state that
-        # the ±grace model produced.  Timing quality is still tracked by
-        # the adherence sensor (±grace).
-        if len(parsed_times) == 1:
-            hour, minute = parsed_times[0]
-            slot_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if now < slot_time:
-                return None
-            if is_day_covered(now.date(), timestamps):
-                return None
-            return slot_time
-
-        # Multi-slot: keep ±grace model (follow-up task may switch to
-        # inter-slot interval coverage; day-level is wrong here because
-        # a single dose would wrongly clear multiple slots).
         min_gap_minutes = 24 * 60
         for i in range(len(parsed_times)):
             for j in range(i + 1, len(parsed_times)):
                 gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (parsed_times[i][0] * 60 + parsed_times[i][1])
                 min_gap_minutes = min(min_gap_minutes, gap)
-        grace_minutes = max(30, min_gap_minutes // 2)
-        grace_td = timedelta(minutes=grace_minutes)
+        early_grace = timedelta(minutes=max(30, min_gap_minutes // 2))
 
-        # Check today's slots that have already passed
+        assignments = compute_slot_assignments(
+            parsed_times,
+            timestamps,
+            now,
+            lookback_days=2,
+            future_days=0,
+            early_grace=early_grace,
+            lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+        )
+
+        # Latest uncovered slot at or before now → overdue anchor.
+        # Slots strictly after now are future and cannot be overdue yet.
         overdue_since = None
-        for hour, minute in parsed_times:
-            slot_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if slot_time > now:
-                # Future slot — can't be overdue yet
-                continue
-
-            # Check if this slot is covered by any dose within grace
-            covered = False
-            for ts in timestamps:
-                if abs((ts - slot_time).total_seconds()) <= grace_td.total_seconds():
-                    covered = True
-                    break
-
-            if not covered:
-                # This slot was missed and has passed — record it
-                # (last missed slot in iteration order wins = latest missed slot)
-                overdue_since = slot_time
-
+        for a in assignments:
+            if a.slot_time > now:
+                break
+            if not a.covered:
+                overdue_since = a.slot_time
         return overdue_since
 
     # ── Regular Interval ────────────────────────────────────────────────

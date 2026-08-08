@@ -49,6 +49,14 @@ adherence_override:
         config_entry:
           integration: ax_dose_logger
 
+skip_dose:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: ax_dose_logger
+
 set_metric:
   fields:
     entity_id:

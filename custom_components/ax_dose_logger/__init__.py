@@ -445,7 +445,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
         for window in (7, 14, 30, 365):
             _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_adherence_{window}")
         # Remove adherence tool buttons
-        for suffix in ("_reset_adherence", "_cover_last_missed"):
+        for suffix in ("_reset_adherence", "_cover_last_missed", "_skip_dose"):
             _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
 
     # --- tracking_type changed ---
@@ -455,7 +455,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
         _remove_entity(ent_reg, "calendar", f"{entry.entry_id}_calendar")
         for window in (7, 14, 30, 365):
             _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_adherence_{window}")
-        for suffix in ("_reset_adherence", "_cover_last_missed"):
+        for suffix in ("_reset_adherence", "_cover_last_missed", "_skip_dose"):
             _remove_entity(ent_reg, "button", f"{entry.entry_id}{suffix}")
 
     # --- tracked_symptoms: metric removed ---
