@@ -17,7 +17,7 @@ For **drinks** (caffeine & alcohol), it tracks each drink granularly (one device
 
 ---
 
-## 🃏 Companion Card
+## Companion Card
 
 AX Dose Logger was built **in tandem** with the dedicated [**AX Dose Logger Card**](https://github.com/Axildor/AX-Dose-Logger-Card) — a Lovelace card that surfaces everything the integration produces with no template YAML and no Mushroom/Card-Mod dependencies. The two were programmed together and are designed to work as a pair.
 
