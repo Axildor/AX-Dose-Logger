@@ -40,7 +40,7 @@ import sys
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.abspath("custom_components"))
-from ax_dose_logger.pk_model import PKModel, PKParams  # noqa: E402
+from ax_dose_logger.pk_model import PKModel, PKParams
 
 # ---------------------------------------------------------------------------
 # Model constants (mirrors sensors/steady_state.py)
@@ -372,9 +372,9 @@ def case_invalid_config():
     # The sensor returns None for half_life<=0, strength<=0, or tau<=0.
     # compute_state doesn't model this (the sensor guards before calling);
     # here we just confirm the guard constants behave.
-    check("half_life=0 -> tau/k_e undefined (sensor returns None)", True)
-    check("strength=0 -> effective_strength=0 (sensor returns None)", True)
-    check("tau=0 -> compute_tau returns 0.0 (sensor returns None)", True)
+    check("half_life=0 -> tau/k_e undefined (sensor returns None)", condition=True)
+    check("strength=0 -> effective_strength=0 (sensor returns None)", condition=True)
+    check("tau=0 -> compute_tau returns 0.0 (sensor returns None)", condition=True)
 
 
 def main():

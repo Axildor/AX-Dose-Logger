@@ -17,13 +17,13 @@ Run:  python3 scripts/verify_skip_dose.py
 from __future__ import annotations
 
 import sys
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # Make custom_components importable when run from the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from custom_components.ax_dose_logger.schedule import (  # noqa: E402
+from custom_components.ax_dose_logger.schedule import (
     LATENESS_CAPPED,
     LATENESS_UNTIL_NEXT_SLOT,
     compute_slot_assignments,
@@ -32,7 +32,7 @@ from custom_components.ax_dose_logger.schedule import (  # noqa: E402
 
 def _dt(hour: int, minute: int = 0, day_offset: int = 0) -> datetime:
     """Build a tz-aware datetime on a fixed local-ish date for deterministic tests."""
-    base = datetime(2026, 8, 8, tzinfo=timezone.utc)
+    base = datetime(2026, 8, 8, tzinfo=UTC)
     return base.replace(hour=hour, minute=minute) + timedelta(days=day_offset)
 
 
@@ -225,8 +225,8 @@ def test_as_needed_no_skip_button():
         if tracking_type != TRACKING_AS_NEEDED:
             entities.append(PillSkipDoseButton(...))
     """
-    from custom_components.ax_dose_logger.const import TRACKING_AS_NEEDED
     from custom_components.ax_dose_logger.button import PillSkipDoseButton
+    from custom_components.ax_dose_logger.const import TRACKING_AS_NEEDED
 
     # The class must exist and be a ButtonEntity subclass (importable)
     assert PillSkipDoseButton is not None

@@ -83,7 +83,7 @@ def _make_master(substance: str) -> dc.DrinkMasterCoordinator:
 
 
 def _run(substance: str, dose_strength: float, t_dur_hours: float, label: str) -> None:
-    global CLOCK  # noqa: PLW0603 — deterministic clock for the simulation
+    global CLOCK  # deterministic clock for the simulation
     CLOCK = datetime(2026, 7, 9, 12, 0, 0, tzinfo=timezone.utc)  # noqa: UP017
     master = _make_master(substance)
     # Mimic _async_setup: load empty history, then _recompute_data (Fix E).
