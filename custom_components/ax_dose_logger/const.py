@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "ax_dose_logger"
-CURRENT_VERSION = 14
+CURRENT_VERSION = 15
 
 # --- Tracking type constants ---
 TRACKING_REGULAR_INTERVAL = "regular_interval"

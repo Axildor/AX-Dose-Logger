@@ -58,6 +58,13 @@ class AxDoseLoggerCoordinatorData:
     # Adherence-specific state (does not affect dose_history)
     adherence_overrides: list[datetime] = field(default_factory=list)
     adherence_reset_time: datetime | None = None
+    # Skipped-dose slots (does not affect dose_history / PK / stock).
+    # Consumed ONLY by the overdue + next_dose sensors so a deliberate
+    # skip clears the overdue alarm and advances the schedule without
+    # logging a phantom dose. NOT consumed by adherence (stays penalized),
+    # concentration, total, last_dose, days_left, pill_limit, or avg_doses.
+    # Mirrors the ``adherence_overrides`` pattern with opposite consumers.
+    skipped_slots: list[datetime] = field(default_factory=list)
     # Daily-locked metric values: { metric_key: { "date": "YYYY-MM-DD", "value": float } }
     metric_values: dict[str, dict] = field(default_factory=dict)
 
@@ -119,9 +126,20 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             if isinstance(entry, dict) and entry.get("date") == today:
                 metric_values[key] = entry
 
+        # Load skipped-dose slots (persists deliberate skips across restarts
+        # so a reboot does not re-ring the overdue alarm for an explicitly
+        # skipped slot). Parallel to dose_history loading.
+        skipped_slots: list[datetime] = []
+        raw_skipped = self._store.get_skipped(self._entry.entry_id)
+        for ts_str in raw_skipped:
+            dt = dt_util.parse_datetime(ts_str)
+            if dt:
+                skipped_slots.append(dt)
+
         self.data = AxDoseLoggerCoordinatorData(
             dose_history=dose_history,
             last_dose_time=last_dose,
+            skipped_slots=skipped_slots,
             metric_values=metric_values,
         )
         LOGGER.debug(
@@ -191,6 +209,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             pk_result=pk_result,
             adherence_overrides=data.adherence_overrides,
             adherence_reset_time=data.adherence_reset_time,
+            skipped_slots=data.skipped_slots,
             metric_values=metric_values,
         )
 
@@ -300,7 +319,9 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self.data.last_dose_time = None
         self.data.adherence_overrides.clear()
         self.data.adherence_reset_time = None
+        self.data.skipped_slots.clear()
         self._save()
+        self._save_skipped()
 
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_reset_{self._entry.entry_id}")
@@ -326,6 +347,30 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self.hass.bus.async_fire(
             "ax_dose_logger_adherence_override",
             {"entry_id": self._entry.entry_id},
+        )
+
+        self._push_update()
+
+    async def async_skip_dose(self) -> None:
+        """Record a deliberately-skipped scheduled dose slot.
+
+        Clears the overdue alarm and advances the next-dose schedule
+        WITHOUT logging a dose — PK (Amount in Body), stock (Pills Left /
+        Days Left), Total Doses, and Last Dose are all untouched. The
+        skipped slot is consumed ONLY by the overdue + next_dose sensors.
+
+        Adherence stays penalized: a skip is not adherence credit. A
+        patient on a prescriber-directed skip presses both Skip Dose
+        (this method) AND Mark Last Adherence Taken (async_adherence_override)
+        — two intentional actions for a deliberate decision.
+        """
+        now = dt_util.now()
+        self.data.skipped_slots.append(now)
+        self._save_skipped()
+
+        self.hass.bus.async_fire(
+            "ax_dose_logger_dose_skipped",
+            {"entry_id": self._entry.entry_id, "timestamp": now.isoformat()},
         )
 
         self._push_update()
@@ -401,6 +446,12 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
     def _save_metrics(self) -> None:
         """Serialize current metric values and schedule a debounced store save."""
         self._store.schedule_save_metrics(self._entry.entry_id, self.data.metric_values)
+
+    @callback
+    def _save_skipped(self) -> None:
+        """Serialize skipped-dose slots and schedule a debounced store save."""
+        serialized = [ts.isoformat() for ts in self.data.skipped_slots]
+        self._store.schedule_save_skipped(self._entry.entry_id, serialized)
 
     # ------------------------------------------------------------------
     # Accessors for entities

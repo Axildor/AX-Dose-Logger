@@ -35,12 +35,14 @@ async def async_setup_entry(
         PillResetButton(entry, coordinator),
         PillUndoButton(entry, coordinator),
     ]
-    # Adherence tools are only meaningful for scheduled medications.
-    # As Needed (PRN) devices have no adherence sensors, so the buttons
-    # would be dead entities — skip them.
+    # Adherence + Skip tools are only meaningful for scheduled medications.
+    # As Needed (PRN) devices have no schedule → no overdue alarm → no
+    # adherence sensors and no skip semantics. The buttons would be dead
+    # entities, so skip them.
     if tracking_type != TRACKING_AS_NEEDED:
         entities.append(PillAdherenceResetButton(entry, coordinator))
         entities.append(PillAdherenceCoverButton(entry, coordinator))
+        entities.append(PillSkipDoseButton(entry, coordinator))
     async_add_entities(entities)
 
 
@@ -127,10 +129,48 @@ class PillAdherenceCoverButton(AxDoseLoggerEntity, ButtonEntity):
         self._attr_unique_id = f"{entry.entry_id}_cover_last_missed"
         self._attr_icon = "mdi:check-underline-circle"
         self._attr_entity_category = EntityCategory.CONFIG
+        # Frontend contract: the friendly name ("Mark Last Adherence
+        # Taken") slugifies to ``_mark_last_adherence_taken``, NOT
+        # ``_cover_last_missed`` (the translation_key). Suffix-matching on
+        # the entity_id therefore fails to resolve this button and it was
+        # missing from the card Tools pane. The ``role`` attribute lets the
+        # frontend classify it robustly regardless of slugification — the
+        # same pattern the drink buttons already use.
+        self._attr_extra_state_attributes = {"role": "cover"}
 
     async def async_press(self):
         """When pressed, cover the most recent missed dose slot via the coordinator."""
         await self.coordinator.async_adherence_override()
+
+
+class PillSkipDoseButton(AxDoseLoggerEntity, ButtonEntity):
+    """Button entity that skips the most recent missed scheduled dose slot.
+
+    Clears the overdue alarm and advances next_dose WITHOUT logging a
+    dose — PK (Amount in Body), stock (Pills Left / Days Left), Total
+    Doses, and Last Dose are all untouched. Adherence stays penalized: a
+    skip is not adherence credit. A patient on a prescriber-directed
+    skip presses both this button AND Mark Last Adherence Taken.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "skip_dose"
+        self._attr_unique_id = f"{entry.entry_id}_skip_dose"
+        self._attr_icon = "mdi:skip-next"
+        self._attr_entity_category = EntityCategory.CONFIG
+        # Frontend contract: lets the card resolve this button by role
+        # rather than entity_id suffix (the friendly name "Skip Dose"
+        # slugifies to ``_skip_dose`` which happens to match, but role is
+        # the robust pattern — see PillAdherenceCoverButton for the bug
+        # suffix-matching caused).
+        self._attr_extra_state_attributes = {"role": "skip"}
+
+    async def async_press(self):
+        """When pressed, skip the current missed dose slot via the coordinator."""
+        await self.coordinator.async_skip_dose()
 
 
 # =====================================================================

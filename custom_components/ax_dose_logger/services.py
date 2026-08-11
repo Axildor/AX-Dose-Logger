@@ -39,6 +39,7 @@ SERVICE_RESET: Final = "reset"
 SERVICE_ADHERENCE_RESET: Final = "adherence_reset"
 SERVICE_ADHERENCE_OVERRIDE: Final = "adherence_override"
 SERVICE_SET_METRIC: Final = "set_metric"
+SERVICE_SKIP_DOSE: Final = "skip_dose"
 SERVICE_LOG_DRINK: Final = "log_drink"
 SERVICE_UNDO_DRINK: Final = "undo_drink"
 SERVICE_RESET_DRINK: Final = "reset_drink"
@@ -159,6 +160,16 @@ async def _async_adherence_override(call: ServiceCall) -> None:
     await coordinator.async_adherence_override()
 
 
+async def _async_skip_dose(call: ServiceCall) -> None:
+    """Handle the ``skip_dose`` service — skip the current missed slot.
+
+    Clears overdue + advances next_dose WITHOUT logging a dose (PK,
+    stock, totals untouched). Adherence stays penalized.
+    """
+    coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
+    await coordinator.async_skip_dose()
+
+
 async def _async_set_metric(call: ServiceCall) -> None:
     """Handle the ``set_metric`` service — set a daily-locked tracking value.
 
@@ -223,6 +234,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, SERVICE_ADHERENCE_OVERRIDE, _async_adherence_override, schema=SERVICE_BASE_SCHEMA
     )
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
+    hass.services.async_register(DOMAIN, SERVICE_SKIP_DOSE, _async_skip_dose, schema=SERVICE_BASE_SCHEMA)
+    # pylint: disable-next=home-assistant-service-registered-in-setup-entry
     hass.services.async_register(DOMAIN, SERVICE_SET_METRIC, _async_set_metric, schema=SERVICE_SET_METRIC_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
     hass.services.async_register(DOMAIN, SERVICE_LOG_DRINK, _async_log_drink, schema=SERVICE_LOG_DRINK_SCHEMA)
@@ -244,6 +257,7 @@ def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_RESET,
         SERVICE_ADHERENCE_RESET,
         SERVICE_ADHERENCE_OVERRIDE,
+        SERVICE_SKIP_DOSE,
         SERVICE_SET_METRIC,
         SERVICE_LOG_DRINK,
         SERVICE_UNDO_DRINK,

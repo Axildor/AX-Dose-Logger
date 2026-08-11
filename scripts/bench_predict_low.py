@@ -48,7 +48,7 @@ def _make_master():
 
 
 def main() -> None:
-    global CLOCK  # noqa: PLW0603 — deterministic clock for the benchmark
+    global CLOCK  # deterministic clock for the benchmark
     master = _make_master()
 
     for n_doses in [5, 20, 50, 100, 200]:

@@ -16,7 +16,11 @@ from ..const import (
     parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
-from ..schedule import get_next_dose_time
+from ..schedule import (
+    LATENESS_CAPPED,
+    compute_slot_assignments,
+    get_next_dose_time,
+)
 from ..sliding_window import is_on_day
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
@@ -30,9 +34,9 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
     Adherence % = min(actual_doses / expected_doses * 100, 100)
 
-    The grace period is user-configurable via `adherence_grace_hours` in the
-    config entry (default: 1 hour). A dose is considered "on time" if it falls
-    within ±grace of the expected slot time.
+    The grace period is user-configurable via `adherence_grace_minutes` in the
+    config entry (default: 60 minutes). A dose is considered "on time" if it
+    falls within ±grace of the expected slot time.
 
     For As Needed (PRN) medications, adherence is undefined — the sensor
     returns None with a descriptive reason attribute.
@@ -138,11 +142,11 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         days_since_start = max(1.0, days_since_start)
         effective_window_days = min(days_since_start, float(self._window_days))
 
-        grace_hours = self._get_grace_hours()
-        grace_td = timedelta(hours=grace_hours)
+        grace_minutes = self._get_grace_minutes()
+        grace_td = timedelta(minutes=grace_minutes)
 
         base_cutoff = now - timedelta(days=effective_window_days)
-        if grace_hours > 0:
+        if grace_minutes > 0:
             extended_cutoff = base_cutoff - grace_td
         else:
             extended_cutoff = base_cutoff
@@ -159,34 +163,50 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         return None
 
     def _find_last_missed_time_of_day(self, now, cutoff, grace_td, timestamps):
-        """Find most recent missed slot for Time of Day tracking."""
+        """Find most recent missed slot for Time of Day tracking.
+
+        Uses the shared greedy slot-assignment model with **capped**
+        grace: a dose only covers a slot when it falls within
+        ``±grace_td`` of the slot time, so an hours-late dose does NOT
+        count as on-time for adherence.  Greedy chronological assignment
+        keeps this consistent with overdue/next_dose on which slot a
+        dose belongs to.
+        """
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         parsed_times = get_dose_times(entry)
         if not parsed_times:
             return None
 
-        day_offset = 0
-        while True:
-            check_date = (now - timedelta(days=day_offset)).date()
-            for target_hour, target_minute in reversed(parsed_times):
-                expected_time = datetime.combine(
-                    check_date,
-                    time(target_hour, target_minute),
-                    tzinfo=now.tzinfo,
-                )
-                if expected_time < cutoff:
-                    return None
+        # Size the lookback window to the adherence window + grace, with
+        # at least 2 days so a missed slot from yesterday is visible.
+        window_days = int((now - cutoff).total_seconds() // 86400) + 1
+        lookback_days = max(2, window_days + 1)
 
-                dose_covers = any(
-                    abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds() for ts in timestamps
-                )
+        assignments = compute_slot_assignments(
+            parsed_times,
+            timestamps,
+            now,
+            lookback_days=lookback_days,
+            future_days=0,
+            early_grace=grace_td,
+            lateness_mode=LATENESS_CAPPED,
+            lateness_cap=grace_td,
+        )
 
-                if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
-                    continue
-
-                if not dose_covers:
-                    return expected_time
-            day_offset += 1
+        # Most recent uncovered slot at or before now, not older than the
+        # adherence window.  A slot whose window hasn't opened yet (now <
+        # slot_time + grace) is still "in grace" and not a miss.
+        for a in reversed(assignments):
+            if a.slot_time > now:
+                continue
+            if now < a.slot_time + grace_td:
+                # Still inside the slot's grace window — not a miss yet.
+                continue
+            if a.slot_time < cutoff:
+                return None
+            if not a.covered:
+                return a.slot_time
+        return None
 
     def _find_last_missed_regular_interval(self, now, cutoff, grace_td, timestamps):
         """Find most recent missed slot for Regular Interval tracking."""
@@ -258,12 +278,12 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 return expected_time
             day_offset += 1
 
-    def _get_grace_hours(self):
-        """Get the user-configured adherence grace period."""
+    def _get_grace_minutes(self):
+        """Get the user-configured adherence grace period in minutes."""
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         return entry.options.get(
-            "adherence_grace_hours",
-            entry.data.get("adherence_grace_hours", 1.0),
+            "adherence_grace_minutes",
+            entry.data.get("adherence_grace_minutes", 60),
         )
 
     # ------------------------------------------------------------------
@@ -271,41 +291,46 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     # ------------------------------------------------------------------
 
     def _count_slots_time_of_day(self, now, cutoff, grace_td, timestamps):
-        """Count actual and expected dose slots for Time of Day tracking."""
+        """Count actual and expected dose slots for Time of Day tracking.
+
+        Uses the shared greedy slot-assignment model with **capped**
+        grace (``±grace_td``): a dose only counts as on-time for a slot
+        when taken within that window.  Slots still inside their open
+        grace window (``now < slot_time + grace_td``) are not yet
+        "expected"; slots older than the adherence cutoff are excluded.
+        """
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         parsed_times = get_dose_times(entry)
 
         if not parsed_times:
             return 0, 0
 
+        window_days = int((now - cutoff).total_seconds() // 86400) + 1
+        lookback_days = max(2, window_days + 1)
+
+        assignments = compute_slot_assignments(
+            parsed_times,
+            timestamps,
+            now,
+            lookback_days=lookback_days,
+            future_days=0,
+            early_grace=grace_td,
+            lateness_mode=LATENESS_CAPPED,
+            lateness_cap=grace_td,
+        )
+
         actual = 0
         expected = 0
-        day_offset = 0
-        while True:
-            check_date = (now - timedelta(days=day_offset)).date()
-
-            for target_hour, target_minute in reversed(parsed_times):
-                expected_time = datetime.combine(
-                    check_date,
-                    time(target_hour, target_minute),
-                    tzinfo=now.tzinfo,
-                )
-                if expected_time < cutoff:
-                    return actual, expected
-
-                dose_covers = any(
-                    abs((ts - expected_time).total_seconds()) <= grace_td.total_seconds() for ts in timestamps
-                )
-
-                if day_offset == 0 and now < expected_time + grace_td and not dose_covers:
-                    continue
-
-                expected += 1
-                if dose_covers:
-                    actual += 1
-
-            day_offset += 1
-
+        for a in assignments:
+            # Exclude slots older than the adherence window.
+            if a.slot_time < cutoff:
+                continue
+            # Skip slots whose grace window is still open (not yet due).
+            if now < a.slot_time + grace_td:
+                continue
+            expected += 1
+            if a.covered:
+                actual += 1
         return actual, expected
 
     def _count_slots_regular_interval(self, now, cutoff, grace_td, timestamps):
@@ -398,8 +423,10 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return shared
 
         if self._tracking_type == TRACKING_CYCLIC:
-            days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
-            days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
+            # HA's NumberSelector stores these as floats; coerce to int
+            # for correct modulo/cycle arithmetic.
+            days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+            days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
             anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
             dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
             try:
@@ -450,12 +477,12 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         days_since_start = max(1.0, days_since_start)
         effective_window_days = min(days_since_start, float(self._window_days))
 
-        grace_hours = self._get_grace_hours()
-        grace_td = timedelta(hours=grace_hours)
+        grace_minutes = self._get_grace_minutes()
+        grace_td = timedelta(minutes=grace_minutes)
 
         base_cutoff = now - timedelta(days=effective_window_days)
 
-        if grace_hours > 0:
+        if grace_minutes > 0:
             extended_cutoff = base_cutoff - grace_td
         else:
             extended_cutoff = base_cutoff
@@ -483,7 +510,11 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "expected_doses": expected,
             "window_days": self._window_days,
             "effective_window_days": round(effective_window_days, 1),
-            "grace_hours": grace_hours,
+            "grace_minutes": grace_minutes,
+            # Backward-compat alias: existing dashboards/automations read
+            # grace_hours. Keep it as a derived value (minutes / 60) so it
+            # stays correct after the v15 hours->minutes migration.
+            "grace_hours": round(grace_minutes / 60, 2),
             "timestamps": [ts.isoformat() for ts in valid_timestamps],
             "history_start_date": (self._history_start_date.isoformat() if self._history_start_date else None),
         }

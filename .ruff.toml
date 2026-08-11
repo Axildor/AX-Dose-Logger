@@ -83,4 +83,11 @@ keep-runtime-typing = true
 max-complexity = 25
 
 [lint.per-file-ignores]
-"scripts/*" = ["T201"] # Allow print statements in test/verification scripts
+"scripts/*" = [
+    "T201", # Allow print statements in test/verification scripts
+    "INP001", # scripts/ is a tools dir, not an importable package — no __init__.py
+    "PLR0913", # verification helpers faithfully mirror production sensor signatures (many params)
+    "ARG001", # unused function arg — signatures mirror production sensor methods for fidelity
+    "PLW0603", # global statement — test-harness counters (_passed/_failed) use module-level state
+    "RUF059", # unpacked variable unused — tuple unpacking mirrors sibling cases for structural clarity
+]
