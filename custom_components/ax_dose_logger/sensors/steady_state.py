@@ -99,9 +99,7 @@ class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if last_state:
             if "last_dose_timestamp" in last_state.attributes:
                 try:
-                    self._last_dose_timestamp = dt_util.parse_datetime(
-                        last_state.attributes["last_dose_timestamp"]
-                    )
+                    self._last_dose_timestamp = dt_util.parse_datetime(last_state.attributes["last_dose_timestamp"])
                 except ValueError, TypeError:
                     pass
             # Restore _current_mass so update_state() produces correct
@@ -164,9 +162,7 @@ class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return max(gaps) / 60.0
 
         if tracking_type == TRACKING_REGULAR_INTERVAL:
-            hours = float(
-                entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24.0))
-            )
+            hours = float(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 24.0)))
             return hours if hours > 0 else 0.0
 
         if tracking_type == TRACKING_CYCLIC:
@@ -206,12 +202,16 @@ class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             try:
                 parts = dose_time.split(":")
                 dose_h, dose_m = int(parts[0]), int(parts[1])
-            except (ValueError, IndexError, AttributeError):
+            except ValueError, IndexError, AttributeError:
                 dose_h, dose_m = 8, 0
 
             today = now.date()
-            days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
-            days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
+            # HA's NumberSelector stores all numeric inputs as floats
+            # (vol.Coerce(float)), so coerce to int here: range() below
+            # requires an int and would otherwise raise TypeError for
+            # cyclic entries whose days_on/days_off were saved as floats.
+            days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+            days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
             cycle_length = days_on + days_off
             if cycle_length <= 0:
                 cycle_length = 1
@@ -283,9 +283,7 @@ class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             self._attr_native_value = None
             self._attr_extra_state_attributes = {
                 "dosing_interval_hours": round(tau, 2) if tau > 0 else None,
-                "last_dose_timestamp": self._last_dose_timestamp.isoformat()
-                if self._last_dose_timestamp
-                else None,
+                "last_dose_timestamp": self._last_dose_timestamp.isoformat() if self._last_dose_timestamp else None,
             }
             self.async_write_ha_state()
             return

@@ -35,12 +35,14 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        # Legacy restore for smooth UI transition; coordinator is
-        # authoritative so _handle_coordinator_update overrides.
-        last_state_obj = await self.async_get_last_state()
-        if last_state_obj and "timestamps" in last_state_obj.attributes:
-            self._update_state()
-            self.async_write_ha_state()
+        # Coordinator is authoritative - compute initial state from live
+        # data so the sensor shows a real next-dose time immediately on
+        # first-ever setup, instead of sitting at `unknown` until the
+        # first 1-min coordinator tick. A stale restored timestamp
+        # could show an already-passed dose time, so we deliberately do
+        # not restore from last_state here.
+        self._update_state()
+        self.async_write_ha_state()
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -94,8 +96,10 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         elif self._tracking_type == TRACKING_TIME_OF_DAY:
             self._update_state_time_of_day(entry, now, schedule_timestamps)
         elif self._tracking_type == TRACKING_CYCLIC:
-            days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
-            days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
+            # HA's NumberSelector stores these as floats; coerce to int
+            # for correct modulo/cycle arithmetic.
+            days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+            days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
             anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
             dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
             try:

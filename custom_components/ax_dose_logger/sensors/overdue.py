@@ -105,9 +105,22 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         else:
             self._attr_native_value = 0
 
+        # Expose grace_minutes so the frontend card can resolve the on-time
+        # window (overdue-at-half-grace latency boundary) WITHOUT requiring
+        # the adherence sensors to exist. The Overdue sensor is created for
+        # every scheduled medication (guarded by tracking_type != AS_NEEDED
+        # in sensor.py), so this is the reliable single source of truth for
+        # the card's grace value -- fixing the bug where the card silently
+        # fell back to a hardcoded 1.0h when adherence tracking was off,
+        # ignoring the user's configured value.
+        grace_minutes = entry.options.get(
+            "adherence_grace_minutes",
+            entry.data.get("adherence_grace_minutes", 60),
+        )
         self._attr_extra_state_attributes = {
             "overdue_since": overdue_since.isoformat() if overdue_since else None,
             "tracking_type": self._tracking_type,
+            "grace_minutes": grace_minutes,
         }
 
     # ── Time of Day ────────────────────────────────────────────────────

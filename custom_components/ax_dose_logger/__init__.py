@@ -32,7 +32,10 @@ PLATFORMS = ["sensor", "button", "number", "calendar"]
 # All other options (PK params, dose_time, pill_limit, etc.) are read
 # fresh by the coordinator and sensors on every update cycle, so they
 # don't need a reload.
-_STRUCTURAL_KEYS = ("enable_calendar", "enable_adherence", "tracking_type", "tracked_symptoms")
+# daily_limit is structural because the Pill24hLimitExceededSensor binary
+# sensor is only created when daily_limit > 0; toggling between 0 and >0
+# must trigger entity recreation.
+_STRUCTURAL_KEYS = ("enable_calendar", "enable_adherence", "tracking_type", "tracked_symptoms", "daily_limit")
 
 # Migration mapping for tracking_type (v8 title-case → v9 snake_case)
 _TRACKING_TYPE_MIGRATION = {
@@ -58,12 +61,19 @@ def _get_structural_options(entry: AxDoseLoggerConfigEntry) -> dict:
 
     Each key is resolved from ``entry.options`` with a fallback to
     ``entry.data`` (matching the pattern used in sensor.py / calendar.py).
+
+    ``daily_limit`` is cast to ``float`` so that a stored int ``0`` compares
+    equal across snapshots (avoids false change-detection), and so a 0 to >0
+    toggle is correctly detected as a structural change requiring entity
+    recreation of :class:`Pill24hLimitExceededSensor` (created only when
+    ``daily_limit > 0`` -- see :func:`_setup_medicine_sensors`).
     """
     return {
         "enable_calendar": entry.options.get("enable_calendar", entry.data.get("enable_calendar", True)),
         "enable_adherence": entry.options.get("enable_adherence", entry.data.get("enable_adherence", True)),
         "tracking_type": entry.data.get("tracking_type"),
         "tracked_symptoms": entry.options.get("tracked_symptoms", entry.data.get("tracked_symptoms", [])),
+        "daily_limit": float(entry.options.get("daily_limit", entry.data.get("daily_limit", 0))),
     }
 
 
@@ -287,6 +297,23 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
             _remove_entity(ent_reg, "sensor", "drink_master_days_left_caffeine")
             _remove_entity(ent_reg, "sensor", "drink_master_days_left_alcohol")
 
+    if config_entry.version <= 14:
+        # Version 15: Rename adherence_grace_hours (hours) -> adherence_grace_minutes
+        # (minutes). The On-Time Window field migrates from hours (step 0.5h,
+        # which could not represent 45 min) to minutes (step 1, default 60).
+        # Multiply any existing hours value by 60 and round. Entries that never
+        # had the key (e.g. As Needed, where the field is hidden) get the
+        # default 60 min. Applies to both entry.data and entry.options since
+        # the field can live in either store depending on whether the user
+        # reconfigured it post-setup. No entity-registry change (value tweak
+        # only, not structural).
+        for store in (new_data, new_options):
+            old_hours = store.pop("adherence_grace_hours", None)
+            if old_hours is not None:
+                store["adherence_grace_minutes"] = round(float(old_hours) * 60)
+            else:
+                store.setdefault("adherence_grace_minutes", 60)
+
     hass.config_entries.async_update_entry(config_entry, data=new_data, options=new_options, version=CURRENT_VERSION)
 
     LOGGER.info(
@@ -374,9 +401,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
         "entry_data": entry.data,
         "coordinator": coordinator,
         # Snapshot of structural options for change detection in async_reload_entry.
-        # Only enable_calendar, enable_adherence, and tracking_type affect which
-        # entities are created; all other options are read fresh by the coordinator
-        # and sensors on every update cycle, so they don't need a reload.
+        # enable_calendar, enable_adherence, tracking_type, tracked_symptoms, and
+        # daily_limit affect which entities are created (see _STRUCTURAL_KEYS); all
+        # other options are read fresh by the coordinator and sensors on every
+        # update cycle, so they don't need a reload.
         "prev_structural": _get_structural_options(entry),
     }
 
@@ -396,10 +424,11 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
     """
     Reload config entry, but only when structural options change.
 
-    Compares ``enable_calendar``, ``enable_adherence``, and ``tracking_type``
-    before/after.  If none changed (e.g. a PK-only save), the coordinator and
-    sensors already read the new values on their next update cycle, so no
-    reload or entity-registry surgery is needed.
+    Compares ``enable_calendar``, ``enable_adherence``, ``tracking_type``,
+    ``tracked_symptoms``, and ``daily_limit`` before/after.  If none changed
+    (e.g. a PK-only save), the coordinator and sensors already read the new
+    values on their next update cycle, so no reload or entity-registry
+    surgery is needed.
 
     When a structural option *did* change, removes entities for newly-disabled
     features to prevent ghost "unavailable" entities, then reloads the entry.
@@ -465,6 +494,16 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
         for key in prev_tracked - curr_tracked:
             _remove_entity(ent_reg, "number", f"{entry.entry_id}_eff_{key}")
 
+    # --- daily_limit: >0 → 0 (limit disabled) ---
+    # The Pill24hLimitExceededSensor binary sensor is only created when
+    # daily_limit > 0 (see _setup_medicine_sensors).  When the user disables
+    # the limit (sets it back to 0), remove the now-orphaned entity so it
+    # doesn't linger as a ghost "unavailable" binary sensor.  The 0 → >0
+    # direction (enabling the limit) needs no cleanup — the entity is created
+    # fresh by async_reload → _setup_medicine_sensors after the reload.
+    if "daily_limit" in changed and curr["daily_limit"] <= 0:
+        _remove_entity(ent_reg, "sensor", f"{entry.entry_id}_24h_limit_exceeded")
+
     # Update the snapshot so the next options save has a fresh baseline
     entry_data["prev_structural"] = curr
 
@@ -472,8 +511,28 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> bool:
+    """Unload a config entry and clean up domain-level state.
+
+    Cleans up domain-level singletons (``_store``, ``_store_load``,
+    ``_drink_masters``) when the last loaded entry is removed so
+    ``hass.data[DOMAIN]`` does not leak (audit findings #3 and #4).  Also
+    clears the drink master coordinator dict on Drink Settings unload so a
+    later re-created Drink Settings entry gets fresh coordinators instead of
+    reusing shut-down ones whose periodic timer may not restart (audit
+    finding #5).
+
+    Ordering note: ``ConfigEntry.async_unload`` sets the entry state to
+    ``UNLOAD_IN_PROGRESS`` *before* calling this function and runs the
+    ``async_on_unload`` callbacks (coordinator ``async_shutdown``) *after* it
+    returns.  Therefore ``async_loaded_entries(DOMAIN)`` already excludes the
+    entry being unloaded, and clearing ``_drink_masters`` here does not
+    prevent the coordinators' ``async_shutdown`` from running — the bound
+    ``self.async_shutdown`` method stored in ``entry._on_unload`` (registered
+    in ``DataUpdateCoordinator.__init__``) keeps each coordinator alive until
+    ``_async_process_on_unload`` runs them after we return.
+    """
     device_category = entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
-    # Drink Settings only forwards to sensor; drinks forward to sensor+button.
+    # Drink Settings only forwards to sensor; drinks forward to sensor+button+number.
     if device_category == DEVICE_CATEGORY_DRINK_SETTINGS:
         platforms = ["sensor"]
     elif device_category == DEVICE_CATEGORY_DRINKS:
@@ -484,7 +543,28 @@ async def async_unload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-        # Remove services when the last medicine coordinator is gone.
+
+        # #5: Drop the drink master coordinators when the Drink Settings entry
+        # is unloaded.  They have already been queued for ``async_shutdown``
+        # via their ``config_entry.async_on_unload`` hook (registered in
+        # DataUpdateCoordinator.__init__); that runs after we return.
+        # Clearing the dict here prevents ``_setup_drink_masters`` from
+        # reusing shut-down coordinators (whose periodic timer may not
+        # restart) if the Drink Settings entry is later re-created.
+        if device_category == DEVICE_CATEGORY_DRINK_SETTINGS:
+            _get_drink_masters(hass).clear()
+
+        # Remove services when the last coordinator-bearing entry (medicine or
+        # drinks) is gone.  Drink Settings entries don't host a coordinator.
         if not any(isinstance(v, dict) and "coordinator" in v for v in hass.data.get(DOMAIN, {}).values()):
             async_unload_services(hass)
+
+        # #3 + #4: When no loaded entries remain for the domain, drop the
+        # domain-level singletons (``_store``, ``_store_load`` — the completed
+        # load Task — and ``_drink_masters``) so they don't leak.
+        # ``async_loaded_entries`` excludes the entry currently being unloaded
+        # (state == ``UNLOAD_IN_PROGRESS``), so this fires on the final entry's
+        # unload.  The store is recreated from disk on re-add.
+        if not hass.config_entries.async_loaded_entries(DOMAIN):
+            hass.data.pop(DOMAIN, None)
     return unload_ok

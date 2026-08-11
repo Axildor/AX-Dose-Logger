@@ -34,9 +34,9 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
     Adherence % = min(actual_doses / expected_doses * 100, 100)
 
-    The grace period is user-configurable via `adherence_grace_hours` in the
-    config entry (default: 1 hour). A dose is considered "on time" if it falls
-    within ±grace of the expected slot time.
+    The grace period is user-configurable via `adherence_grace_minutes` in the
+    config entry (default: 60 minutes). A dose is considered "on time" if it
+    falls within ±grace of the expected slot time.
 
     For As Needed (PRN) medications, adherence is undefined — the sensor
     returns None with a descriptive reason attribute.
@@ -142,11 +142,11 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         days_since_start = max(1.0, days_since_start)
         effective_window_days = min(days_since_start, float(self._window_days))
 
-        grace_hours = self._get_grace_hours()
-        grace_td = timedelta(hours=grace_hours)
+        grace_minutes = self._get_grace_minutes()
+        grace_td = timedelta(minutes=grace_minutes)
 
         base_cutoff = now - timedelta(days=effective_window_days)
-        if grace_hours > 0:
+        if grace_minutes > 0:
             extended_cutoff = base_cutoff - grace_td
         else:
             extended_cutoff = base_cutoff
@@ -278,12 +278,12 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 return expected_time
             day_offset += 1
 
-    def _get_grace_hours(self):
-        """Get the user-configured adherence grace period."""
+    def _get_grace_minutes(self):
+        """Get the user-configured adherence grace period in minutes."""
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         return entry.options.get(
-            "adherence_grace_hours",
-            entry.data.get("adherence_grace_hours", 1.0),
+            "adherence_grace_minutes",
+            entry.data.get("adherence_grace_minutes", 60),
         )
 
     # ------------------------------------------------------------------
@@ -423,8 +423,10 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return shared
 
         if self._tracking_type == TRACKING_CYCLIC:
-            days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
-            days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
+            # HA's NumberSelector stores these as floats; coerce to int
+            # for correct modulo/cycle arithmetic.
+            days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+            days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
             anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
             dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
             try:
@@ -475,12 +477,12 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         days_since_start = max(1.0, days_since_start)
         effective_window_days = min(days_since_start, float(self._window_days))
 
-        grace_hours = self._get_grace_hours()
-        grace_td = timedelta(hours=grace_hours)
+        grace_minutes = self._get_grace_minutes()
+        grace_td = timedelta(minutes=grace_minutes)
 
         base_cutoff = now - timedelta(days=effective_window_days)
 
-        if grace_hours > 0:
+        if grace_minutes > 0:
             extended_cutoff = base_cutoff - grace_td
         else:
             extended_cutoff = base_cutoff
@@ -508,7 +510,11 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "expected_doses": expected,
             "window_days": self._window_days,
             "effective_window_days": round(effective_window_days, 1),
-            "grace_hours": grace_hours,
+            "grace_minutes": grace_minutes,
+            # Backward-compat alias: existing dashboards/automations read
+            # grace_hours. Keep it as a derived value (minutes / 60) so it
+            # stays correct after the v15 hours->minutes migration.
+            "grace_hours": round(grace_minutes / 60, 2),
             "timestamps": [ts.isoformat() for ts in valid_timestamps],
             "history_start_date": (self._history_start_date.isoformat() if self._history_start_date else None),
         }

@@ -99,14 +99,26 @@ class DrinkMasterDailyAmountSensor(RestoreSensor):
         # Stable device identifiers — standalone virtual Master Tracker device,
         # not tied to entry_id (see DrinkMasterSensor for the rationale).
         self._attr_device_info = tracker_device_info(self._substance)
-        self._update_state()
+        # Initial state is computed in async_added_to_hass (which also
+        # calls async_write_ha_state); computing here is redundant and
+        # would be immediately overwritten.
 
     async def async_added_to_hass(self) -> None:
-        """Restore last value, then subscribe to the master coordinator."""
+        """Compute initial state from coordinator data, then subscribe.
+
+        The master coordinator has already run ``_async_setup`` + first
+        refresh by the time this runs (awaited in
+        ``_setup_drink_masters``), so ``_update_state`` produces the
+        correct current 24h sum from live data. We deliberately do NOT
+        restore from ``async_get_last_sensor_data`` here: the restore
+        value would be immediately overwritten by ``_update_state``
+        (which recomputes both ``_attr_native_value`` and
+        ``_attr_extra_state_attributes``), and a stale restored value
+        could briefly show an out-of-date amount. If coordinator data is
+        absent, ``_update_state`` falls back to 0.0 with full attrs
+        (a sensible "nothing logged yet" state, not ``unknown``).
+        """
         await super().async_added_to_hass()
-        last_state = await self.async_get_last_sensor_data()
-        if last_state and last_state.native_value is not None:
-            self._attr_native_value = float(last_state.native_value)
         self._update_state()
         self.async_write_ha_state()
         self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))

@@ -15,17 +15,13 @@
           "initial_stock": "Inventory",
           "hours_between_doses": "Dose Interval",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity",
-          "daily_limit": "24h Dose Limit"
+          "time_window_hours": "Time Window"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "hours_between_doses": "Minimum hours between consecutive doses.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
-          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours."
         }
       },
       "time_of_day": {
@@ -35,17 +31,13 @@
           "initial_stock": "Inventory",
           "doses_per_day": "How Many Times per Day",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity",
-          "daily_limit": "24h Dose Limit"
+          "time_window_hours": "Time Window"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. You'll set the exact times on the next screen.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
-          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours."
         }
       },
       "time_of_day_times": {
@@ -98,14 +90,12 @@
         "data": {
           "initial_stock": "Inventory",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window",
-          "daily_limit": "24h Dose Limit"
+          "time_window_hours": "Time Window"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
-          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours."
         }
       },
       "cyclic": {
@@ -118,9 +108,7 @@
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window",
-          "enable_calendar": "Calendar Entity",
-          "daily_limit": "24h Dose Limit"
+          "time_window_hours": "Time Window"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
@@ -129,17 +117,16 @@
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 1 pill in 24 hours.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar.",
-          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 1 pill in 24 hours."
         }
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n{pk_search_url}",
+        "description": "Optional: configure to track drug amount in the body over time, and set a daily strength limit. Leave all values at 0 if not needed.\n\n{pk_search_url}",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
+          "daily_limit": "24h Strength Limit",
           "half_life": "Elimination Half-Life",
           "hours_to_peak": "Time to Peak Concentration",
           "bioavailability": "Bioavailability",
@@ -149,6 +136,7 @@
         "data_description": {
           "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
           "strength_unit": "Unit for the dose strength value. Also sets the unit shown on the Amount in Body sensor and the card.",
+          "daily_limit": "Maximum total active-ingredient strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure.",
           "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
           "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
           "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
@@ -173,29 +161,21 @@
         }
       },
       "effectiveness": {
-        "title": "Symptom & Adherence Tracking",
+        "title": "Symptom, Adherence and Tracking",
         "description": "Select which symptoms to track and configure adherence settings. Each enabled item adds a daily-locked 0–10 slider — set it once per day, reset at midnight. Unset days show as unknown (no false data).",
         "data": {
           "tracked_symptoms": "Tracked Symptoms",
-          "custom_metrics": "Custom Metrics"
+          "custom_metrics": "Custom Metrics",
+          "enable_calendar": "Calendar Entity",
+          "enable_adherence": "Track Dose Adherence",
+          "adherence_grace_minutes": "On-Time Window"
         },
         "data_description": {
           "tracked_symptoms": "Select which metrics to track alongside your doses.",
-          "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
-        },
-        "sections": {
-          "adherence": {
-            "name": "Adherence Tracking",
-            "description": "Monitor how consistently doses are taken on schedule.",
-            "data": {
-              "enable_adherence": "Track Dose Adherence",
-              "adherence_grace_hours": "On-Time Window"
-            },
-            "data_description": {
-              "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
-              "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on."
-            }
-          }
+          "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for as-needed medications.",
+          "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
+          "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on)."
         }
       },
       "user_medicine": {
@@ -293,9 +273,7 @@
           "days_off": "Days Off",
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
-          "pill_limit": "Pill Limit",
-          "enable_calendar": "Calendar Entity",
-          "daily_limit": "24h Dose Limit"
+          "pill_limit": "Pill Limit"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
@@ -325,8 +303,7 @@
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity.",
-          "tracking_type": "How this medication is scheduled.",
-          "daily_limit": "Maximum total dose strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Used by the Amount in Last 24h sensor to show remaining headroom. Set 0 for no limit (the sensor still shows the 24h total)."
+          "tracking_type": "How this medication is scheduled."
         }
       },
       "schedule": {
@@ -341,8 +318,7 @@
           "days_off": "Days Off",
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
-          "pill_limit": "Pill Limit",
-          "enable_calendar": "Calendar Entity"
+          "pill_limit": "Pill Limit"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
@@ -352,8 +328,7 @@
           "days_off": "Number of rest days in the cycle.",
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
-          "pill_limit": "Maximum pills you can take within the time window.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar."
+          "pill_limit": "Maximum pills you can take within the time window."
         }
       },
       "schedule_times": {
@@ -382,10 +357,11 @@
       },
       "pk": {
         "title": "Pharmacokinetics",
-        "description": "Optional: configure to track drug amount in the body over time. Leave all values at 0 if not needed.\n\n{pk_search_url}",
+        "description": "Optional: configure to track drug amount in the body over time, and set a daily strength limit. Leave all values at 0 if not needed.\n\n{pk_search_url}",
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
+          "daily_limit": "24h Strength Limit",
           "half_life": "Elimination Half-Life",
           "hours_to_peak": "Time to Peak Concentration",
           "bioavailability": "Bioavailability",
@@ -395,6 +371,7 @@
         "data_description": {
           "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
           "strength_unit": "Unit for the dose strength value. Also sets the unit shown on the Amount in Body sensor and the card.",
+          "daily_limit": "Maximum total active-ingredient strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Used by the Amount in Last 24h sensor to show remaining headroom. Set 0 for no limit (the sensor still shows the 24h total).",
           "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
           "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
           "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
@@ -419,29 +396,21 @@
         }
       },
       "effectiveness": {
-        "title": "Symptom & Adherence Tracking",
+        "title": "Symptom, Adherence and Tracking",
         "description": "Select which symptoms to track and configure adherence settings. Each enabled item adds a daily-locked 0–10 slider — set it once per day, reset at midnight. Unset days show as unknown (no false data).",
         "data": {
           "tracked_symptoms": "Tracked Symptoms",
-          "custom_metrics": "Custom Metrics"
+          "custom_metrics": "Custom Metrics",
+          "enable_calendar": "Calendar Entity",
+          "enable_adherence": "Track Dose Adherence",
+          "adherence_grace_minutes": "On-Time Window"
         },
         "data_description": {
           "tracked_symptoms": "Select which metrics to track alongside your doses.",
-          "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each."
-        },
-        "sections": {
-          "adherence": {
-            "name": "Adherence Tracking",
-            "description": "Monitor how consistently doses are taken on schedule.",
-            "data": {
-              "enable_adherence": "Track Dose Adherence",
-              "adherence_grace_hours": "On-Time Window"
-            },
-            "data_description": {
-              "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
-              "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. Only applies when adherence tracking is on."
-            }
-          }
+          "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each.",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for as-needed medications.",
+          "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
+          "adherence_grace_hours": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on)."
         }
       },
       "drink_settings_options": {
@@ -774,6 +743,11 @@
     "calendar": {
       "calendar": {
         "name": "Calendar"
+      }
+    },
+    "binary_sensor": {
+      "pill_24h_limit_exceeded": {
+        "name": "24h Limit Exceeded"
       }
     }
   }

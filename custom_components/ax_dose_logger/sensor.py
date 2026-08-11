@@ -33,6 +33,7 @@ from .sensors.drink_master_sleep_disruption import (
 )
 from .sensors.drink_total import DrinkTotalSensor
 from .sensors.last_dose import PillLastDoseSensor
+from .sensors.limit_exceeded import Pill24hLimitExceededSensor
 from .sensors.next_dose import PillNextDoseSensor
 from .sensors.overdue import PillOverdueSensor
 from .sensors.pill_daily_amount import PillDailyAmountSensor
@@ -70,6 +71,15 @@ async def _setup_medicine_sensors(
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     entities = [PillTotalSensor(entry, coordinator)]
     entities.append(PillDailyAmountSensor(entry, coordinator))
+    # 24h strength limit exceeded binary sensor — only created when a
+    # daily_limit is configured (0 = no limit → no entity). Fires when
+    # the current 24h sum already exceeds the limit OR when the next
+    # configured dose would push it over (pre-warning). Toggling
+    # daily_limit between 0 and >0 triggers entity recreation via
+    # _STRUCTURAL_KEYS in __init__.py.
+    daily_limit = float(entry.options.get("daily_limit", entry.data.get("daily_limit", 0)))
+    if daily_limit > 0:
+        entities.append(Pill24hLimitExceededSensor(entry, coordinator))
     entities.append(PillLastDoseSensor(entry, coordinator))
     entities.append(PillLimitSensor(entry, coordinator))
     entities.append(PillConcentrationSensor(entry, coordinator))

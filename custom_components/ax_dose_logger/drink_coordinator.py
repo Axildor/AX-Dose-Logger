@@ -428,8 +428,20 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
     # Periodic refresh
     # ------------------------------------------------------------------
     async def _async_update_data(self) -> DrinkMasterCoordinatorData:
-        """Recompute body mass on every tick."""
-        return self._recompute_data()
+        """Recompute body mass on every tick - offloaded to the executor (CPU-bound).
+
+        ``_recompute_data`` is synchronous, CPU-bound work (caffeine: N=8 x
+        len(history) Bateman evaluations per tick; alcohol: O(1) incremental
+        arithmetic).  For a heavy caffeine user with 100+ drinks this is
+        50-200 ms of pure-Python math that would block the HA event loop on
+        every 1-min tick, causing latency spikes for ALL automations and
+        entity updates.  HA best practice is to offload CPU-bound work to the
+        executor thread pool so the event loop stays free during the
+        computation.  ``_recompute_data`` is effectively read-only (it reads
+        ``self.data``, constructs a new dataclass, and returns it - no
+        mutation of shared state), so running it in a thread is safe.
+        """
+        return await self.hass.async_add_executor_job(self._recompute_data)
 
     def _recompute_data(self) -> DrinkMasterCoordinatorData:
         data = self.data
@@ -456,7 +468,21 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         )
 
     def _push_update(self) -> None:
-        self.async_set_updated_data(self._recompute_data())
+        """Schedule recompute + notify - fire-and-forget via executor.
+
+        Used by push-based dose events (add / undo / reset) to ensure sensor
+        state updates are visible promptly, bypassing the debounce of
+        ``async_request_refresh``.  The recompute is CPU-bound (caffeine path)
+        so it is offloaded to the executor to avoid blocking the event loop.
+        The notification (``async_set_updated_data``) runs on the event loop
+        after the executor thread completes.
+        """
+        self.hass.async_create_task(self._async_push_update())
+
+    async def _async_push_update(self) -> None:
+        """Executor-offloaded recompute + listener notification."""
+        data = await self.hass.async_add_executor_job(self._recompute_data)
+        self.async_set_updated_data(data)
 
     # ------------------------------------------------------------------
     # Caffeine PK — discretized uniform input + IR Bateman superposition

@@ -52,8 +52,11 @@ def is_on_day(entry: ConfigEntry, check_date: date, fallback_date: date | None =
     *check_date*, which is the safest behaviour: an invalid anchor makes
     every day an ON day rather than silently dropping doses.
     """
-    days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
-    days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
+    # HA's NumberSelector stores these as floats; coerce to int for
+    # correct modulo/cycle arithmetic (covers is_on_day callers:
+    # overdue, next_dose, adherence, steady_state).
+    days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+    days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
     anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
 
     try:

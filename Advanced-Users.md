@@ -36,7 +36,6 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Dose Interval | 1–48 h | Minimum hours between consecutive doses | 8 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 8 |
-| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### Time of Day
 
@@ -46,7 +45,6 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Dose Time | Time picker | Time of day to take the medication | 08:00 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the window | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 24 |
-| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### As Needed (PRN)
 
@@ -55,7 +53,6 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 2 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 8 |
-| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 #### Cyclic / Calendar Pattern
 
@@ -68,7 +65,6 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Dose Time | Time picker | Time of day to take on active days | 08:00 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 24 |
-| Calendar Entity | Toggle | Show expected dose times on the HA calendar | On |
 
 ### Step 3: Pharmacokinetics
 
@@ -83,7 +79,7 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Time to Peak Concentration | 0–72 h | Hours after taking until concentration peaks. Set to 0 for immediate-release medications. | 0 |
 | Bioavailability | 0–100 % | Fraction of the dose that reaches systemic circulation. For example, ibuprofen ≈ 87%, while some drugs are closer to 50%. | 100 |
 | Lag Time | 0–1440 min | Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery. | 0 |
-| 24h Dose Limit | 0–∞ (medication unit) | Optional daily intake cap. `0` = no limit. When set, the Amount in Last 24h sensor exposes a `remaining` attribute. | 0 |
+| 24h Strength Limit | 0–∞ (medication unit) | Optional daily intake cap. `0` = no limit. When set, the Amount in Last 24h sensor exposes a `remaining` attribute, and a **24h Limit Exceeded** binary sensor is created that turns on when the limit is already exceeded or the next dose would push you over it. | 0 |
 
 **Sustained Release fields** (only shown when Release Type is Sustained Release):
 
@@ -95,14 +91,15 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 
 > Leave Dose Strength and Elimination Half-Life at 0 to disable concentration tracking. The Amount in Body sensor reports `unknown` (shown as N/A) when Elimination Half-Life is left at 0 — a concentration without elimination has no meaningful value, so the sensor no longer shows an infinitely accumulating number. The Steady State sensor is only created for scheduled medications.
 
-### Step 4: Symptom & Adherence Tracking
+### Step 4: Symptom, Adherence and Tracking
 
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
 | Tracked Symptoms | Multi-select | Check which symptoms to track (Pain, Mood, Nausea, Fatigue). Each gets a daily-locked 0–10 slider. | None |
 | Custom Symptoms | Text | Separate multiple with commas (e.g. brain fog, joint stiffness). A daily-locked 0–10 slider is created for each. | — |
+| Calendar Entity | Toggle | Show expected dose times on the HA calendar. Not available for As Needed. | Off |
 | Track Dose Adherence | Toggle | Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. | On (Off for As Needed) |
-| On-Time Window | 0.5–24 h | How early or late a dose can be and still count as on-time. For example, 1 hour means ±1 hour around the scheduled time. | 1 |
+| On-Time Window | 1–1440 min | How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on). | 60 |
 
 ### Reconfiguring After Setup
 
@@ -112,11 +109,11 @@ Click **Configure** on the integration entry to change settings without recreati
 
 **Step 2: Pharmacokinetics** (same as Step 3 above)
 
-**Step 3: Symptom & Adherence Tracking** (same as Step 4 above)
+**Step 3: Symptom, Adherence and Tracking** (same as Step 4 above)
 
 > **Note:** The medication name and release type can't be changed after creation. The tracking type *can* be changed from the Configure dialog.
 
-> **Changes apply automatically.** After saving, schedule, dosing, and PK changes propagate to all sensors within about a minute, or instantly when you log your next dose. No device reload is needed. The exceptions are: enabling/disabling the Calendar, Adherence, or tracked symptoms (which add or remove entities), and **changing the Tracking Type** (which reloads the device to recreate its sensors). In all cases your dose history and effectiveness logs are preserved.
+> **Changes apply automatically.** After saving, schedule, dosing, and PK changes propagate to all sensors within about a minute, or instantly when you log your next dose. No device reload is needed. The exceptions are: enabling/disabling the Calendar, Adherence, or tracked symptoms (which add or remove entities), **setting or clearing the 24h Strength Limit** (which adds or removes the 24h Limit Exceeded binary sensor), and **changing the Tracking Type** (which reloads the device to recreate its sensors). In all cases your dose history and effectiveness logs are preserved.
 
 ---
 
@@ -161,6 +158,16 @@ Key entities and their attributes for template references:
 - `remaining`: `daily_limit - amount`, or `null` when no limit is configured
 - `unit_of_measurement`: the medication's strength unit (mg/μg/g)
 
+**24h Limit Exceeded** (`binary_sensor.ibuprofen_24h_limit_exceeded`)
+- State: `on` / `off`. Turns on when the current 24h strength sum has already exceeded the configured `daily_limit`, OR when the next configured dose would push the total over the limit (pre-warning). Only created when `daily_limit > 0`.
+- `current_amount`: total strength consumed in the last 24 hours
+- `daily_limit`: the configured 24h strength cap
+- `next_dose_strength`: the per-dose strength that would be added
+- `remaining`: `daily_limit - current_amount`
+- `already_exceeded`: `True` when `current_amount > daily_limit`
+- `would_exceed`: `True` when `current_amount + next_dose_strength > daily_limit` but not already exceeded
+- `unit_of_measurement`: the medication's strength unit (mg/μg/g)
+
 **Steady State** (`sensor.ibuprofen_days_to_steady_state`)
 - State: days remaining to 90% steady state (float, 1 decimal), `0.0` if reached, or `unknown` when elimination is disabled
 - `theoretical_max_mg`: predicted peak at steady state (C_max_ss)
@@ -202,6 +209,7 @@ Each medication and drink shows up as a **Device** in Home Assistant. Replace `i
 | Pills Safe to Take | `sensor.ibuprofen_pills_safe_to_take` | Remaining pills safe to take in the current window | `timestamps`, `time_window_hours`, `in_on_window` (Cyclic only), `window_expires_at` (when the limit resets; `null` if not at the limit) |
 | Amount in Body | `sensor.ibuprofen_amount_in_body` | Current drug amount in body (mg) — requires PK fields | `last_updated`, `gut_mass`, `ka`, `lag_time`, `dose_history` (IR); `gut_ir_mass`, `matrix_sr_mass`, `gut_sr_mass`, `ka`, `kr`, `lag_time`, `dose_history` (ER) |
 | Amount in Last 24h | `sensor.ibuprofen_amount_in_last_24h` | Total dose strength consumed in the last 24 hours (mg/μg/g) | `window_hours`, `doses_in_window`, `daily_limit` (`null` when 0), `remaining` (`null` when no limit), `unit_of_measurement` |
+| 24h Limit Exceeded | `binary_sensor.ibuprofen_24h_limit_exceeded` | On when 24h strength limit is/would be exceeded (only when `daily_limit > 0`) | `current_amount`, `daily_limit`, `next_dose_strength`, `remaining`, `already_exceeded`, `would_exceed`, `unit_of_measurement` |
 | Next Dose | `sensor.ibuprofen_next_dose` | Timestamp of next scheduled dose | `safe_to_take` (number of pills safe to take remaining now) |
 | 7-Day Average | `sensor.ibuprofen_avg_daily_doses_7_days` | Day-level dose coverage over 7 days (0.0–1.0) | `covered_days`, `scheduled_days`, `effective_window_days` |
 | 14-Day Average | `sensor.ibuprofen_avg_daily_doses_14_days` | Day-level dose coverage over 14 days (0.0–1.0) | `covered_days`, `scheduled_days`, `effective_window_days` |

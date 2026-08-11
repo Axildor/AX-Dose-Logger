@@ -97,6 +97,9 @@ class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
         self._attr_native_min_value = 0.0
         self._attr_native_max_value = 9999.0
         self._attr_mode = NumberMode.BOX
+        # Baselined on the first coordinator update so setup doesn't
+        # spuriously decrement/increment when coordinator data loads.
+        self._last_dose_count: int | None = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -123,7 +126,7 @@ class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
         if not self.coordinator.data:
             return
         current_count = len(self.coordinator.data.dose_history)
-        if not hasattr(self, "_last_dose_count"):
+        if self._last_dose_count is None:
             self._last_dose_count = current_count
             return
         if current_count > self._last_dose_count:
@@ -302,6 +305,9 @@ class DrinkStockNumber(AxDoseLoggerEntity, RestoreNumber):
             "unit_of_measurement", entry.data.get("unit_of_measurement")
         )
         self._attr_mode = NumberMode.BOX
+        # Baselined on the first coordinator update so setup doesn't
+        # spuriously decrement/increment when coordinator data loads.
+        self._last_dose_count: int | None = None
         # Frontend contract: lets the card detect a granular drink device and
         # group drinks by substance for the Master Tracker Inventory panel.
         # `role: "stock"` lets the frontend classify this entity without relying
@@ -336,7 +342,7 @@ class DrinkStockNumber(AxDoseLoggerEntity, RestoreNumber):
         if not self.coordinator.data:
             return
         current_count = len(self.coordinator.data.dose_history)
-        if not hasattr(self, "_last_dose_count"):
+        if self._last_dose_count is None:
             self._last_dose_count = current_count
             return
         if current_count > self._last_dose_count:

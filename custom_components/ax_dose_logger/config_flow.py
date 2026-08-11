@@ -36,7 +36,6 @@ from .const import (
 )
 
 # Section keys for collapsible UI sections
-_ADHERENCE_SECTION_KEY = "adherence"
 _ADVANCED_PK_SECTION_KEY = "advanced_pk"
 
 # Reusable selector configs — BOX mode for all numeric fields
@@ -122,7 +121,7 @@ _DAYS_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=1, max=30, step=1, unit_of_measurement="days", mode=sel.NumberSelectorMode.BOX)
 )
 _ADHERENCE_GRACE_SELECTOR = sel.NumberSelector(
-    sel.NumberSelectorConfig(min=0.5, max=24, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX)
+    sel.NumberSelectorConfig(min=1, max=1440, step=1, unit_of_measurement="min", mode=sel.NumberSelectorMode.BOX)
 )
 _DOSES_PER_DAY_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(
@@ -199,19 +198,6 @@ _ALCOHOL_DAILY_LIMIT_SELECTOR = sel.NumberSelector(
 
 # Ethanol density (g/ml) for Widmark mass calculation
 _ETHANOL_DENSITY = 0.789
-
-
-def _make_adherence_section(enable_default=True, grace_default=1):
-    """Create an Adherence Tracking section with the given defaults."""
-    return data_entry_flow.section(
-        vol.Schema(
-            {
-                vol.Optional("enable_adherence", default=enable_default): sel.BooleanSelector(),
-                vol.Optional("adherence_grace_hours", default=grace_default): _ADHERENCE_GRACE_SELECTOR,
-            }
-        ),
-        {"collapsed": False},
-    )
 
 
 def _make_advanced_pk_section(lag_default, zero_order_default=None, release_half_life_default=None):
@@ -316,8 +302,6 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("hours_between_doses", default=8): _HOURS_BETWEEN_SELECTOR,
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
-                    vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
-                    vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
                 }
             ),
         )
@@ -336,8 +320,6 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("doses_per_day", default=1): _DOSES_PER_DAY_SELECTOR,
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
-                    vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
-                    vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
                 }
             ),
         )
@@ -377,7 +359,6 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_as_needed(self, user_input=None):
         if user_input is not None:
             self._data.update(user_input)
-            self._data["enable_calendar"] = False  # No calendar for PRN meds
             return await self.async_step_pk()
 
         return self.async_show_form(
@@ -387,7 +368,6 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                     vol.Required("pill_limit", default=2): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
-                    vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
                 }
             ),
         )
@@ -414,8 +394,6 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("dose_time", default="08:00"): sel.TimeSelector(),
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
-                    vol.Optional("enable_calendar", default=False): sel.BooleanSelector(),
-                    vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
                 }
             ),
         )
@@ -434,6 +412,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         pk_schema = {
             vol.Optional("strength", default=0): _STRENGTH_SELECTOR,
             vol.Optional("strength_unit", default=STRENGTH_UNIT_MG): _STRENGTH_UNIT_SELECTOR,
+            vol.Optional("daily_limit", default=0): _DAILY_LIMIT_SELECTOR,
             vol.Optional("half_life", default=0): _HALF_LIFE_SELECTOR,
             vol.Optional("hours_to_peak", default=0): _HOURS_TO_PEAK_SELECTOR,
             vol.Optional("bioavailability", default=PK_DEFAULTS["bioavailability"]): _BIOAVAILABILITY_SELECTOR,
@@ -467,25 +446,30 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_effectiveness(self, user_input=None):
         """Step 4: Choose which effectiveness metrics to track and adherence settings."""
         if user_input is not None:
-            adherence_data = user_input.pop(_ADHERENCE_SECTION_KEY, {})
-            user_input.update(adherence_data)
             self._data.update(user_input)
-            # Force adherence off for As Needed — no scheduled doses to track
+            # Force calendar + adherence off for As Needed — no scheduled
+            # doses to predict or track.
             if self._data.get("tracking_type") == TRACKING_AS_NEEDED:
                 self._data["enable_adherence"] = False
+                self._data["enable_calendar"] = False
             return self.async_create_entry(title=self._data["medication_name"], data=self._data)
 
         tracking_type = self._data.get("tracking_type")
         default_adherence = tracking_type != TRACKING_AS_NEEDED
 
         fields = {}
+        # Tracked symptoms first, then custom metrics, then calendar toggle,
+        # then adherence toggle + grace period at the bottom. The adherence
+        # fields are inlined as top-level fields (no collapsible section —
+        # only 2 fields, so a submenu wrapper is unnecessary).
         fields[vol.Optional("tracked_symptoms", default=[])] = _TRACKED_SYMPTOMS_SELECTOR
         fields[vol.Optional("custom_metrics", default="")] = sel.TextSelector()
-        # Only show adherence section for scheduled tracking types
         if tracking_type != TRACKING_AS_NEEDED:
-            fields[vol.Required(_ADHERENCE_SECTION_KEY)] = _make_adherence_section(
-                enable_default=default_adherence,
+            fields[vol.Optional("enable_calendar", default=self._data.get("enable_calendar", False))] = (
+                sel.BooleanSelector()
             )
+            fields[vol.Optional("enable_adherence", default=default_adherence)] = sel.BooleanSelector()
+            fields[vol.Optional("adherence_grace_minutes", default=60)] = _ADHERENCE_GRACE_SELECTOR
 
         return self.async_show_form(step_id="effectiveness", data_schema=vol.Schema(fields))
 
@@ -650,9 +634,6 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             # For Cyclic (unchanged): normalize dose_time datetime.time to "HH:MM".
             if new_tracking_type == TRACKING_CYCLIC and new_tracking_type == self._original_tracking_type:
                 self._data["dose_time"] = _time_to_str(self._data.get("dose_time"))
-            # Force calendar off for As Needed — no predictable schedule
-            if new_tracking_type == TRACKING_AS_NEEDED:
-                self._data["enable_calendar"] = False
             # If the tracking type changed, collect the new type's schedule
             # fields in a dedicated step before continuing to PK.
             if new_tracking_type != self._original_tracking_type:
@@ -730,17 +711,6 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
-        main_schema[vol.Optional("daily_limit", default=options.get("daily_limit", data.get("daily_limit", 0)))] = (
-            _DAILY_LIMIT_SELECTOR
-        )
-
-        # Calendar toggle — only for scheduled tracking types (not As Needed)
-        if tracking_type != TRACKING_AS_NEEDED:
-            main_schema[
-                vol.Optional(
-                    "enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", False))
-                )
-            ] = sel.BooleanSelector()
 
         return self.async_show_form(
             step_id="init",
@@ -811,17 +781,6 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
-        schema[vol.Optional("daily_limit", default=options.get("daily_limit", data.get("daily_limit", 0)))] = (
-            _DAILY_LIMIT_SELECTOR
-        )
-
-        # Calendar toggle — only for scheduled tracking types (not As Needed)
-        if new_tracking_type != TRACKING_AS_NEEDED:
-            schema[
-                vol.Optional(
-                    "enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", False))
-                )
-            ] = sel.BooleanSelector()
 
         return self.async_show_form(
             step_id="schedule",
@@ -878,6 +837,9 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(
                 "strength_unit", default=options.get("strength_unit", data.get("strength_unit", STRENGTH_UNIT_MG))
             ): _STRENGTH_UNIT_SELECTOR,
+            vol.Optional(
+                "daily_limit", default=options.get("daily_limit", data.get("daily_limit", 0))
+            ): _DAILY_LIMIT_SELECTOR,
             vol.Optional("half_life", default=options.get("half_life", data.get("half_life", 0))): _HALF_LIFE_SELECTOR,
             vol.Optional(
                 "hours_to_peak", default=options.get("hours_to_peak", data.get("hours_to_peak", 0))
@@ -930,8 +892,6 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_effectiveness(self, user_input=None):
         """Step 3: Choose which effectiveness metrics to track and adherence settings."""
         if user_input is not None:
-            adherence_data = user_input.pop(_ADHERENCE_SECTION_KEY, {})
-            user_input.update(adherence_data)
             self._data.update(user_input)
             # Use the (possibly changed) tracking_type from self._data, not
             # the original entry.data value, so adherence is forced off when
@@ -939,6 +899,8 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             new_tracking_type = self._data.get("tracking_type", self._entry.data.get("tracking_type"))
             if new_tracking_type == TRACKING_AS_NEEDED:
                 self._data["enable_adherence"] = False
+                # Calendar has no predictable schedule for As Needed.
+                self._data["enable_calendar"] = False
             # If the tracking type changed, persist the new type + schedule
             # fields into entry.data via async_update_entry.  OptionsFlow
             # only writes entry.options, so we mutate entry.data explicitly
@@ -991,17 +953,31 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 for key in STANDARD_EFFECTIVENESS_METRICS
                 if options.get(f"metric_{key}", data.get(f"metric_{key}", False))
             ]
+        # Tracked symptoms first, then custom metrics, then calendar toggle,
+        # then adherence toggle + grace period at the bottom. The adherence
+        # fields are inlined as top-level fields (no collapsible section —
+        # only 2 fields, so a submenu wrapper is unnecessary).
         fields[vol.Optional("tracked_symptoms", default=existing_tracked)] = _TRACKED_SYMPTOMS_SELECTOR
         fields[
             vol.Optional("custom_metrics", default=options.get("custom_metrics", data.get("custom_metrics", "")))
         ] = sel.TextSelector()
-
-        # Only show adherence section for scheduled tracking types
         if tracking_type != TRACKING_AS_NEEDED:
-            fields[vol.Required(_ADHERENCE_SECTION_KEY)] = _make_adherence_section(
-                enable_default=options.get("enable_adherence", data.get("enable_adherence", True)),
-                grace_default=options.get("adherence_grace_hours", data.get("adherence_grace_hours", 1)),
-            )
+            fields[
+                vol.Optional(
+                    "enable_calendar", default=options.get("enable_calendar", data.get("enable_calendar", False))
+                )
+            ] = sel.BooleanSelector()
+            fields[
+                vol.Optional(
+                    "enable_adherence", default=options.get("enable_adherence", data.get("enable_adherence", True))
+                )
+            ] = sel.BooleanSelector()
+            fields[
+                vol.Optional(
+                    "adherence_grace_minutes",
+                    default=options.get("adherence_grace_minutes", data.get("adherence_grace_minutes", 60)),
+                )
+            ] = _ADHERENCE_GRACE_SELECTOR
 
         return self.async_show_form(step_id="effectiveness", data_schema=vol.Schema(fields))
 
