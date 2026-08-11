@@ -1,3 +1,9 @@
+[![GitHub Release](https://img.shields.io/github/v/release/Axildor/AX-Dose-Logger?style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/releases)
+[![HACS Status](https://img.shields.io/badge/HACS-Custom-orange.svg?style=flat-square)](https://github.com/hacs/integration)
+[![Lint Status](https://img.shields.io/github/actions/workflow/status/Axildor/AX-Dose-Logger/lint.yml?branch=main&label=Lint&style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/actions/workflows/lint.yml)
+[![Validate Status](https://img.shields.io/github/actions/workflow/status/Axildor/AX-Dose-Logger/validate.yml?branch=main&label=Validate&style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/actions/workflows/validate.yml)
+[![Buy me a tea](https://img.shields.io/badge/Buy_me_a_tea-☕-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/axildor)
+
 # 💊 AX Dose Logger
 
 A fully local Home Assistant integration for tracking **medications and drinks** — when you took them, when your next dose is, and whether it's safe to take another. It runs entirely on your instance with no cloud dependency.
@@ -8,7 +14,6 @@ For **drinks** (caffeine & alcohol), it tracks each drink granularly (one device
 
 > ⚠️ **Medical disclaimer:** This integration is for informational and home automation purposes only. It is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.
 
-[![Buy me a tea](https://img.shields.io/badge/Buy_me_a_tea-☕-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/axildor)
 
 ---
 
