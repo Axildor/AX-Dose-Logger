@@ -1,4 +1,4 @@
-[![GitHub Release](https://img.shields.io/github/v/release/Axildor/AX-Dose-Logger?style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/releases)
+<img width="724" height="667" alt="image" src="https://github.com/user-attachments/assets/607045e3-daba-46e8-86dd-7e1b64a0ec79" />[![GitHub Release](https://img.shields.io/github/v/release/Axildor/AX-Dose-Logger?style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/releases)
 [![HACS Status](https://img.shields.io/badge/HACS-Custom-orange.svg?style=flat-square)](https://github.com/hacs/integration)
 [![Lint Status](https://img.shields.io/github/actions/workflow/status/Axildor/AX-Dose-Logger/lint.yml?branch=main&label=Lint&style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/actions/workflows/lint.yml)
 [![Validate Status](https://img.shields.io/github/actions/workflow/status/Axildor/AX-Dose-Logger/validate.yml?branch=main&label=Validate&style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/actions/workflows/validate.yml)
@@ -92,7 +92,7 @@ The main README covers installation and everyday use. For deeper material, the d
 2. **Add a medication or drink** — Head to Settings → Devices & Services → Add Integration and search for **AX Dose Logger**. The config flow walks you through it in four steps (medications) or three steps (drinks).
 
 <!-- SCREENSHOT: The 4-step AX Dose Logger config flow — capture step 1 (name + tracking type + release type) or a composite of all 4 steps -->
-<img width="833" height="441" alt="Screenshot 2026-08-11 180542" src="https://github.com/user-attachments/assets/92be2888-4ecb-4ed0-9675-07ee1487083e" />
+<img width="441" alt="Screenshot 2026-08-11 180542" src="https://github.com/user-attachments/assets/92be2888-4ecb-4ed0-9675-07ee1487083e" />
 
 
 3. **Add the card to your dashboard** — Install the dedicated [AX Dose Logger Card](https://github.com/Axildor/AX-Dose-Logger-Card) and add it via the visual editor. No template YAML required. *(Optional — the integration works on its own.)*
@@ -120,7 +120,7 @@ Accidentally taking too much is easy to do, especially with medications that hav
 - **Overdose Warning** — When the pill limit hits 0, the Take button on the dedicated AX Dose Logger Card turns red and asks you to confirm before logging.
 
 <!-- SCREENSHOT: Daily pane with pill limit at 0 — Take button red with the confirmation dialog visible -->
-<img width="726" height="321" alt="Screenshot 2026-08-11 181202" src="https://github.com/user-attachments/assets/ae0b572f-840d-40ef-97dd-77fe38120f85" />
+<img width="441" alt="Screenshot 2026-08-11 181202" src="https://github.com/user-attachments/assets/ae0b572f-840d-40ef-97dd-77fe38120f85" />
 
 
 - **Next Dose Countdown** — The Next Dose sensor tells you exactly when your next scheduled dose is, so you can show live countdowns like "in 2 hours" or "Available now". For scheduled medications (Time of Day, Cyclic), the next dose always reflects your prescribed clock time — taking a dose late does not drift the schedule. The separate **Pills Safe to Take** sensor tells you whether it's actually safe to take now.
@@ -167,7 +167,7 @@ AX Dose Logger gives you several ways to look at your dosing history:
 - **Smart Inventory** — Tracks how many pills you have left. Double-tap the inventory tile on the AX Dose Logger Card to open the refill dialog, enter the new box amount, and it automatically adds to your total.
 
 <!-- SCREENSHOT: Double-tap on the inventory tile showing the refill input dialog -->
-<img width="790" height="315" alt="Screenshot 2026-08-11 181245" src="https://github.com/user-attachments/assets/9e4863ce-ebad-42f6-9081-75d1708e78f5" />
+<img width="441" alt="Screenshot 2026-08-11 181245" src="https://github.com/user-attachments/assets/9e4863ce-ebad-42f6-9081-75d1708e78f5" />
 
 
 - **Days Left** — How many days your current inventory lasts. Scheduled medications divide Pills Left by the configured doses/day. As-Needed medications divide by the 7-day average doses/day (shows `unknown` until enough history exists).
@@ -347,7 +347,8 @@ Once installed, add it to your dashboard via the visual editor and pick your med
 **Graphs pane** — daily-dose bar graph with timescale selector + amount-in-body line graph with timeframe selector:
 
 <!-- SCREENSHOT: Card showing the Graphs pane — daily-dose bar graph with timescale selector + amount-in-body line graph with timeframe selector -->
-![Graphs pane](screenshots/graphs-pane.png)
+<img width="441" alt="Screenshot 2026-08-11 194230" src="https://github.com/user-attachments/assets/6a6cddac-d1ab-41ef-9479-7d21ed14b4e7" />
+
 
 **Stats pane** — rolling average boxes (7/14/30/365 days), adherence percentage boxes, total doses, days since first dose:
 
