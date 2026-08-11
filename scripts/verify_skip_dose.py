@@ -44,11 +44,16 @@ def _overdue_anchor(parsed_times, timestamps, now, lookback_days=2):
             gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (parsed_times[i][0] * 60 + parsed_times[i][1])
             min_gap_minutes = min(min_gap_minutes, gap)
     from datetime import timedelta as td
+
     early_grace = td(minutes=max(30, min_gap_minutes // 2))
     assignments = compute_slot_assignments(
-        parsed_times, timestamps, now,
-        lookback_days=lookback_days, future_days=0,
-        early_grace=early_grace, lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+        parsed_times,
+        timestamps,
+        now,
+        lookback_days=lookback_days,
+        future_days=0,
+        early_grace=early_grace,
+        lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
     )
     overdue_since = None
     for a in assignments:
@@ -68,11 +73,16 @@ def _next_dose(parsed_times, timestamps, now):
                 gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (parsed_times[i][0] * 60 + parsed_times[i][1])
                 min_gap_minutes = min(min_gap_minutes, gap)
     from datetime import timedelta as td
+
     early_grace = td(minutes=max(30, min_gap_minutes // 2))
     assignments = compute_slot_assignments(
-        parsed_times, timestamps, now,
-        lookback_days=1, future_days=1,
-        early_grace=early_grace, lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+        parsed_times,
+        timestamps,
+        now,
+        lookback_days=1,
+        future_days=1,
+        early_grace=early_grace,
+        lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
     )
     for a in assignments:
         if not a.covered and a.slot_time > now:
@@ -87,13 +97,19 @@ def _adherence_missed(parsed_times, timestamps, now, grace_hours=1):
     closed (now >= slot + grace). A skip must NOT cover the slot here.
     """
     from datetime import timedelta as td
+
     grace_td = td(hours=grace_hours)
     window_days = 2
     lookback_days = max(2, window_days + 1)
     assignments = compute_slot_assignments(
-        parsed_times, timestamps, now,
-        lookback_days=lookback_days, future_days=0,
-        early_grace=grace_td, lateness_mode=LATENESS_CAPPED, lateness_cap=grace_td,
+        parsed_times,
+        timestamps,
+        now,
+        lookback_days=lookback_days,
+        future_days=0,
+        early_grace=grace_td,
+        lateness_mode=LATENESS_CAPPED,
+        lateness_cap=grace_td,
     )
     for a in reversed(assignments):
         if a.slot_time > now:
@@ -180,11 +196,17 @@ def test_take_dose_credits_adherence_contrast():
     missed_today = None
     # Walk the assignments and find today's 13:00 slot coverage.
     from datetime import timedelta as td
+
     grace_td = td(hours=1)
     assignments = compute_slot_assignments(
-        parsed_times, adherence_ts, now,
-        lookback_days=2, future_days=0,
-        early_grace=grace_td, lateness_mode=LATENESS_CAPPED, lateness_cap=grace_td,
+        parsed_times,
+        adherence_ts,
+        now,
+        lookback_days=2,
+        future_days=0,
+        early_grace=grace_td,
+        lateness_mode=LATENESS_CAPPED,
+        lateness_cap=grace_td,
     )
     today_1300 = _dt(13, 0)
     for a in assignments:
@@ -211,8 +233,9 @@ def test_pk_and_stock_untouched_by_skip():
     assert len(dose_history) == 1, "dose_history must NOT gain an entry on skip"
     assert dose_history[-1][0] == _dt(9, 0), "last_dose must stay at 09:00 (skip is not a dose)"
     # The skip is in skipped_slots, never in dose_history
-    assert all(ts not in {d[0] for d in dose_history} for ts in skipped), \
+    assert all(ts not in {d[0] for d in dose_history} for ts in skipped), (
         "skipped_slots must be disjoint from dose_history"
+    )
     print("PASS: PK / total / last_dose / days_left untouched by skip")
 
 

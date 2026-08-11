@@ -129,10 +129,7 @@ def ir_params(half_life, strength, bioavailability=100.0, hours_to_peak=1.0):
 
 def build_dose_history(start_time, tau_hours, n_doses, strength):
     """n_doses spaced tau_hours apart, the last at start_time."""
-    return [
-        (start_time - timedelta(hours=tau_hours * (n_doses - 1 - i)), strength)
-        for i in range(n_doses)
-    ]
+    return [(start_time - timedelta(hours=tau_hours * (n_doses - 1 - i)), strength) for i in range(n_doses)]
 
 
 # ---------------------------------------------------------------------------
@@ -239,9 +236,7 @@ def case_multi_dose_time_of_day():
     t_to_next = 0.01  # essentially at the trough
     mass = PKModel.compute(params, history, last_13 - timedelta(hours=0.01)).body
     # Evaluate at the trough (just before 13:00); next dose is at 13:00.
-    state = compute_state(
-        mass, k_e, c_max, c_min, thr, params, history, last_13 - timedelta(hours=0.01), last_13
-    )
+    state = compute_state(mass, k_e, c_max, c_min, thr, params, history, last_13 - timedelta(hours=0.01), last_13)
     check(
         f"pre-13:00 trough (16h gap) mass={mass:.2f} state={state}",
         state == 0.0,
@@ -251,9 +246,7 @@ def case_multi_dose_time_of_day():
     # Pre-21:00 trough (after 8h gap) - should also be reached.
     last_21 = history[-1][0]
     mass21 = PKModel.compute(params, history, last_21 - timedelta(hours=0.01)).body
-    state21 = compute_state(
-        mass21, k_e, c_max, c_min, thr, params, history, last_21 - timedelta(hours=0.01), last_21
-    )
+    state21 = compute_state(mass21, k_e, c_max, c_min, thr, params, history, last_21 - timedelta(hours=0.01), last_21)
     check(
         f"pre-21:00 trough (8h gap) mass={mass21:.2f} state={state21}",
         state21 == 0.0,
@@ -278,8 +271,8 @@ def case_cyclic_bug_c():
     # tau=48h -> R~5.09 -> real c_max~509, c_min~409. The mass oscillates
     # ~409-509 and reaches steady state (state=0.0), NOT the old stuck
     # 14.2-16.0. The key regression assertion is state==0.0 below.
-    check(f"c_max_ss uses tau=48h R~5.09 (got R={c_max/strength:.2f})", abs(c_max / strength - 5.09) < 0.2)
-    check(f"c_min_ss ~ 0.803 * c_max (got {c_min/c_max:.3f})", abs(c_min / c_max - 0.803) < 0.02)
+    check(f"c_max_ss uses tau=48h R~5.09 (got R={c_max / strength:.2f})", abs(c_max / strength - 5.09) < 0.2)
+    check(f"c_min_ss ~ 0.803 * c_max (got {c_min / c_max:.3f})", abs(c_min / c_max - 0.803) < 0.02)
 
     # ~7 half-lives = ~1064h = ~22 doses at 48h spacing.
     n_doses = 24
@@ -355,9 +348,7 @@ def case_dosage_reduction():
     # params/history/next_dose_dt are not used; pass a valid PKParams
     # anyway for signature compliance.
     red_params = ir_params(half_life, strength)
-    state = compute_state(
-        current, k_e, c_max, c_min, thr, red_params, [], datetime(2026, 1, 1), datetime(2026, 1, 1)
-    )
+    state = compute_state(current, k_e, c_max, c_min, thr, red_params, [], datetime(2026, 1, 1), datetime(2026, 1, 1))
     check(
         f"mass={current:.2f} (>110% c_max={c_max:.2f}) state={state} (should be > 0)",
         state is not None and state > 0.0,

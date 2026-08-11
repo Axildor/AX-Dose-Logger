@@ -8,6 +8,7 @@ midnight if a slot stays uncovered.
 All cases include realistic prior history (every prior slot taken on
 time) so only the slot under test is the variable.
 """
+
 import os
 import sys
 from datetime import UTC, datetime, timedelta
@@ -31,8 +32,10 @@ def dt(y, mo, d, h, mi):
 
 # Prior history: every slot on 08-06 and 08-07 taken on time.
 PRIOR_HISTORY = [
-    dt(2026, 8, 6, 13, 0), dt(2026, 8, 6, 21, 0),
-    dt(2026, 8, 7, 13, 0), dt(2026, 8, 7, 21, 0),
+    dt(2026, 8, 6, 13, 0),
+    dt(2026, 8, 6, 21, 0),
+    dt(2026, 8, 7, 13, 0),
+    dt(2026, 8, 7, 21, 0),
 ]
 
 
@@ -43,8 +46,11 @@ def covered_map(assignments):
 def case(name, now, doses, expected_overdue_slot):
     early_grace = timedelta(minutes=240)  # max(30, 480//2)
     assignments = compute_slot_assignments(
-        PARSED, doses, now,
-        lookback_days=2, future_days=0,
+        PARSED,
+        doses,
+        now,
+        lookback_days=2,
+        future_days=0,
         early_grace=early_grace,
         lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
     )
@@ -66,8 +72,11 @@ def case(name, now, doses, expected_overdue_slot):
 def next_dose_check(name, now, doses, expected_next):
     early_grace = timedelta(minutes=240)
     assignments = compute_slot_assignments(
-        PARSED, doses, now,
-        lookback_days=1, future_days=1,
+        PARSED,
+        doses,
+        now,
+        lookback_days=1,
+        future_days=1,
         early_grace=early_grace,
         lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
     )
@@ -88,8 +97,11 @@ def next_dose_check(name, now, doses, expected_next):
 def adherence_check(name, now, doses, grace_hours, expected_actual, expected_expected):
     grace = timedelta(hours=grace_hours)
     assignments = compute_slot_assignments(
-        PARSED, doses, now,
-        lookback_days=2, future_days=0,
+        PARSED,
+        doses,
+        now,
+        lookback_days=2,
+        future_days=0,
         early_grace=grace,
         lateness_mode=LATENESS_CAPPED,
         lateness_cap=grace,
@@ -105,7 +117,9 @@ def adherence_check(name, now, doses, grace_hours, expected_actual, expected_exp
         if a.covered:
             actual += 1
     ok = actual == expected_actual and expected == expected_expected
-    print(f"[{'PASS' if ok else 'FAIL'}] adherence {name}: actual={actual}/{expected} (want {expected_actual}/{expected_expected})")
+    print(
+        f"[{'PASS' if ok else 'FAIL'}] adherence {name}: actual={actual}/{expected} (want {expected_actual}/{expected_expected})"
+    )
     if not ok:
         print("    assignments:", covered_map(assignments))
     return ok
@@ -115,68 +129,82 @@ results = []
 
 # 1) Reported bug: 17:30 dose should cover 13:00, leave 21:00 uncovered.
 #    Prior history covers 08-06/08-07. Only 08-08 13:00 was the missed slot.
-results.append(case(
-    "17:30 dose covers 13:00 not 21:00",
-    now=dt(2026, 8, 8, 17, 30),
-    doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 17, 30)],
-    expected_overdue_slot=None,  # 13:00 covered by 17:30 -> no overdue
-))
+results.append(
+    case(
+        "17:30 dose covers 13:00 not 21:00",
+        now=dt(2026, 8, 8, 17, 30),
+        doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 17, 30)],
+        expected_overdue_slot=None,  # 13:00 covered by 17:30 -> no overdue
+    )
+)
 
 # 2) next_dose should report 21:00 (not "covered early" by the 17:30 dose).
-results.append(next_dose_check(
-    "17:30 dose leaves 21:00 as next",
-    now=dt(2026, 8, 8, 17, 30),
-    doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 17, 30)],
-    expected_next=dt(2026, 8, 8, 21, 0),
-))
+results.append(
+    next_dose_check(
+        "17:30 dose leaves 21:00 as next",
+        now=dt(2026, 8, 8, 17, 30),
+        doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 17, 30)],
+        expected_next=dt(2026, 8, 8, 21, 0),
+    )
+)
 
 # 3) Just before the 17:30 dose, 13:00 is overdue (prior covered).
-results.append(case(
-    "before dose, 13:00 overdue",
-    now=dt(2026, 8, 8, 17, 29),
-    doses=PRIOR_HISTORY,
-    expected_overdue_slot=dt(2026, 8, 8, 13, 0),
-))
+results.append(
+    case(
+        "before dose, 13:00 overdue",
+        now=dt(2026, 8, 8, 17, 29),
+        doses=PRIOR_HISTORY,
+        expected_overdue_slot=dt(2026, 8, 8, 13, 0),
+    )
+)
 
 # 4) Midnight reset: at 00:30 next day, 21:00 missed -> overdue anchors
 #    yesterday's 21:00 (not reset to 0). 13:00 was taken.
-results.append(case(
-    "midnight: yesterday 21:00 still overdue",
-    now=dt(2026, 8, 9, 0, 30),
-    doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 13, 5)],  # 13:00 taken, 21:00 missed
-    expected_overdue_slot=dt(2026, 8, 8, 21, 0),
-))
+results.append(
+    case(
+        "midnight: yesterday 21:00 still overdue",
+        now=dt(2026, 8, 9, 0, 30),
+        doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 13, 5)],  # 13:00 taken, 21:00 missed
+        expected_overdue_slot=dt(2026, 8, 8, 21, 0),
+    )
+)
 
 # 5) Midnight with both 08-08 doses taken -> no overdue.
-results.append(case(
-    "midnight: both taken -> no overdue",
-    now=dt(2026, 8, 9, 0, 30),
-    doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 13, 5), dt(2026, 8, 8, 21, 10)],
-    expected_overdue_slot=None,
-))
+results.append(
+    case(
+        "midnight: both taken -> no overdue",
+        now=dt(2026, 8, 9, 0, 30),
+        doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 13, 5), dt(2026, 8, 8, 21, 10)],
+        expected_overdue_slot=None,
+    )
+)
 
 # 6) Adherence with capped grace: a 4h-late dose is NOT on-time (1h grace).
 #    08-06 and 08-07 fully on time (4 slots), 08-08 both missed (17:30 is
 #    4.5h late for 13:00, 3.5h early for 21:00 -> neither within 1h grace).
 #    Window: lookback 2 days -> 08-06, 08-07, 08-08 = 6 slots, all past grace.
-results.append(adherence_check(
-    "17:30 dose is late for adherence (1h grace)",
-    now=dt(2026, 8, 8, 23, 0),
-    doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 17, 30)],
-    grace_hours=1,
-    expected_actual=4,  # only the 4 prior on-time slots
-    expected_expected=6,
-))
+results.append(
+    adherence_check(
+        "17:30 dose is late for adherence (1h grace)",
+        now=dt(2026, 8, 8, 23, 0),
+        doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 17, 30)],
+        grace_hours=1,
+        expected_actual=4,  # only the 4 prior on-time slots
+        expected_expected=6,
+    )
+)
 
 # 7) Adherence: 08-08 13:00 on time counts (5 covered / 6 expected).
-results.append(adherence_check(
-    "on-time 13:00 dose counts",
-    now=dt(2026, 8, 8, 23, 0),
-    doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 13, 5)],
-    grace_hours=1,
-    expected_actual=5,  # 4 prior + 08-08 13:00
-    expected_expected=6,
-))
+results.append(
+    adherence_check(
+        "on-time 13:00 dose counts",
+        now=dt(2026, 8, 8, 23, 0),
+        doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 13, 5)],
+        grace_hours=1,
+        expected_actual=5,  # 4 prior + 08-08 13:00
+        expected_expected=6,
+    )
+)
 
 print()
 print(f"{sum(results)}/{len(results)} passed")
