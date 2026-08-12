@@ -117,6 +117,21 @@ Click **Configure** on the integration entry to change settings without recreati
 
 ---
 
+### Changing the Home Assistant Timezone
+
+AX Dose Logger reads the current time from Home Assistant's configured timezone (`time_zone` in `configuration.yaml` or the UI General settings). Two scenarios affect how your medication schedule is displayed:
+
+**Daylight Saving Time transitions (spring forward / fall back)**
+- **Time of Day** and **Cyclic** schedules are wall-clock-anchored — a slot set at 08:00 stays at 08:00 across both DST transitions. Your medication times do not shift.
+- **Regular Interval** schedules are elapsed-time-anchored (the next dose is always `hours_between` real hours after the last dose). On a spring-forward day the wall-clock gap between two doses is one hour shorter; on a fall-back day it is one hour longer. The *actual* dosing interval is always preserved (pharmacokinetically correct and keeps the minimum-spacing safety floor). The Calendar entity uses the same anchor as the Next Dose sensor, so the two always agree.
+
+**Changing the HA timezone setting (relocation / travelling)**
+- Dose timestamps are stored as absolute UTC instants (ISO 8601 with offset), so your dose history and all PK calculations (concentration, steady state) are preserved exactly — only their wall-clock display changes.
+- **Regular Interval** is inherently zone-safe — the next-dose instant is computed from the last dose's absolute instant, so it carries over correctly to the new timezone.
+- **Time of Day** and **Cyclic** rebuild their slot grid in the new timezone. Historical doses taken in the old zone may not match the new zone's slot grid for the transition day, which can cause a one-day adherence dip. This self-heals as soon as you take your next dose in the new timezone — no action is needed. The schedule resumes correct tracking from that point.
+
+---
+
 ## Entity States & Attributes
 
 > This section is for advanced users who want to build custom templates beyond the dedicated AX Dose Logger Card. The card handles all of this automatically — you only need these details if you're hand-rolling your own Lovelace templates.
