@@ -132,6 +132,17 @@ DEFAULT_METRIC_ICON = "mdi:chart-line"
 # --- Daily-locked metric constants ---
 METRIC_STORE_KEY = "ax_dose_logger_metrics"  # Separate storage key for daily metric values
 
+# --- Retention window (days) for all persistent history stores ---
+# 365 = CMS/NCQA/PQA Proportion-of-Days-Covered adherence-measure floor (the
+# shortest window the rolling 365-day sensors need intact history for).
+# MIN/MAX bound the per-entry options-flow slider.
+# PK-safe at 365: caffeine (t1/2 ~5h) contributes <1% after 5 half-lives (~25h);
+# alcohol (zero-order incremental from persisted body_mass + last_decay) does
+# not recompute from history, so pruning old alcohol doses is a PK no-op.
+RETENTION_DAYS = 365
+MIN_RETENTION_DAYS = 30
+MAX_RETENTION_DAYS = 1095
+
 PK_DEFAULTS: dict[str, float] = {
     "bioavailability": 100,
     "ir_fraction": 100,

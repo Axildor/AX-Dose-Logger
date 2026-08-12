@@ -35,6 +35,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    DEVICE_CATEGORY_DRINK_SETTINGS,
     DOMAIN,
     DRINK_LOW_THRESHOLD,
     DRINK_TYPE_ALCOHOL,
@@ -42,8 +43,14 @@ from .const import (
     GLOBAL_PK_DEFAULTS,
     LOGGER,
     RELEASE_INSTANT,
+    RETENTION_DAYS,
 )
 from .pk_model import PKModel, PKParams, PKResult
+from .retention import (
+    prune_dose_pairs,
+    prune_dose_triples,
+    retention_cutoff,
+)
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -101,7 +108,12 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         self._masters = master_coordinators
 
     async def _async_setup(self) -> None:
-        """Load local dose history from the store on first refresh."""
+        """Load local dose history from the store on first refresh.
+
+        Prunes the loaded list to the universal drinks retention window so
+        an installation that previously ran unbounded frees RAM on load.
+        """
+        cutoff = retention_cutoff(dt_util.now(), self._retention_days())
         dose_history: list[tuple[datetime, float]] = []
         stored = self._store.get_history(self._entry.entry_id)
         for item in stored:
@@ -110,17 +122,19 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
                 dt = dt_util.parse_datetime(ts_str)
                 if dt:
                     dose_history.append((dt, float(strength_val)))
-            except ValueError, TypeError, IndexError:
+            except (ValueError, TypeError, IndexError):
                 continue
+        dose_history = prune_dose_pairs(dose_history, cutoff)
         last_dose = dose_history[-1][0] if dose_history else None
         self.data = DrinkCoordinatorData(
             dose_history=dose_history,
             last_dose_time=last_dose,
         )
         LOGGER.debug(
-            "DrinkCoordinator setup for %s: %d doses loaded",
+            "DrinkCoordinator setup for %s: %d doses loaded (retention=%dd)",
             self._entry.entry_id,
             len(dose_history),
+            self._retention_days(),
         )
 
     async def _async_update_data(self) -> DrinkCoordinatorData:
@@ -257,6 +271,31 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         return (now - last) < timedelta(hours=cooldown_h)
 
     # ------------------------------------------------------------------
+    # Retention window — inherited from the Drink Settings singleton
+    # ------------------------------------------------------------------
+    def _retention_days(self) -> int:
+        """Return the universal drinks retention window from Drink Settings.
+
+        Granular drink entries do NOT carry their own ``retention_days`` (the
+        slider lives only in the Drink Settings singleton).  We look up the
+        singleton config entry on each call so a Drink Settings options-flow
+        change takes effect without restarting the granular coordinator.
+        Falls back to :data:`RETENTION_DAYS` if the singleton is somehow
+        absent or the key is missing.
+        """
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            if entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS:
+                val = entry.options.get(
+                    "retention_days",
+                    entry.data.get("retention_days", RETENTION_DAYS),
+                )
+                try:
+                    return max(1, int(val))
+                except (TypeError, ValueError):
+                    return RETENTION_DAYS
+        return RETENTION_DAYS
+
+    # ------------------------------------------------------------------
     # Debounced store persistence (HA-native async_delay_save)
     # ------------------------------------------------------------------
     # Delegated to ``AxDoseLoggerStore.schedule_save_history`` which calls
@@ -265,8 +304,14 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
     # bespoke ``async_shutdown`` flush is needed.
     @callback
     def _save(self) -> None:
-        """Serialize current dose history and schedule a debounced store save."""
-        serialized = [[ts.isoformat(), strength] for ts, strength in self.data.dose_history]
+        """Serialize current dose history and schedule a debounced store save.
+
+        Prunes the serialized copy to the universal drinks retention window
+        so the ``.storage`` JSON stays bounded.
+        """
+        cutoff = retention_cutoff(dt_util.now(), self._retention_days())
+        kept = prune_dose_pairs(self.data.dose_history, cutoff)
+        serialized = [[ts.isoformat(), strength] for ts, strength in kept]
         self._store.schedule_save_history(self._entry.entry_id, serialized)
 
 
@@ -382,7 +427,15 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         )
 
     async def _async_setup(self) -> None:
-        """Load aggregated dose history + body mass from the store."""
+        """Load aggregated dose history + body mass from the store.
+
+        Prunes the loaded dose list to the universal drinks retention window.
+        PK-safe: caffeine (linear PK) contributes <1% after 5 half-lives
+        (~25h) so 365-day pruning is irrelevant; alcohol (incremental
+        zero-order from persisted ``body_mass`` + ``last_decay``) does not
+        recompute from history at all, so pruning is a no-op for it.
+        """
+        cutoff = retention_cutoff(dt_util.now(), self._retention_days())
         stored = self._store.get_drink_master(self._substance)
         doses: list[tuple[datetime, float, float]] = []
         for item in stored.get("doses", []):
@@ -391,8 +444,9 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
                 dt = dt_util.parse_datetime(ts_str)
                 if dt:
                     doses.append((dt, float(strength_val), float(t_dur_val)))
-            except ValueError, TypeError, IndexError:
+            except (ValueError, TypeError, IndexError):
                 continue
+        doses = prune_dose_triples(doses, cutoff)
         last_dose = doses[-1][0] if doses else None
         body_mass = float(stored.get("body_mass", 0.0))
         last_decay_str = stored.get("last_decay")
@@ -728,13 +782,42 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
     # is needed. The ``config_entry`` passed to ``super().__init__`` ensures
     # ``async_shutdown`` is registered on the Drink Settings entry's unload
     # hook so the coordinator is properly torn down.
+    def _retention_days(self) -> int:
+        """Return the universal drinks retention window from Drink Settings.
+
+        The master coordinator already receives the Drink Settings entry as
+        its ``config_entry`` (passed to ``DataUpdateCoordinator`` so shutdown
+        is registered on the singleton's unload hook), so we read
+        ``retention_days`` directly from it.  Falls back to
+        :data:`RETENTION_DAYS` if the key is missing.
+        """
+        entry = self.config_entry
+        val = entry.options.get(
+            "retention_days",
+            entry.data.get("retention_days", RETENTION_DAYS),
+        )
+        try:
+            return max(1, int(val))
+        except (TypeError, ValueError):
+            return RETENTION_DAYS
+
     @callback
     def _save(self) -> None:
-        """Serialize current master state and schedule a debounced store save."""
-        data = self.data
+        """Serialize current master state and schedule a debounced store save.
+
+        Prunes the persisted ``doses`` list to the retention window.  Note
+        that alcohol does NOT recompute body-mass from history (incremental
+        zero-order simulation from ``body_mass`` + ``last_decay``), so
+        pruning old alcohol doses is a PK no-op; caffeine (linear PK,
+        superposition) contributes <1% after 5 half-lives (~25h) so pruning
+        at 365 days is also PK-irrelevant.  See retention.py for the full
+        PK-safety rationale.
+        """
+        cutoff = retention_cutoff(dt_util.now(), self._retention_days())
+        kept = prune_dose_triples(self.data.dose_history, cutoff)
         serialized = {
-            "doses": [[ts.isoformat(), strength, t_dur] for ts, strength, t_dur in data.dose_history],
-            "body_mass": data.body_mass,
+            "doses": [[ts.isoformat(), strength, t_dur] for ts, strength, t_dur in kept],
+            "body_mass": self.data.body_mass,
             "last_decay": self._last_decay.isoformat() if self._last_decay else None,
         }
         self._store.schedule_save_drink_master(self._substance, serialized)

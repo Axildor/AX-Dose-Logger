@@ -402,14 +402,16 @@
           "custom_metrics": "Custom Metrics",
           "enable_calendar": "Calendar Entity",
           "enable_adherence": "Track Dose Adherence",
-          "adherence_grace_minutes": "On-Time Window"
+          "adherence_grace_minutes": "On-Time Window",
+          "retention_days": "History Retention (days)"
         },
         "data_description": {
           "tracked_symptoms": "Select which metrics to track alongside your doses.",
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each.",
           "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for as-needed medications.",
           "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
-          "adherence_grace_minutes": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on)."
+          "adherence_grace_minutes": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on).",
+          "retention_days": "How many days of dose, skip, adherence, and effectiveness-metric history to keep locally for the rolling sensors and a future medical-export feature. 365 days matches the CMS/NCQA Proportion-of-Days-Covered adherence-measure floor. Older entries are pruned from the local store; the HA recorder is not used. Range 30–1095."
         }
       },
       "drink_settings_options": {
@@ -420,14 +422,16 @@
           "global_caffeine_tmax": "Caffeine Time to Peak",
           "global_alcohol_elimination_rate": "Alcohol Elimination Rate",
           "caffeine_daily_limit_mg": "Caffeine 24h Limit",
-          "alcohol_daily_limit_g": "Alcohol 24h Limit"
+          "alcohol_daily_limit_g": "Alcohol 24h Limit",
+          "retention_days": "History Retention (days)"
         },
         "data_description": {
           "global_caffeine_half_life": "Hours for the body to eliminate half the caffeine. Population average: 5.0 h.",
           "global_caffeine_tmax": "Hours after ingestion until caffeine concentration peaks. Population average: 0.75 h.",
           "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h.",
           "caffeine_daily_limit_mg": "Maximum caffeine (mg) allowed in the last 24 hours. FDA recommended limit: 400 mg/day for healthy adults. Lower for lighter body mass, pregnancy, or caffeine sensitivity. Set 0 to disable the limit.",
-          "alcohol_daily_limit_g": "Maximum ethanol (g) allowed in the last 24 hours. No FDA limit exists. US Dietary Guidelines: ~14 g/day for women, ~28 g/day for men (1 standard drink ~14 g ethanol). Set 0 to disable the limit."
+          "alcohol_daily_limit_g": "Maximum ethanol (g) allowed in the last 24 hours. No FDA limit exists. US Dietary Guidelines: ~14 g/day for women, ~28 g/day for men (1 standard drink ~14 g ethanol). Set 0 to disable the limit.",
+          "retention_days": "Universal retention window for ALL drinks of both substances (caffeine + alcohol). How many days of drink + drink-master history to keep locally for the rolling sensors and a future medical-export feature. Older entries are pruned from the local store; the HA recorder is not used. Range 30–1095."
         }
       },
       "drink_options": {

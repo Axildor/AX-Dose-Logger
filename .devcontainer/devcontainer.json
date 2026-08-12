@@ -1,14 +1,15 @@
 {
   "name": "HA AX Dose Logger Full Stack",
-  "image": "ghcr.io/home-assistant/home-assistant:stable",
+  "image": "ghcr.io/home-assistant/home-assistant:2026.8.1",
   "remoteUser": "root",
   "forwardPorts": [8123],
   "runArgs": [
     "-p", "0.0.0.0:8123:8123"
   ],
-  "mounts": [
+"mounts": [
     "source=${localWorkspaceFolder}/../lovelace-pill-logger-card,target=/workspaces/lovelace-pill-logger-card,type=bind",
-    "source=${localWorkspaceFolder}/../lovelace-pill-logger-card/dist,target=/workspaces/Home-Assistant-Pill-Logger/config/www/ax-dose-logger,type=bind"
+    "source=${localWorkspaceFolder}/../lovelace-pill-logger-card/dist,target=/workspaces/Home-Assistant-Pill-Logger/config/www/ax-dose-logger,type=bind",
+    "source=bashhistory,target=/root/commandhistory,type=volume"
   ],
   "postCreateCommand": "apk update && apk add --no-cache nodejs npm libc6-compat github-cli && npm install -g corepack && corepack enable && export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 && cd /workspaces/lovelace-pill-logger-card && corepack prepare yarn@stable --activate && yarn install",
   "customizations": {

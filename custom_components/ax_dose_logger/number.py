@@ -236,11 +236,17 @@ class PillEffectivenessSlider(AxDoseLoggerEntity, NumberEntity):
         }
         if not self.coordinator.data:
             return base_attrs
-        metric_entry = self.coordinator.data.metric_values.get(self._metric_key)
+        # v2 date-keyed shape: metric_values[metric_key] is a
+        # {"YYYY-MM-DD": float} map.  Today's key present ⇒ logged today;
+        # the most recent date key (max) is the last-logged date for the
+        # attribute (historical days are retained for the 365-day export).
+        dated = self.coordinator.data.metric_values.get(self._metric_key)
         today = dt_util.now().date().isoformat()
-        if metric_entry and metric_entry.get("date") == today:
-            base_attrs["logged_today"] = True
-            base_attrs["last_logged_date"] = metric_entry.get("date")
+        if isinstance(dated, dict):
+            if today in dated:
+                base_attrs["logged_today"] = True
+            if dated:
+                base_attrs["last_logged_date"] = max(dated.keys())
         return base_attrs
 
     async def async_added_to_hass(self):

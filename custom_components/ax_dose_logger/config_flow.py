@@ -19,10 +19,13 @@ from .const import (
     DRINK_TYPES,
     GLOBAL_PK_DEFAULTS,
     MAX_DOSES_PER_DAY,
+    MAX_RETENTION_DAYS,
+    MIN_RETENTION_DAYS,
     PK_DEFAULTS,
     RELEASE_INSTANT,
     RELEASE_SUSTAINED,
     RELEASE_TYPES,
+    RETENTION_DAYS,
     STANDARD_EFFECTIVENESS_METRICS,
     STRENGTH_UNIT_G,
     STRENGTH_UNIT_MCG,
@@ -126,6 +129,19 @@ _ADHERENCE_GRACE_SELECTOR = sel.NumberSelector(
 _DOSES_PER_DAY_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(
         min=1, max=MAX_DOSES_PER_DAY, step=1, unit_of_measurement="times/day", mode=sel.NumberSelectorMode.BOX
+    )
+)
+# Retention window for all persistent history (medicine doses, skipped slots,
+# adherence overrides, effectiveness PROs).  Default 365 = CMS/NCQA/PQA
+# Proportion-of-Days-Covered floor; range 30..1095 (1 month to 3 years).
+# Per-entry for medicine; universal for drinks (Drink Settings singleton).
+_RETENTION_DAYS_SELECTOR = sel.NumberSelector(
+    sel.NumberSelectorConfig(
+        min=MIN_RETENTION_DAYS,
+        max=MAX_RETENTION_DAYS,
+        step=1,
+        unit_of_measurement="days",
+        mode=sel.NumberSelectorMode.BOX,
     )
 )
 _TRACKED_SYMPTOMS_SELECTOR = sel.SelectSelector(
@@ -470,6 +486,11 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             fields[vol.Optional("enable_adherence", default=default_adherence)] = sel.BooleanSelector()
             fields[vol.Optional("adherence_grace_minutes", default=60)] = _ADHERENCE_GRACE_SELECTOR
+
+        # Retention window for persistent history (doses, skipped slots,
+        # adherence overrides, effectiveness PROs).  Default 365 = CMS/NCQA
+        # PDC floor; range 30..1095.  Applies per-entry to this medicine.
+        fields[vol.Optional("retention_days", default=RETENTION_DAYS)] = _RETENTION_DAYS_SELECTOR
 
         return self.async_show_form(step_id="effectiveness", data_schema=vol.Schema(fields))
 
@@ -979,6 +1000,18 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             ] = _ADHERENCE_GRACE_SELECTOR
 
+        # Per-entry retention window for persistent history (doses, skipped
+        # slots, adherence overrides, effectiveness PROs).  Optional with the
+        # 365-day default so existing entries get 365 with no migration — the
+        # coordinator's get(..., RETENTION_DAYS) fallback handles entries
+        # that have never opened the options flow.
+        fields[
+            vol.Optional(
+                "retention_days",
+                default=options.get("retention_days", data.get("retention_days", RETENTION_DAYS)),
+            )
+        ] = _RETENTION_DAYS_SELECTOR
+
         return self.async_show_form(step_id="effectiveness", data_schema=vol.Schema(fields))
 
     # ------------------------------------------------------------------
@@ -1031,6 +1064,14 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                             "alcohol_daily_limit_g", data.get("alcohol_daily_limit_g", ALCOHOL_DEFAULT_LIMIT_G)
                         ),
                     ): _ALCOHOL_DAILY_LIMIT_SELECTOR,
+                    # Universal drinks retention window — one knob for every
+                    # granular drink AND both drink-master (caffeine/alcohol)
+                    # stores.  Granular drink entries inherit this value (they
+                    # do not carry their own retention_days); see DrinkCoordinator.
+                    vol.Required(
+                        "retention_days",
+                        default=options.get("retention_days", data.get("retention_days", RETENTION_DAYS)),
+                    ): _RETENTION_DAYS_SELECTOR,
                 }
             ),
         )
