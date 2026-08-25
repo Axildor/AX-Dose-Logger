@@ -31,6 +31,7 @@ from ..const import (
     DRINK_TYPE_CAFFEINE,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
+from ..const import master_unique_id
 from ._tracker_info import tracker_device_info
 
 # Fixed 24-hour rolling window for this sensor.
@@ -40,17 +41,13 @@ _WINDOW_HOURS = 24
 # ``unit`` is retained here for the limit-lookup context (read alongside
 # limit_key/default_limit in _read_daily_limit + _update_state).
 _SENSOR_INFO = {
-    DRINK_TYPE_CAFFEINE: {
-        "unique_id_stem": "drink_master_daily_amount_caffeine",
-        "translation_key": "drink_master_daily_amount_caffeine",
+    DRINK_TYPE_CAFFEINE: {        "translation_key": "drink_master_daily_amount_caffeine",
         "icon": "mdi:calendar-clock",
         "unit": "mg",
         "limit_key": "caffeine_daily_limit_mg",
         "default_limit": float(CAFFEINE_DEFAULT_LIMIT_MG),
     },
-    DRINK_TYPE_ALCOHOL: {
-        "unique_id_stem": "drink_master_daily_amount_alcohol",
-        "translation_key": "drink_master_daily_amount_alcohol",
+    DRINK_TYPE_ALCOHOL: {        "translation_key": "drink_master_daily_amount_alcohol",
         "icon": "mdi:calendar-clock",
         "unit": "g",
         "limit_key": "alcohol_daily_limit_g",
@@ -76,6 +73,8 @@ class DrinkMasterDailyAmountSensor(RestoreSensor):
         self,
         settings_entry,
         coordinator: DrinkMasterCoordinator,
+        profile_id: str,
+        profile_name: str | None,
     ) -> None:
         """Initialize the substance-aggregate 24h amount sensor.
 
@@ -86,19 +85,23 @@ class DrinkMasterDailyAmountSensor(RestoreSensor):
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
+        self._profile_id = profile_id
+        self._profile_name = profile_name
         self._settings_entry = settings_entry
         self._unit = info["unit"]
         self._limit_key = info["limit_key"]
         self._default_limit = info["default_limit"]
-        # Stable unique_id — survives Drink Settings entry recreation, mirrors
-        # the master PK sensor's drink_master_{substance} pattern.
-        self._attr_unique_id = info["unique_id_stem"]
+        # Stable unique_id — survives Drink Settings entry recreation.
+        # Distinct `_daily_amount` suffix avoids collision with the body-mass
+        # DrinkMasterSensor (owns the bare master_unique_id); mirrors the
+        # sleep_disruption / avg sibling suffix pattern.
+        self._attr_unique_id = f"{master_unique_id(profile_id, self._substance)}_daily_amount"
         self._attr_translation_key = info["translation_key"]
         self._attr_icon = info["icon"]
         self._attr_native_unit_of_measurement = self._unit
         # Stable device identifiers — standalone virtual Master Tracker device,
         # not tied to entry_id (see DrinkMasterSensor for the rationale).
-        self._attr_device_info = tracker_device_info(self._substance)
+        self._attr_device_info = tracker_device_info(profile_id, self._substance, profile_name=profile_name)
         # Initial state is computed in async_added_to_hass (which also
         # calls async_write_ha_state); computing here is redundant and
         # would be immediately overwritten.

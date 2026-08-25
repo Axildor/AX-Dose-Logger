@@ -156,9 +156,11 @@ class AxDoseLoggerStore:
         # { entry_id: { "overrides": ["iso", ...], "reset_time": "iso" | None } }
         self._adherence_store: Store = Store(hass, ADHERENCE_STORAGE_VERSION, ADHERENCE_STORAGE_KEY)
         self._adherence_data: dict[str, dict] = {}
-        # Per-substance drink master stores (created lazily)
-        self._drink_master_stores: dict[str, Store] = {}
-        self._drink_master_data: dict[str, dict] = {}
+        # Per-(profile_id, substance) drink master stores (created lazily).
+        # Rekeyed from substance-only to the 2D (profile_id, substance) tuple
+        # for the M2M multi-profile topology (see plans/m2m-decoupled-topology-plan.md).
+        self._drink_master_stores: dict[tuple[str, str], Store] = {}
+        self._drink_master_data: dict[tuple[str, str], dict] = {}
 
     async def async_load(self) -> None:
         """Load data from storage, migrating from the legacy key if needed.
@@ -240,28 +242,34 @@ class AxDoseLoggerStore:
             total_overrides,
         )
 
-    async def async_load_drink_master(self, substance: str, store_key: str) -> None:
-        """Load (or initialize) the drink master store for a substance.
+    async def async_load_drink_master(self, profile_id: str, substance: str, store_key: str) -> None:
+        """Load (or initialize) the drink master store for one profile + substance.
 
-        Called once per substance during Drink Settings entry setup.
+        Called once per (profile_id, substance) during Drink Settings entry
+        setup.  ``store_key`` is the profile-scoped storage key (see
+        ``const.drink_master_store_key``); the in-memory dicts are keyed by
+        the ``(profile_id, substance)`` tuple so multiple profiles' masters
+        coexist without collision (M2M topology).
         """
+        key = (profile_id, substance)
         store = Store(self._hass, DRINK_MASTER_STORAGE_VERSION, store_key)
-        self._drink_master_stores[substance] = store
+        self._drink_master_stores[key] = store
         data = await store.async_load()
         if data:
-            self._drink_master_data[substance] = data
+            self._drink_master_data[key] = data
         else:
-            self._drink_master_data[substance] = {
+            self._drink_master_data[key] = {
                 "doses": [],
                 "body_mass": 0.0,
                 "last_decay": None,
             }
-        doses = self._drink_master_data[substance].get("doses", [])
+        doses = self._drink_master_data[key].get("doses", [])
         LOGGER.info(
-            "AX Dose Logger drink master '%s' loaded: %d doses, body_mass=%.2f",
+            "AX Dose Logger drink master (profile=%s, %s) loaded: %d doses, body_mass=%.2f",
+            profile_id,
             substance,
             len(doses),
-            float(self._drink_master_data[substance].get("body_mass", 0.0)),
+            float(self._drink_master_data[key].get("body_mass", 0.0)),
         )
 
     @callback
@@ -363,26 +371,27 @@ class AxDoseLoggerStore:
     # Drink master storage (caffeine/alcohol aggregated PK)
     # ------------------------------------------------------------------
     @callback
-    def get_drink_master(self, substance: str) -> dict:
-        """Get the aggregated drink master data for a substance.
+    def get_drink_master(self, profile_id: str, substance: str) -> dict:
+        """Get the aggregated drink master data for one profile + substance.
 
         Returns {"doses": [[iso, strength, t_dur_hours], ...],
                  "body_mass": float, "last_decay": iso | None}.
         """
         return self._drink_master_data.get(
-            substance,
+            (profile_id, substance),
             {"doses": [], "body_mass": 0.0, "last_decay": None},
         )
 
     @callback
-    def schedule_save_drink_master(self, substance: str, data: dict) -> None:
-        """Update the in-memory master data for a substance and schedule a debounced save.
+    def schedule_save_drink_master(self, profile_id: str, substance: str, data: dict) -> None:
+        """Update the in-memory master data for one profile + substance and schedule a debounced save.
 
-        Each substance has its own ``Store`` instance (keyed by
-        ``DRINK_MASTER_STORE_KEYS[substance]``), so the delayed save
-        serializes only that substance's data.
+        Each (profile_id, substance) pair has its own ``Store`` instance
+        (keyed by the profile-scoped ``drink_master_store_key(profile_id,
+        substance)``), so the delayed save serializes only that pair's data.
         """
-        self._drink_master_data[substance] = data
-        store = self._drink_master_stores.get(substance)
+        key = (profile_id, substance)
+        self._drink_master_data[key] = data
+        store = self._drink_master_stores.get(key)
         if store is not None:
             store.async_delay_save(lambda: data, _SAVE_DEBOUNCE_SECONDS)

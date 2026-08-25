@@ -323,7 +323,7 @@ class DrinkDaysLeftSensor(RestoreSensor):
             return None
         now = dt_util.now()
         cutoff = now - timedelta(days=_AVG_WINDOW_DAYS)
-        timestamps = [ts for ts, _ in self._coordinator.data.dose_history]
+        timestamps = [ts for ts, _, _ in self._coordinator.data.dose_history]
         valid = [ts for ts in timestamps if ts >= cutoff]
         if not valid:
             return None

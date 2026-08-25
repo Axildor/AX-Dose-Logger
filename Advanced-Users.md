@@ -130,6 +130,58 @@ AX Dose Logger reads the current time from Home Assistant's configured timezone 
 - **Regular Interval** is inherently zone-safe — the next-dose instant is computed from the last dose's absolute instant, so it carries over correctly to the new timezone.
 - **Time of Day** and **Cyclic** rebuild their slot grid in the new timezone. Historical doses taken in the old zone may not match the new zone's slot grid for the transition day, which can cause a one-day adherence dip. This self-heals as soon as you take your next dose in the new timezone — no action is needed. The schedule resumes correct tracking from that point.
 
+### Multi-User Households (Profiles)
+
+The drinks subsystem supports **fully isolated per-person tracking** for multi-user households via a Many-to-Many topology between **Profiles** (the biological PK layer) and **Drinks** (the global inventory layer). Single-user setups are unaffected — an implicit "Default" profile is used automatically.
+
+#### Profiles (biological layer)
+
+A **profile** is a Drink Settings config entry representing one person. Each profile owns:
+- Its own PK constants (caffeine half-life, caffeine t-max, alcohol elimination rate) — editable via **Configure** on that profile's Drink Settings entry.
+- Its own per-substance daily limits (caffeine mg, alcohol g).
+- Its own two Master Tracker devices ("Alice Caffeine Tracker", "Alice Alcohol Tracker") with fully independent decay curves.
+- Its own `.storage` files for the aggregated dose history + body mass.
+
+Profiles are identified by an **immutable UUID** (the config entry's own `entry_id`) — the display name ("Alice") is mutable and can be renamed via the Drink Settings options flow without affecting routing, storage, or device identity. The legacy single-user "Default" profile uses a reserved literal id (`default`) and keeps the original un-profiled device names ("Caffeine Tracker") + store files — no migration, no broken entities.
+
+#### Drinks (global inventory layer)
+
+A **drink** (e.g. "Coca-Cola 33cl") is a global household asset, **not** owned by any profile. At setup you pick which profiles may route PK payloads from it via a multi-select **Allowed Profiles** field. Examples:
+- A 12-pack shared by two partners → Allowed Profiles = `[Alice, Bob]`.
+- Alice's personal morning coffee → Allowed Profiles = `[Alice]`.
+- A pure-inventory tracker (no PK) → Allowed Profiles = `[]` (empty — valid; tracks stock only).
+
+Reassign a drink's allowed profiles any time via the drink's **Configure** (options) flow.
+
+#### Logging a shared drink (split-routing)
+
+When a drink has more than one allowed profile, pressing **Log Drink** requires choosing **whose** body the payload routes to. The dashboard card shows a **"Who is logging this?"** popup and calls the `ax_dose_logger.log_drink` service with a `target_profile` argument:
+
+```yaml
+service: ax_dose_logger.log_drink
+data:
+  entry_id: <the shared drink's config entry id>
+  target_profile: <the profile UUID whose Master Tracker should receive the dose>
+```
+
+The local inventory always decrements (the 12-pack loses one unit regardless of who drank it); only the PK payload is routed to the chosen profile. Automations reading the `ax_dose_logger_drink_taken` event can disambiguate via the `device_owner_id` (the drink's native profile) and `target_profile_id` (whose PK curve changed) event fields.
+
+- A drink with **one** allowed profile: `target_profile` is optional (defaults to that profile) — single-user behavior, no popup.
+- A drink with **zero** allowed profiles: logs to inventory only (no PK routing).
+- The raw **Log Drink button entity** (stateless HA trigger) cannot carry a per-press target, so it uses the single-profile convenience default and raises if the drink is shared — use the card for shared drinks.
+
+#### Undo / Reset with split-routing
+
+Undo and Reset are **per-dose aware**: each logged dose records which profile received it, so Undo removes the dose from *that* profile's Master Tracker (not the drink's native profile), and Reset surgically removes only this drink's contributions from each affected profile (rather than wiping one profile's entire curve). This prevents the corruption that would occur if a shared drink's reset wiped an unrelated person's caffeine curve.
+
+#### Deleting a profile (non-destructive)
+
+Removing a profile's Drink Settings entry **does not** delete any drink devices. The integration scrubs the deleted profile's UUID from every drink's Allowed Profiles array — the drinks survive for the remaining users. A drink whose Allowed Profiles becomes empty after scrubbing degrades to a pure-inventory tracker (no PK routing); it is never deleted.
+
+#### Per-profile retention
+
+Each Drink Settings entry has its own **History Retention** slider, so Alice and Bob can have different retention windows if desired. Granular drinks inherit retention from whichever profile's Drink Settings entry is found first (the universal drinks retention model is preserved).
+
 ---
 
 ## Entity States & Attributes

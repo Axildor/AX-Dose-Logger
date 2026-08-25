@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "ax_dose_logger"
-CURRENT_VERSION = 15
+CURRENT_VERSION = 16
 
 # --- Tracking type constants ---
 TRACKING_REGULAR_INTERVAL = "regular_interval"
@@ -89,6 +89,62 @@ DRINK_MASTER_STORE_KEYS: dict[str, str] = {
     DRINK_TYPE_CAFFEINE: "ax_dose_logger_drink_master_caffeine",
     DRINK_TYPE_ALCOHOL: "ax_dose_logger_drink_master_alcohol",
 }
+
+# --- Multi-Profile (M2M Decoupled Topology) ---
+# A profile is a Drink Settings config entry representing one biological
+# subject (person). It owns two DrinkMasterCoordinator instances (caffeine +
+# alcohol) + their store files + Master Tracker devices + PK constants.
+# Profiles are identified by an IMMUTABLE id (the Drink Settings entry's own
+# HA-managed entry_id UUID for new profiles; the reserved literal "default"
+# for the legacy singleton). The user-entered profile_name is a mutable
+# display string only -- never used for routing, store keys, device ids, or
+# unique_ids. See plans/m2m-decoupled-topology-plan.md.
+#
+# Granular drink config entries are global inventory nodes (NOT children of
+# any profile). They store an `allowed_profiles` array of profile UUIDs that
+# may route PK payloads from this device. The log_drink service accepts a
+# `target_profile` UUID to route a dose to a specific profile's master while
+# decrementing the shared inventory. Deleting a profile scrubs its UUID from
+# every drink's allowed_profiles array (non-destructive -- drinks survive).
+DEFAULT_PROFILE_ID = "default"
+
+
+def drink_master_store_key(profile_id: str, substance: str) -> str:
+    """Return the .storage key for a profile's per-substance master store.
+
+    The legacy ``default`` profile keeps the original un-profiled keys
+    (``ax_dose_logger_drink_master_caffeine``) so existing single-user installs
+    read from the same files with zero migration. New profiles get a
+    profile-scoped key built from the immutable profile id (UUID, filesystem-safe).
+    """
+    if profile_id == DEFAULT_PROFILE_ID:
+        return DRINK_MASTER_STORE_KEYS[substance]
+    return f"ax_dose_logger_drink_master_{profile_id}_{substance}"
+
+
+def tracker_id_for(profile_id: str, substance: str) -> str:
+    """Return the Master Tracker device identifier for a profile + substance.
+
+    The ``default`` profile keeps the legacy tracker ids (``caffeine_tracker``)
+    so existing device-registry entries resolve to the same devices. New
+    profiles get a profile-scoped tracker id built from the immutable profile id.
+    """
+    if profile_id == DEFAULT_PROFILE_ID:
+        # Legacy un-profiled tracker ids (const.CAFFEINE_TRACKER_ID etc.).
+        return f"{substance}_tracker"
+    return f"{substance}_tracker_{profile_id}"
+
+
+def master_unique_id(profile_id: str, substance: str) -> str:
+    """Return the sensor unique_id for a Master Tracker PK sensor.
+
+    The ``default`` profile keeps the legacy unique_ids (``drink_master_caffeine``)
+    so existing entity-registry entries resolve to the same sensors. New profiles
+    get a profile-scoped unique_id built from the immutable profile id.
+    """
+    if profile_id == DEFAULT_PROFILE_ID:
+        return f"drink_master_{substance}"
+    return f"drink_master_{profile_id}_{substance}"
 
 # --- Global PK defaults (Drink Settings singleton) ---
 GLOBAL_PK_DEFAULTS: dict[str, float] = {

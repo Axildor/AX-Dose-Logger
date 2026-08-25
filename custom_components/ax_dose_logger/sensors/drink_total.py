@@ -38,9 +38,17 @@ class DrinkTotalSensor(RestoreSensor):
         # group drinks by substance for the Master Tracker Log Drink popup +
         # Inventory panel.  Mirrors the master tracker's `drink_master: True`
         # marker but with `device_type: "drink"` (granular) + `substance`.
+        # M2M topology: expose allowed_profiles + shared_drink so the
+        # frontend card can auto-populate its profile picker (read from
+        # the config entry data/options) and decide whether to show the
+        # "Who is logging this?" popup (shared_drink flag).  Mirrors the
+        # DrinkLogButton attributes; duplicated here because the card may
+        # resolve the drink via either entity.
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "device_type": "drink",
+            "allowed_profiles": entry.data.get("allowed_profiles", ["default"]),
+            "shared_drink": entry.options.get("shared_drink", entry.data.get("shared_drink", False)),
         }
 
     async def async_added_to_hass(self) -> None:
@@ -59,8 +67,16 @@ class DrinkTotalSensor(RestoreSensor):
             self._attr_native_value = len(self._coordinator.data.dose_history)
         else:
             self._attr_native_value = 0
+        # M2M topology: expose allowed_profiles + shared_drink so the
+        # frontend card can auto-populate its profile picker (read from
+        # the config entry data/options) and decide whether to show the
+        # "Who is logging this?" popup (shared_drink flag).  Mirrors the
+        # DrinkLogButton attributes; duplicated here because the card may
+        # resolve the drink via either entity.
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "device_type": "drink",
+            "allowed_profiles": self._entry.data.get("allowed_profiles", ["default"]),
+            "shared_drink": self._entry.options.get("shared_drink", self._entry.data.get("shared_drink", False)),
         }
         self.async_write_ha_state()

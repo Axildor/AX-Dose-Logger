@@ -206,14 +206,30 @@ class DrinkLogButton(AxDoseLoggerEntity, ButtonEntity):
         # matching (entity_id is slugify(translated_name), not the unique_id
         # stem; "Log Drink" → log_drink happens to match, but undo/reset do
         # not — role makes all three robust).
+        # M2M topology: expose allowed_profiles + shared_drink so the
+        # frontend card can auto-populate its profile picker (multi-select
+        # read from the config entry data/options) and decide whether to
+        # show the "Who is logging this?" popup (shared_drink flag).
         self._attr_extra_state_attributes = {
             "substance": entry.data.get("drink_type"),
             "device_type": "drink",
             "role": "log",
+            "allowed_profiles": entry.data.get("allowed_profiles", ["default"]),
+            "shared_drink": entry.options.get("shared_drink", entry.data.get("shared_drink", False)),
         }
 
     async def async_press(self):
-        """Log a drink. Cooldown is card-enforced (override always allowed)."""
+        """Log a drink. Cooldown is card-enforced (override always allowed).
+
+        M2M button-press routing: the button is a stateless HA trigger and
+        cannot carry a per-press target_profile.  When the drink has
+        exactly one allowed profile, the convenience default routes to
+        it (single-user / single-profile case).  When the drink has
+        multiple allowed profiles, the button CANNOT disambiguate, so it
+        raises -- shared drinks must be logged via the frontend card
+        (which calls the log_drink service with target_profile).  A drink
+        with zero allowed profiles logs to inventory only (no PK routing).
+        """
         await self._drink_coordinator.async_log_drink(dt_util.now())
 
 

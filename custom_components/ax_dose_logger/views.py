@@ -54,26 +54,29 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
         if not device or not device.config_entries:
             return self.json([])
 
-        # Master Tracker devices: identifiers carry the stable tracker id
-        # (e.g. (DOMAIN, "caffeine_tracker")) rather than an entry_id.  Their
-        # aggregated dose history lives in store.get_drink_master(substance),
-        # not in the per-entry store history.  Detect the tracker id and
-        # return the aggregated master history serialized as
+        # Master Tracker devices: identifiers carry the profile-scoped tracker
+        # id (e.g. (DOMAIN, "caffeine_tracker") for the legacy default profile,
+        # (DOMAIN, "caffeine_tracker_{uuid}") for a named profile).  Their
+        # aggregated dose history lives in store.get_drink_master(profile_id,
+        # substance), not in the per-entry store history.  Detect the tracker
+        # id and return the aggregated master history serialized as
         # [[iso, strength], ...] to match the medicine format the frontend's
         # _bucketByDay expects.
         for identifier in device.identifiers:
             if identifier[0] != DOMAIN:
                 continue
-            substance = tracker_substance(identifier[1])
-            if substance is not None:
-                master_data = store.get_drink_master(substance)
+            resolved = tracker_substance(identifier[1])
+            if resolved is not None:
+                profile_id, substance = resolved
+                master_data = store.get_drink_master(profile_id, substance)
                 doses = master_data.get("doses", [])
                 # Master doses are stored as [iso, strength, t_dur_hours];
                 # the frontend bar graph only consumes [iso, strength].
                 payload = [[d[0], d[1]] for d in doses if len(d) >= 2]
                 _LOGGER.info(
-                    "ax_dose_logger history REST: master device_id=%s substance=%s returned %d doses (store had %d)",
+                    "ax_dose_logger history REST: master device_id=%s profile=%s substance=%s returned %d doses (store had %d)",
                     device_id,
+                    profile_id,
                     substance,
                     len(payload),
                     len(doses),
@@ -151,11 +154,34 @@ class AxDoseLoggerPredictLowView(HomeAssistantView):
                 return self.json({"low_time": None})
 
             substance = config_entry.data.get("drink_type")
+            # M2M: resolve the target profile.  The card passes target_profile
+            # (the UUID of the profile whose Low band to predict for).  If
+            # omitted, fall back to the drink's first allowed_profile (single-
+            # profile convenience default).  Validate the target is in the
+            # drink's allowed_profiles; if not, return None (the card will
+            # render "Low: -").
+            target_profile = request.query.get("target_profile")
+            allowed_profiles = config_entry.data.get("allowed_profiles", ["default"])
+            if target_profile:
+                if target_profile not in allowed_profiles:
+                    _LOGGER.info(
+                        "ax_dose_logger predict_low REST: target_profile %s not in allowed_profiles %s",
+                        target_profile,
+                        allowed_profiles,
+                    )
+                    return self.json({"low_time": None})
+                predict_profile = target_profile
+            elif allowed_profiles:
+                predict_profile = allowed_profiles[0]
+            else:
+                # No allowed profiles -> pure inventory tracker, no PK curve.
+                return self.json({"low_time": None})
             masters = hass.data.get(DOMAIN, {}).get("_drink_masters", {})
-            coordinator = masters.get(substance)
+            coordinator = masters.get((predict_profile, substance))
             if coordinator is None:
                 _LOGGER.info(
-                    "ax_dose_logger predict_low REST: no master coordinator for %s",
+                    "ax_dose_logger predict_low REST: no master coordinator for (profile=%s, %s)",
+                    predict_profile,
                     substance,
                 )
                 return self.json({"low_time": None})

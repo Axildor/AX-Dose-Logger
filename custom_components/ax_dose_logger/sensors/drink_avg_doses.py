@@ -64,7 +64,7 @@ class DrinkAvgDosesSensor(RestoreSensor):
             self._history_start_date = dt_util.parse_datetime(last_state_obj.attributes["history_start_date"])
         # Anchor to earliest dose from coordinator dose_history.
         if self._coordinator.data and self._coordinator.data.dose_history:
-            self._history_start_date = min(ts for ts, _ in self._coordinator.data.dose_history)
+            self._history_start_date = min(ts for ts, _, _ in self._coordinator.data.dose_history)
         if self._history_start_date is None:
             self._history_start_date = dt_util.now()
         self._update_state()
@@ -89,7 +89,7 @@ class DrinkAvgDosesSensor(RestoreSensor):
         cutoff = now - timedelta(days=actual_window_days)
         timestamps = []
         if self._coordinator.data and self._coordinator.data.dose_history:
-            timestamps = [ts for ts, _ in self._coordinator.data.dose_history]
+            timestamps = [ts for ts, _, _ in self._coordinator.data.dose_history]
         valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
 
         # As-needed average: doses in window / window days.

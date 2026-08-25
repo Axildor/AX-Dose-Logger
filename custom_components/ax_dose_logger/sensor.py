@@ -156,40 +156,41 @@ async def _setup_drink_settings_sensors(
     entry: AxDoseLoggerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Drink Settings singleton — instantiate the Master Tracker sensors.
+    """Drink Settings entry (a profile) -- instantiate THIS profile's Master Tracker sensors.
 
     The master coordinators are created in ``async_setup_entry`` (in
-    ``__init__.py``) and stored in ``hass.data[DOMAIN]["_drink_masters"]``.
-    The Master Tracker devices use stable identifiers (not entry_id) so
-    they survive Drink Settings entry recreation.
+    ``__init__.py``) and stored in ``hass.data[DOMAIN]["_drink_masters"]``
+    keyed by ``(profile_id, substance)``.  The Master Tracker devices use
+    profile-scoped stable identifiers (the immutable profile_id, not the
+    entry_id) so they survive Drink Settings entry recreation and each
+    profile gets distinct devices.
 
-    Per substance, two sensor types are created on the Master Tracker device:
-      * ``DrinkMasterSensor`` — global PK body mass (mg/g).
-      * ``DrinkMasterAvgDosesSensor`` ×4 — rolling avg daily drink count over
-        7/14/30/365-day windows, aggregating *every* drink of that substance
-        across all granular drink devices (reads the master coordinator's
-        aggregated dose_history, which is the union of all granular drinks).
+    Per substance, the master PK sensor + last-dose + sleep-disruption +
+    estimated-low-time + low-hours-until + daily-amount + 4 avg-doses sensors
+    are created on this profile's Master Tracker device, reading the
+    profile's master coordinator (which aggregates only the doses routed to
+    this profile).
     """
-    masters: dict[str, DrinkMasterCoordinator] = hass.data[DOMAIN].get("_drink_masters", {})
+    from .const import DEFAULT_PROFILE_ID
+
+    masters: dict[tuple[str, str], DrinkMasterCoordinator] = hass.data[DOMAIN].get("_drink_masters", {})
+    # Resolve the immutable profile_id + mutable display name for this entry.
+    if entry.unique_id == "drink_settings":
+        profile_id = DEFAULT_PROFILE_ID
+    else:
+        profile_id = entry.data.get("profile_id", DEFAULT_PROFILE_ID)
+    profile_name = entry.data.get("profile_name")
     entities = []
-    if DRINK_TYPE_CAFFEINE in masters:
-        master = masters[DRINK_TYPE_CAFFEINE]
-        entities.append(DrinkMasterSensor(entry, master))
-        entities.append(DrinkMasterLastDoseSensor(entry, master))
-        entities.append(DrinkMasterSleepDisruptionSensor(entry, master))
-        entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master))
-        entities.append(DrinkMasterLowHoursUntilSensor(entry, master))
-        entities.append(DrinkMasterDailyAmountSensor(entry, master))
+    for substance in (DRINK_TYPE_CAFFEINE, DRINK_TYPE_ALCOHOL):
+        master = masters.get((profile_id, substance))
+        if master is None:
+            continue
+        entities.append(DrinkMasterSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterLastDoseSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterSleepDisruptionSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterLowHoursUntilSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterDailyAmountSensor(entry, master, profile_id, profile_name))
         for window in (7, 14, 30, 365):
-            entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
-    if DRINK_TYPE_ALCOHOL in masters:
-        master = masters[DRINK_TYPE_ALCOHOL]
-        entities.append(DrinkMasterSensor(entry, master))
-        entities.append(DrinkMasterLastDoseSensor(entry, master))
-        entities.append(DrinkMasterSleepDisruptionSensor(entry, master))
-        entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master))
-        entities.append(DrinkMasterLowHoursUntilSensor(entry, master))
-        entities.append(DrinkMasterDailyAmountSensor(entry, master))
-        for window in (7, 14, 30, 365):
-            entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
+            entities.append(DrinkMasterAvgDosesSensor(entry, master, window, profile_id, profile_name))
     async_add_entities(entities)

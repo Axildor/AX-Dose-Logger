@@ -51,6 +51,7 @@ from ..const import (
     DRINK_TYPE_CAFFEINE,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
+from ..const import master_unique_id
 from ._tracker_info import tracker_device_info
 
 # Sensor-specific keys per substance (common keys — tracker_id, device_name,
@@ -58,13 +59,7 @@ from ._tracker_info import tracker_device_info
 # three sensor classes' unique_id/translation_key pairs plus the disruption
 # bands + thresholds that are specific to this file.
 _SENSOR_INFO = {
-    DRINK_TYPE_CAFFEINE: {
-        "disruption_unique_id": "drink_master_sleep_disruption_caffeine",
-        "disruption_translation_key": "sleep_disruption_caffeine",
-        "estimated_low_unique_id": "drink_master_estimated_low_time_caffeine",
-        "estimated_low_translation_key": "estimated_low_time_caffeine",
-        "low_hours_until_unique_id": "drink_master_low_hours_until_caffeine",
-        "low_hours_until_translation_key": "low_hours_until_caffeine",
+    DRINK_TYPE_CAFFEINE: {        "disruption_translation_key": "sleep_disruption_caffeine",        "estimated_low_translation_key": "estimated_low_time_caffeine",        "low_hours_until_translation_key": "low_hours_until_caffeine",
         "icon": "mdi:bed-clock",
         "unit": "mg",
         # (upper_bound_exclusive, label) — bare labels, no unit suffix.
@@ -84,13 +79,7 @@ _SENSOR_INFO = {
         # matches the sensor's target).
         "low_threshold": DRINK_LOW_THRESHOLD[DRINK_TYPE_CAFFEINE],
     },
-    DRINK_TYPE_ALCOHOL: {
-        "disruption_unique_id": "drink_master_sleep_disruption_alcohol",
-        "disruption_translation_key": "sleep_disruption_alcohol",
-        "estimated_low_unique_id": "drink_master_estimated_low_time_alcohol",
-        "estimated_low_translation_key": "estimated_low_time_alcohol",
-        "low_hours_until_unique_id": "drink_master_low_hours_until_alcohol",
-        "low_hours_until_translation_key": "low_hours_until_alcohol",
+    DRINK_TYPE_ALCOHOL: {        "disruption_translation_key": "sleep_disruption_alcohol",        "estimated_low_translation_key": "estimated_low_time_alcohol",        "low_hours_until_translation_key": "low_hours_until_alcohol",
         "icon": "mdi:glass-wine",
         "unit": "g",
         "bands": [
@@ -127,20 +116,22 @@ class DrinkMasterSleepDisruptionSensor(RestoreSensor):
     _attr_should_poll = False
     # Categorical string sensor — no state_class / native unit.
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
+    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
         """Initialize the sleep-disruption band sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
+        self._profile_id = profile_id
+        self._profile_name = profile_name
         self._unit = info["unit"]
         self._bands = info["bands"]
         self._none_threshold = info["none_threshold"]
-        self._attr_unique_id = info["disruption_unique_id"]
+        self._attr_unique_id = f"{master_unique_id(profile_id, self._substance)}_sleep_disruption"
         self._attr_translation_key = info["disruption_translation_key"]
         self._attr_icon = info["icon"]
         # Stable device identifiers — standalone virtual Master Tracker
         # device, not tied to entry_id (mirrors DrinkMasterSensor).
-        self._attr_device_info = tracker_device_info(self._substance)
+        self._attr_device_info = tracker_device_info(profile_id, self._substance, profile_name=profile_name)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "drink_master": True,  # Frontend filter marker
@@ -218,19 +209,21 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
     _attr_should_poll = False
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
+    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
         """Initialize the Estimated Low Time timestamp sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
+        self._profile_id = profile_id
+        self._profile_name = profile_name
         self._low_threshold = info["low_threshold"]
         self._none_threshold = info["none_threshold"]
-        self._attr_unique_id = info["estimated_low_unique_id"]
+        self._attr_unique_id = f"{master_unique_id(profile_id, self._substance)}_estimated_low_time"
         self._attr_translation_key = info["estimated_low_translation_key"]
         self._attr_icon = "mdi:bed-clock"
         # Stable device identifiers — standalone virtual Master Tracker
         # device, not tied to entry_id (mirrors DrinkMasterSensor).
-        self._attr_device_info = tracker_device_info(self._substance)
+        self._attr_device_info = tracker_device_info(profile_id, self._substance, profile_name=profile_name)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "drink_master": True,  # Frontend filter marker
@@ -339,20 +332,22 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_suggested_display_precision = 1
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
+    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
         """Initialize the Low - Hours Until countdown sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
+        self._profile_id = profile_id
+        self._profile_name = profile_name
         self._low_threshold = info["low_threshold"]
         self._none_threshold = info["none_threshold"]
         self._unit = info["unit"]
-        self._attr_unique_id = info["low_hours_until_unique_id"]
+        self._attr_unique_id = f"{master_unique_id(profile_id, self._substance)}_low_hours_until"
         self._attr_translation_key = info["low_hours_until_translation_key"]
         self._attr_icon = "mdi:timer-sand"
         # Stable device identifiers — standalone virtual Master Tracker
         # device, not tied to entry_id (mirrors the sibling sensors).
-        self._attr_device_info = tracker_device_info(self._substance)
+        self._attr_device_info = tracker_device_info(profile_id, self._substance, profile_name=profile_name)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "drink_master": True,  # Frontend filter marker

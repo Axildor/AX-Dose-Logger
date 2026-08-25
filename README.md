@@ -288,6 +288,22 @@ When a limit is set (> 0), the sensor exposes a `remaining` attribute (`daily_li
 
 > **Intake vs. body load:** *Amount in Last 24h* tracks **how much you swallowed** in the rolling window — the correct value for comparing against FDA/Dietary Guidelines daily limits (which are stated as total daily *intake*, not plasma concentration). For the **current active amount in your body** (accounting for absorption and elimination), use the Master Tracker's *Amount in Body* sensor instead. These answer different questions: a dose taken 20 hours ago has mostly cleared from your body but still counts toward your 24h intake budget.
 
+### Multi-User Households (Profiles)
+
+By default the integration runs in **single-profile mode**: one implicit "Default" profile holds the Drink Settings (PK constants + daily limits) and the two Master Tracker devices. Single-user setups see no change.
+
+For a multi-user household (e.g. two partners), the integration supports **fully isolated per-person tracking** via a Many-to-Many topology:
+
+- **Profiles** (biological layer): each person gets their own Drink Settings entry — their own PK constants (caffeine half-life, alcohol elimination rate), their own daily limits, and their own Caffeine Tracker + Alcohol Tracker devices with independent decay curves. Create a new profile from the **Drink Setup** step ("➕ New profile…") or let the card create one on first use.
+- **Drinks** (global inventory layer): each physical drink (e.g. "Coca-Cola 33cl") is a shared household asset, **not** owned by any profile. At setup you pick which profiles may route PK payloads from it via a multi-select **Allowed Profiles** field. A 12-pack shared by two people gets both profiles; each person's morning coffee gets just their own.
+- **Logging a shared drink**: when you press Log Drink on a multi-profile drink, the dashboard card asks **"Who is logging this?"** and routes the caffeine/alcohol payload to the chosen profile's Master Tracker while decrementing the shared inventory. The `ax_dose_logger.log_drink` service accepts an optional `target_profile` argument for the same split-routing from automations.
+- **Deleting a profile is non-destructive**: removing a person's Drink Settings entry scrubs their profile from every drink's Allowed Profiles list — the drink devices themselves survive for the remaining users (a shared 12-pack is not destroyed when one person leaves).
+
+Each profile's Master Tracker devices are named after the profile (e.g. "Alice Caffeine Tracker", "Bob Alcohol Tracker") so they're easy to tell apart on the dashboard.
+
+> **Backwards compatible**: existing single-user installs keep the implicit "Default" profile with the original Master Tracker device names ("Caffeine Tracker", "Alcohol Tracker") and store files — no migration step, no broken entities. See [Advanced-Users.md](Advanced-Users.md) for the full configuration reference.
+
+
 ### Sleep Disruption Bands
 
 The Sleep Disruption sensor classifies the current body-mass load into a categorical band indicating how much it is likely to disrupt sleep. The state is a bare label (no unit suffix); the threshold ranges are documented below. The band is recomputed on every coordinator push (dose event or 1-min decay tick) so it tracks clearance in real time.

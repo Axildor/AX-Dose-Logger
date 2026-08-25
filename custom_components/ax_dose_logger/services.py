@@ -51,6 +51,7 @@ ATTR_TIMESTAMP: Final = "timestamp"
 ATTR_METRIC_KEY: Final = "metric_key"
 ATTR_VALUE: Final = "value"
 ATTR_OVERRIDE: Final = "override"
+ATTR_TARGET_PROFILE: Final = "target_profile"
 
 # Base schema — most services require entry_id via ConfigEntrySelector
 SERVICE_BASE_SCHEMA = vol.Schema(
@@ -184,18 +185,56 @@ async def _async_set_metric(call: ServiceCall) -> None:
     await coordinator.async_set_metric(metric_key, value, override=override)
 
 
+def _validate_profile_id(hass: HomeAssistant, profile_id: str) -> None:
+    """Validate that a profile_id corresponds to a live Drink Settings entry.
+
+    Raises ``HomeAssistantError`` if no Drink Settings config entry has
+    ``profile_id == profile_id`` in its data (the profile was deleted, or the
+    id was never valid).  This is the Fault 1 dead-pointer guard at the
+    service-handler layer -- it gives the user a clear UI error before the
+    coordinator is even called.  The coordinator-level guard (``.get`` +
+    warning) is defense-in-depth for the narrow race between this validation
+    and the coordinator execution.
+    """
+    from .const import DEVICE_CATEGORY_DRINK_SETTINGS
+
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS and entry.data.get("profile_id") == profile_id:
+            return
+    raise HomeAssistantError(
+        f"Profile '{profile_id}' does not exist (it may have been deleted). "
+        f"Cannot route the drink's PK payload to a non-existent profile."
+    )
+
+
 # log_drink / undo_drink / reset_drink reuse the same base schema
 # (entry_id + optional timestamp for log_drink) as the medicine services.
-SERVICE_LOG_DRINK_SCHEMA = SERVICE_TAKE_DOSE_SCHEMA
+SERVICE_LOG_DRINK_SCHEMA = SERVICE_TAKE_DOSE_SCHEMA.extend(
+    {
+        vol.Optional(ATTR_TARGET_PROFILE): str,
+    }
+)
 
 
 async def _async_log_drink(call: ServiceCall) -> None:
-    """Handle the ``log_drink`` service — log a granular drink."""
+    """Handle the ``log_drink`` service — log a granular drink.
+
+    M2M routing: the optional ``target_profile`` (an immutable profile id
+    UUID) selects which profile's Master Tracker receives the PK payload.
+    If omitted, the coordinator applies the single-profile convenience
+    default (when the drink has exactly one allowed profile) or raises
+    (multiple profiles -- the frontend card must disambiguate).  The local
+    inventory always decrements regardless of the target.
+    """
     coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
     timestamp = None
     if call.data.get(ATTR_TIMESTAMP):
         timestamp = dt_util.parse_datetime(call.data[ATTR_TIMESTAMP])
-    await coordinator.async_log_drink(timestamp)
+    target_profile = call.data.get(ATTR_TARGET_PROFILE)
+    if target_profile:
+        # Fault 1 dead-pointer guard at the service layer.
+        _validate_profile_id(call.hass, target_profile)
+    await coordinator.async_log_drink(timestamp, target_profile=target_profile)
 
 
 async def _async_undo_drink(call: ServiceCall) -> None:

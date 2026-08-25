@@ -194,13 +194,17 @@
           "name": "Name",
           "drink_type": "Drink Type",
           "unit_of_measurement": "Unit of Measurement",
-          "initial_stock": "Initial Stock"
+          "initial_stock": "Initial Stock",
+          "allowed_profiles": "Allowed Profiles",
+          "shared_drink": "Shared Drink"
         },
         "data_description": {
           "name": "A name for this drink, e.g. Morning Espresso or Evening Beer.",
           "drink_type": "Choose Caffeine or Alcohol. Determines which master tracker receives the dose.",
           "unit_of_measurement": "For example: Bags, Cans, Bottles, Cups",
-          "initial_stock": "Number of units currently available."
+          "initial_stock": "Number of units currently available.",
+          "allowed_profiles": "Which profiles (people) may route PK payloads from this drink. A shared household drink (e.g. a 12-pack) can be allowed for every profile; the Log Drink popup will ask 'Who is logging this?' for shared drinks. Pick '➕ New profile…' to create a new profile.",
+          "shared_drink": "Mark this drink as shared across the household. The frontend card shows a 'Who is logging this?' popup for shared drinks. This flag is purely a UI hint -- the backend routes via the target_profile service argument."
         }
       },
       "drink_cooldown": {
@@ -238,7 +242,27 @@
           "abv_percent": "Alcohol by volume percentage. Used with volume to calculate grams of ethanol.",
           "drinking_duration": "Typical time to finish this drink, in minutes. Governs the absorption window for the PK curve."
         }
+      },
+      "drink_new_profile": {
+        "title": "New Profile",
+        "description": "Create a new profile (person) for drink tracking. Each profile gets its own Master Tracker devices and PK constants.",
+        "data": {
+          "profile_name": "Profile Name"
+        },
+        "data_description": {
+          "profile_name": "A display name for this profile (e.g. Alice). Can be renamed later in the Drink Settings options."
+        }
       }
+    },
+    "selector": {
+      "allowed_profiles": {
+        "name": "Allowed Profiles"
+      }
+    },
+    "errors": {
+      "name_exists": "A profile with this name already exists. Choose a different name.",
+      "name_required": "A profile name is required.",
+      "select_profile": "You must select an existing profile or create a new one."
     }
   },
   "options": {
@@ -418,6 +442,7 @@
         "title": "Drink Settings",
         "description": "Edit the global metabolic constants used by the Master Trackers.\n\nThe defaults are **biological population averages**. Medications, genetic factors, and health conditions can significantly alter your individual metabolism.",
         "data": {
+          "profile_name": "Profile Name",
           "global_caffeine_half_life": "Caffeine Half-Life",
           "global_caffeine_tmax": "Caffeine Time to Peak",
           "global_alcohol_elimination_rate": "Alcohol Elimination Rate",
@@ -431,7 +456,8 @@
           "global_alcohol_elimination_rate": "Grams of ethanol eliminated per hour (zero-order elimination). Population average: 8.0 g/h.",
           "caffeine_daily_limit_mg": "Maximum caffeine (mg) allowed in the last 24 hours. FDA recommended limit: 400 mg/day for healthy adults. Lower for lighter body mass, pregnancy, or caffeine sensitivity. Set 0 to disable the limit.",
           "alcohol_daily_limit_g": "Maximum ethanol (g) allowed in the last 24 hours. No FDA limit exists. US Dietary Guidelines: ~14 g/day for women, ~28 g/day for men (1 standard drink ~14 g ethanol). Set 0 to disable the limit.",
-          "retention_days": "Universal retention window for ALL drinks of both substances (caffeine + alcohol). How many days of drink + drink-master history to keep locally for the rolling sensors and a future medical-export feature. Older entries are pruned from the local store; the HA recorder is not used. Range 30–1095."
+          "retention_days": "Universal retention window for ALL drinks of both substances (caffeine + alcohol). How many days of drink + drink-master history to keep locally for the rolling sensors and a future medical-export feature. Older entries are pruned from the local store; the HA recorder is not used. Range 30–1095.",
+          "profile_name": "Display name for this profile (e.g. Alice). Renaming only changes the display name -- the immutable profile id (used for routing + storage) is never affected."
         }
       },
       "drink_options": {
@@ -440,14 +466,33 @@
         "data": {
           "cooldown_window": "Cooldown Window",
           "dose_strength": "Dose Strength",
-          "drinking_duration": "Time to Finish Drink"
+          "drinking_duration": "Time to Finish Drink",
+          "allowed_profiles": "Allowed Profiles",
+          "shared_drink": "Shared Drink"
         },
         "data_description": {
           "cooldown_window": "Optional lockout between drinks, in hours. Set to 0 to disable.",
           "dose_strength": "Caffeine (mg) or ethanol (g) per drink. For alcohol this is the Widmark mass: volume × ABV × 0.789.",
-          "drinking_duration": "Typical time to finish this drink, in minutes."
+          "drinking_duration": "Typical time to finish this drink, in minutes.",
+          "allowed_profiles": "Re-assign which profiles may route PK payloads from this drink. Changing this reloads the drink so its sensors re-read the new set.",
+          "shared_drink": "Mark this drink as shared. The frontend card shows a 'Who is logging this?' popup for shared drinks."
+        }
+      },
+      "drink_new_profile": {
+        "title": "New Profile",
+        "description": "Create a new profile (person) for drink tracking. Each profile gets its own Master Tracker devices and PK constants.",
+        "data": {
+          "profile_name": "Profile Name"
+        },
+        "data_description": {
+          "profile_name": "A display name for this profile (e.g. Alice). Can be renamed later in the Drink Settings options."
         }
       }
+    },
+    "errors": {
+      "name_exists": "A profile with this name already exists. Choose a different name.",
+      "name_required": "A profile name is required.",
+      "select_profile": "You must select an existing profile or create a new one."
     }
   },
   "selector": {
@@ -580,6 +625,10 @@
         "timestamp": {
           "name": "Timestamp",
           "description": "Optional custom timestamp for the drink (defaults to now)."
+        },
+        "target_profile": {
+          "name": "Target Profile",
+          "description": "Optional profile id (UUID) whose Master Tracker should receive the PK payload. If omitted and the drink has exactly one allowed profile, that profile is used. If omitted and the drink is shared by multiple profiles, the service raises (use the dashboard card to pick)."
         }
       }
     },

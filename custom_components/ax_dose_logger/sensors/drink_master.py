@@ -13,19 +13,16 @@ from ..const import (
     DRINK_TYPE_CAFFEINE,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
+from ..const import master_unique_id
 from ._tracker_info import MASTER_TRACKERS, tracker_device_info
 
 # Sensor-specific keys per substance (common keys live in MASTER_TRACKERS).
 _SENSOR_INFO = {
-    DRINK_TYPE_CAFFEINE: {
-        "unique_id": "drink_master_caffeine",
-        "translation_key": "total_caffeine_in_body",
+    DRINK_TYPE_CAFFEINE: {        "translation_key": "total_caffeine_in_body",
         "icon": "mdi:coffee",
         "pk_model": "bateman_ir_uniform",
     },
-    DRINK_TYPE_ALCOHOL: {
-        "unique_id": "drink_master_alcohol",
-        "translation_key": "total_alcohol_in_body",
+    DRINK_TYPE_ALCOHOL: {        "translation_key": "total_alcohol_in_body",
         "icon": "mdi:glass-wine",
         "pk_model": "zero_order",
     },
@@ -47,13 +44,15 @@ class DrinkMasterSensor(RestoreSensor):
     _attr_suggested_display_precision = 0  # default to no decimal places in HA UI
     _attr_should_poll = False
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator) -> None:
+    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
         """Initialize the master PK sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         common = MASTER_TRACKERS[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
-        self._attr_unique_id = info["unique_id"]
+        self._profile_id = profile_id
+        self._profile_name = profile_name
+        self._attr_unique_id = master_unique_id(profile_id, self._substance)
         self._attr_translation_key = info["translation_key"]
         self._attr_native_unit_of_measurement = common["unit"]
         self._attr_icon = info["icon"]
@@ -61,11 +60,20 @@ class DrinkMasterSensor(RestoreSensor):
         # Stable device identifiers — not tied to entry_id so the device
         # survives Drink Settings entry recreation.  with_name=True because
         # this is the device's namesake entity (has_entity_name=False).
-        self._attr_device_info = tracker_device_info(self._substance, with_name=True)
+        self._attr_device_info = tracker_device_info(profile_id, self._substance, with_name=True, profile_name=profile_name)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "pk_model": self._pk_model,
             "drink_master": True,  # Frontend filter marker
+            # M2M topology: expose the immutable profile_id + mutable
+            # profile_name so the frontend card can build a profile UUID→name
+            # map by scanning hass.entities for drink_master: True (mirrors
+            # the substance/role/pk_model attribute pattern). The card uses
+            # this map to populate the "Who is logging this?" profile picker
+            # and the Profile Lock config dropdown. Survives renames because
+            # the coordinator pushes updates on rename.
+            "profile_id": self._profile_id,
+            "profile_name": self._profile_name,
             # NOTE: last_dose_time moved to the dedicated DrinkMasterLastDoseSensor
             # (TIMESTAMP device class) — single source of truth for the "Last"
             # fact. dose_count is retained as metadata for the Stats panel's
@@ -95,6 +103,11 @@ class DrinkMasterSensor(RestoreSensor):
             "substance": self._substance,
             "pk_model": self._pk_model,
             "drink_master": True,
+            # M2M topology: keep profile_id + profile_name in sync on every
+            # coordinator push (HA replaces the whole attributes dict on
+            # each update, so they must be re-emitted here too).
+            "profile_id": self._profile_id,
+            "profile_name": self._profile_name,
             "dose_count": len(data.dose_history),
         }
         self.async_write_ha_state()

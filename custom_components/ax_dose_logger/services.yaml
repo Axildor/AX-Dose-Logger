@@ -89,6 +89,10 @@ log_drink:
       required: false
       selector:
         datetime:
+    target_profile:
+      required: false
+      selector:
+        text:
 
 undo_drink:
   fields:
