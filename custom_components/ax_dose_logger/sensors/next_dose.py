@@ -14,7 +14,7 @@ from ..const import (
 )
 from ..entity import AxDoseLoggerSensorEntity
 from ..schedule import LATENESS_UNTIL_NEXT_SLOT, compute_slot_assignments
-from ..sliding_window import compute_safe_to_take, is_on_day
+from ..sliding_window import compute_safe_to_take, effective_dose_buffer_minutes, is_on_day
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
 _TIMESTAMPS_MAX_DAYS = 365
@@ -141,11 +141,21 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         elif self._tracking_type == TRACKING_AS_NEEDED:
             max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", 1))
             time_window = entry.options.get("time_window_hours", entry.data.get("time_window_hours", 0))
-            cutoff_for_pill_limit = now - timedelta(hours=time_window)
+            # Anti-drift buffer: keep the As-Needed next-dose timestamp in
+            # sync with pill_limit's buffered gate (the oldest dose expires
+            # `buffer` minutes earlier, so the next-available moment is
+            # window - buffer after the oldest dose). Mirrors the buffered
+            # cutoff in compute_safe_to_take / PillLimitSensor.
+            buffer_minutes = effective_dose_buffer_minutes(entry, float(time_window))
+            cutoff_for_pill_limit = now - timedelta(hours=time_window) + timedelta(minutes=buffer_minutes)
             valid_timestamps_for_calc = [ts for ts in dose_timestamps if ts >= cutoff_for_pill_limit]
             pills_remaining = max(0, max_pills - len(valid_timestamps_for_calc))
             if pills_remaining == 0 and valid_timestamps_for_calc:
-                self._attr_native_value = valid_timestamps_for_calc[0] + timedelta(hours=time_window)
+                self._attr_native_value = (
+                    valid_timestamps_for_calc[0]
+                    + timedelta(hours=time_window)
+                    - timedelta(minutes=buffer_minutes)
+                )
             elif dose_timestamps:
                 self._attr_native_value = dose_timestamps[-1]
             else:

@@ -111,6 +111,7 @@ AX Dose Logger supports four ways to track a medication, depending on how you ta
 Accidentally taking too much is easy to do, especially with medications that have a wide dosing window. AX Dose Logger helps prevent that:
 
 - **Pill Limit Tracking** — You set how many pills are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so the limit recovers one at a time. On Cyclic OFF days, the limit drops to 0 automatically.
+- **Anti-Drift Buffer** — A small configurable buffer (default 5 minutes) lets the next dose become available slightly before the strict window elapses, so taking each dose a few minutes late doesn't gradually push the next dose later every day ("schedule creep"). Capped at 25% of the window for safety. Adjustable per medication and per drink in the options.
 - **Overdose Warning** — When the pill limit hits 0, the Take button on the dedicated AX Dose Logger Card turns red and asks you to confirm before logging.
 
 <!-- SCREENSHOT: Daily pane with pill limit at 0 — Take button red with the confirmation dialog visible -->

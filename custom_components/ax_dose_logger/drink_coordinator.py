@@ -50,6 +50,7 @@ from .const import (
     RELEASE_INSTANT,
     RETENTION_DAYS,
 )
+from .sliding_window import effective_dose_buffer_minutes
 from .pk_model import PKModel, PKParams, PKResult
 from .retention import (
     prune_dose_pairs,
@@ -457,6 +458,11 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         ``cooldown_window`` is expressed in HOURS (aligned with medicine's
         time-window fields). Previously this was minutes -- changed per user
         request for cross-device consistency.
+
+        The cooldown is relaxed by the anti-drift dose buffer
+        (:func:`effective_dose_buffer_minutes`): the last drink expires
+        ``buffer`` minutes earlier than the strict cooldown, so gradual
+        drink-timing drift is bounded (mirrors the medicine pill_limit gate).
         """
         cooldown_h = float(
             self._entry.options.get(
@@ -468,8 +474,9 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
             return False
         if now is None:
             now = dt_util.now()
+        buffer_minutes = effective_dose_buffer_minutes(self._entry, cooldown_h)
         last = self.data.dose_history[-1][0]
-        return (now - last) < timedelta(hours=cooldown_h)
+        return (now - last) < timedelta(hours=cooldown_h) - timedelta(minutes=buffer_minutes)
 
     # ------------------------------------------------------------------
     # Retention window -- inherited from the Drink Settings singleton

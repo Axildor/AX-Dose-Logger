@@ -15,13 +15,15 @@
           "initial_stock": "Inventory",
           "hours_between_doses": "Dose Interval",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "hours_between_doses": "Minimum hours between consecutive doses.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class."
         }
       },
       "time_of_day": {
@@ -31,13 +33,15 @@
           "initial_stock": "Inventory",
           "doses_per_day": "How Many Times per Day",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. You'll set the exact times on the next screen.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours.",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class."
         }
       },
       "time_of_day_times": {
@@ -90,12 +94,14 @@
         "data": {
           "initial_stock": "Inventory",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class."
         }
       },
       "cyclic": {
@@ -108,7 +114,8 @@
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
           "pill_limit": "Pill Limit",
-          "time_window_hours": "Time Window"
+          "time_window_hours": "Time Window",
+          "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
@@ -117,7 +124,8 @@
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
-          "time_window_hours": "Rolling window for the pill limit, e.g. max 1 pill in 24 hours."
+          "time_window_hours": "Rolling window for the pill limit, e.g. max 1 pill in 24 hours.",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class."
         }
       },
       "pk": {
@@ -211,10 +219,12 @@
         "title": "Cooldown Timer",
         "description": "Optional lockout between drinks. The limit is always 1 — only one drink per window.",
         "data": {
-          "cooldown_window": "Cooldown Window"
+          "cooldown_window": "Cooldown Window",
+          "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
-          "cooldown_window": "Optional: Enforce a time limit lockout between drinks, in hours. Set to 0 to disable. Limit is always 1."
+          "cooldown_window": "Optional: Enforce a time limit lockout between drinks, in hours. Set to 0 to disable. Limit is always 1.",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next drink becomes available so gradual timing creep is bounded. Capped at 25% of the cooldown window. 5 minutes is the safe default."
         }
       },
       "drink_caffeine": {
@@ -297,7 +307,8 @@
           "days_off": "Days Off",
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
-          "pill_limit": "Pill Limit"
+          "pill_limit": "Pill Limit",
+          "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
@@ -326,6 +337,7 @@
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
           "pill_limit": "Maximum pills you can take within the time window.",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class.",
           "tracking_type": "How this medication is scheduled."
         }
       },
@@ -341,7 +353,8 @@
           "days_off": "Days Off",
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
-          "pill_limit": "Pill Limit"
+          "pill_limit": "Pill Limit",
+          "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
@@ -351,7 +364,8 @@
           "days_off": "Number of rest days in the cycle.",
           "cycle_anchor_date": "Start date of the on/off cycle.",
           "dose_time": "Time of day to take on active days.",
-          "pill_limit": "Maximum pills you can take within the time window."
+          "pill_limit": "Maximum pills you can take within the time window.",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class."
         }
       },
       "schedule_times": {
@@ -427,6 +441,7 @@
           "enable_calendar": "Calendar Entity",
           "enable_adherence": "Track Dose Adherence",
           "adherence_grace_minutes": "On-Time Window",
+          "dose_buffer_minutes": "Dose Buffer",
           "retention_days": "History Retention (days)"
         },
         "data_description": {
@@ -435,6 +450,7 @@
           "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for as-needed medications.",
           "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
           "adherence_grace_minutes": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on).",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class. This is an availability relaxation only — it does not affect the 24h strength safety limit or your adherence score.",
           "retention_days": "How many days of dose, skip, adherence, and effectiveness-metric history to keep locally for the rolling sensors and a future medical-export feature. 365 days matches the CMS/NCQA Proportion-of-Days-Covered adherence-measure floor. Older entries are pruned from the local store; the HA recorder is not used. Range 30–1095."
         }
       },
@@ -465,6 +481,7 @@
         "description": "Edit this drink's cooldown, dose strength, and drinking duration. Name and drink type are immutable.",
         "data": {
           "cooldown_window": "Cooldown Window",
+          "dose_buffer_minutes": "Dose Buffer",
           "dose_strength": "Dose Strength",
           "drinking_duration": "Time to Finish Drink",
           "allowed_profiles": "Allowed Profiles",
@@ -472,6 +489,7 @@
         },
         "data_description": {
           "cooldown_window": "Optional lockout between drinks, in hours. Set to 0 to disable.",
+          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next drink becomes available so gradual timing creep is bounded. Capped at 25% of the cooldown window. 5 minutes is the safe default.",
           "dose_strength": "Caffeine (mg) or ethanol (g) per drink. For alcohol this is the Widmark mass: volume × ABV × 0.789.",
           "drinking_duration": "Typical time to finish this drink, in minutes.",
           "allowed_profiles": "Re-assign which profiles may route PK payloads from this drink. Changing this reloads the drink so its sensors re-read the new set.",

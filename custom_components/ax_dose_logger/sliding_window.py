@@ -10,7 +10,13 @@ from datetime import date, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 
-from .const import TRACKING_AS_NEEDED, TRACKING_CYCLIC, TRACKING_REGULAR_INTERVAL
+from .const import (
+    DOSE_BUFFER_CAP_FRACTION,
+    DOSE_BUFFER_DEFAULT_MIN,
+    TRACKING_AS_NEEDED,
+    TRACKING_CYCLIC,
+    TRACKING_REGULAR_INTERVAL,
+)
 
 
 def get_time_window(entry: ConfigEntry, tracking_type: str) -> float:
@@ -73,6 +79,38 @@ def is_on_day(entry: ConfigEntry, check_date: date, fallback_date: date | None =
     return position_in_cycle < days_on
 
 
+def effective_dose_buffer_minutes(
+    entry: ConfigEntry,
+    time_window_hours: float,
+) -> int:
+    """Return the effective anti-drift dose buffer in whole minutes.
+
+    Reads the user-configured ``dose_buffer_minutes`` (default 5, range 0-120)
+    and caps it at ``DOSE_BUFFER_CAP_FRACTION`` (25%) of the rolling window so
+    a misconfigured large buffer cannot collapse a short interval. The cap is
+    a safety guardrail; the default is the conservative operating value.
+
+    Clinical basis: accepted on-time windows are ABSOLUTE (ISMP/PQA/NCQA +-2h
+    for most oral meds; levodopa +-15-30 min is the tightest). The buffer is an
+    AVAILABILITY relaxation only -- it deliberately does not touch the 24h
+    strength safety limit (Pill24hLimitExceededSensor) or adherence grading.
+
+    A ``time_window_hours`` of 0 (no window configured) yields 0 buffer.
+    """
+    raw = entry.options.get(
+        "dose_buffer_minutes",
+        entry.data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN),
+    )
+    try:
+        raw_f = float(raw)
+    except (TypeError, ValueError):
+        raw_f = float(DOSE_BUFFER_DEFAULT_MIN)
+    if time_window_hours <= 0:
+        return 0
+    cap_minutes = time_window_hours * 60.0 * DOSE_BUFFER_CAP_FRACTION
+    return int(min(raw_f, cap_minutes))
+
+
 def compute_safe_to_take(
     entry: ConfigEntry,
     timestamps: list,
@@ -84,10 +122,18 @@ def compute_safe_to_take(
 
     Returns ``0`` on Cyclic OFF days.  This is the pure (side-effect-free)
     version of the logic that lived inline in ``next_dose._compute_safe_to_take``.
+
+    The rolling window is relaxed by the anti-drift dose buffer
+    (:func:`effective_dose_buffer_minutes`): doses expire ``buffer`` minutes
+    earlier than the strict window, so a dose taken a few minutes late still
+    allows the next scheduled dose to re-anchor on time (bounds schedule
+    creep). The buffer is capped at 25% of the window so it cannot collapse a
+    short interval.
     """
     max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", 1))
     time_window = get_time_window(entry, tracking_type)
-    cutoff = now - timedelta(hours=time_window)
+    buffer_minutes = effective_dose_buffer_minutes(entry, time_window)
+    cutoff = now - timedelta(hours=time_window) + timedelta(minutes=buffer_minutes)
     valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
     safe_to_take = max(0, max_pills - len(valid_timestamps))
 

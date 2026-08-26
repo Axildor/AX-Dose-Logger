@@ -199,6 +199,36 @@ RETENTION_DAYS = 365
 MIN_RETENTION_DAYS = 30
 MAX_RETENTION_DAYS = 1095
 
+# --- Anti-drift dose buffer (anti-schedule-creep) ---
+# A small absolute buffer that relaxes the strict rolling-window dose-count
+# gate (pill_limit) and the drink cooldown gate so that gradual dose-timing
+# drift ("take yesterday 13:04 -> next day locked until 13:04 -> take 13:05
+# -> ...") is bounded instead of unbounded.
+#
+# Clinical basis: accepted on-time windows are ABSOLUTE (ISMP/PQA/NCQA +-2h
+# for most oral meds; levodopa +-15-30 min is the tightest). The buffer is
+# NOT a clinical dose-timing rule -- no guideline specifies "take next dose
+# X min early". It is derived from the mechanism's purpose: bound the
+# maximum tolerated lateness that still lets the next scheduled dose
+# re-anchor on time. 5 min re-anchors doses taken up to 4 min late; below
+# every clinical on-time window; early-dosing by 5 min on a 24h interval =
+# 0.35% early, clinically negligible for every class including NTI drugs.
+#
+# The 25%-of-window cap is a SAFETY guardrail so a misconfigured large buffer
+# cannot collapse a short interval (e.g. a 120-min buffer on an 8h window
+# would still be capped at 120 min). The cap is applied at read time by
+# effective_dose_buffer_minutes() in sliding_window.py.
+#
+# This is an AVAILABILITY relaxation only. It deliberately does NOT touch:
+#   * the 24h-strength safety limit (Pill24hLimitExceededSensor) -- a
+#     hepatotoxicity/GI-bleed warning that must never gain grace; or
+#   * adherence grading (uses its own adherence_grace_minutes) --
+#     availability != compliance.
+DOSE_BUFFER_DEFAULT_MIN = 5
+DOSE_BUFFER_MIN = 0
+DOSE_BUFFER_MAX = 120
+DOSE_BUFFER_CAP_FRACTION = 0.25
+
 PK_DEFAULTS: dict[str, float] = {
     "bioavailability": 100,
     "ir_fraction": 100,

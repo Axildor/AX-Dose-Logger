@@ -16,6 +16,7 @@ from .const import (
     DEFAULT_PROFILE_ID,
     DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
+    DOSE_BUFFER_DEFAULT_MIN,
     DRINK_TYPE_CAFFEINE,
     DRINK_TYPES,
     GLOBAL_PK_DEFAULTS,
@@ -83,6 +84,14 @@ _PILL_LIMIT_SELECTOR = sel.NumberSelector(
 )
 _TIME_WINDOW_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX)
+)
+# Anti-drift dose buffer (anti-schedule-creep). Absolute minutes (clinical
+# convention), default 5 (conservative, below every on-time window; see
+# const.py DOSE_BUFFER_DEFAULT_MIN docstring). Capped at 25% of the rolling
+# window at read time by effective_dose_buffer_minutes(). Optional so
+# existing entries keep the default with no migration.
+_DOSE_BUFFER_SELECTOR = sel.NumberSelector(
+    sel.NumberSelectorConfig(min=0, max=120, step=1, unit_of_measurement="min", mode=sel.NumberSelectorMode.BOX)
 )
 _STRENGTH_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0, max=9999, step=0.5, mode=sel.NumberSelectorMode.BOX)
@@ -351,6 +360,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("hours_between_doses", default=8): _HOURS_BETWEEN_SELECTOR,
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -369,6 +379,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("doses_per_day", default=1): _DOSES_PER_DAY_SELECTOR,
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -417,6 +428,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                     vol.Required("pill_limit", default=2): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -443,6 +455,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("dose_time", default="08:00"): sel.TimeSelector(),
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -519,6 +532,21 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             fields[vol.Optional("enable_adherence", default=default_adherence)] = sel.BooleanSelector()
             fields[vol.Optional("adherence_grace_minutes", default=60)] = _ADHERENCE_GRACE_SELECTOR
+            # Anti-drift dose buffer (see const.py DOSE_BUFFER_DEFAULT_MIN).
+            # Optional with the conservative 5-min default so existing entries
+            # gain the buffer on next options save without a migration step.
+            fields[
+                vol.Optional(
+                    "dose_buffer_minutes",
+                    default=self._data.get(
+                        "dose_buffer_minutes",
+                        self._entry.options.get(
+                            "dose_buffer_minutes",
+                            self._entry.data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN),
+                        ),
+                    ),
+                )
+            ] = _DOSE_BUFFER_SELECTOR
 
         # Retention window for persistent history (doses, skipped slots,
         # adherence overrides, effectiveness PROs).  Default 365 = CMS/NCQA
@@ -652,6 +680,8 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required("cooldown_window", default=0): _COOLDOWN_SELECTOR,
+                    # Anti-drift dose buffer (mirrors medicine pill_limit).
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -861,6 +891,15 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
+        # Anti-drift dose buffer (anti-schedule-creep). Optional so existing
+        # entries gain the 5-min default on next options save without a
+        # migration step.
+        main_schema[
+            vol.Optional(
+                "dose_buffer_minutes",
+                default=options.get("dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)),
+            )
+        ] = _DOSE_BUFFER_SELECTOR
 
         return self.async_show_form(
             step_id="init",
@@ -931,6 +970,10 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
+        # Anti-drift dose buffer (anti-schedule-creep). Config-flow default
+        # since the entry's data/options don't yet carry fields for the new
+        # tracking type.
+        schema[vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN)] = _DOSE_BUFFER_SELECTOR
 
         return self.async_show_form(
             step_id="schedule",
@@ -1074,6 +1117,7 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                     "dose_time",
                     "time_window_hours",
                     "pill_limit",
+                    "dose_buffer_minutes",
                     "daily_limit",
                     "enable_calendar",
                 )
@@ -1259,6 +1303,12 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     "cooldown_window", default=options.get("cooldown_window", data.get("cooldown_window", 0))
                 ): _COOLDOWN_SELECTOR,
+                # Anti-drift dose buffer (mirrors medicine pill_limit). Optional
+                # so existing drinks gain the 5-min default on next options save.
+                vol.Optional(
+                    "dose_buffer_minutes",
+                    default=options.get("dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)),
+                ): _DOSE_BUFFER_SELECTOR,
                 vol.Required(
                     "dose_strength", default=options.get("dose_strength", data.get("dose_strength", 0))
                 ): _DOSE_STRENGTH_SELECTOR,
