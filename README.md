@@ -382,7 +382,7 @@ There's a ready-made Blueprint you can import for state-driven push notification
 
 1. Go to Settings → Automations → Blueprints → Import Blueprint
 2. Paste: `https://raw.githubusercontent.com/Axildor/AX-Dose-Logger/main/blueprints/reminder.yaml`
-3. Create a new automation from the blueprint, pick your phone, and map your AX Dose Logger entities — including the **Dose Status** sensor, which is the trigger source.
+3. Create a new automation from the blueprint and pick just two things: the medication's **Dose Status** sensor (the trigger source) and your phone. Everything else — the take/skip actions and the safety guard — is resolved from that single sensor automatically.
 
 The blueprint triggers on **Dose Status** transitions, so each state can have its own behavior:
 
