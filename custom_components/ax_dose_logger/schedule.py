@@ -52,7 +52,18 @@ def get_next_dose_time(
     if tracking_type == TRACKING_REGULAR_INTERVAL:
         hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
         if timestamps:
-            return timestamps[-1] + timedelta(hours=hours_between)
+            # Chained-deadline model (parity with the overdue + next_dose
+            # sensors): return the next *future* chained deadline
+            # ``anchor + (n+1) * interval`` so callers (steady_state) see
+            # the same schedule the sensors expose.  max() not [-1]: the
+            # timestamp list is not guaranteed sorted.
+            interval = timedelta(hours=hours_between)
+            anchor = max(timestamps)
+            elapsed = now - anchor
+            if elapsed <= timedelta(0):
+                return anchor + interval
+            n = int(elapsed.total_seconds() // interval.total_seconds())
+            return anchor + (n + 1) * interval
         return now
 
     if tracking_type == TRACKING_TIME_OF_DAY:

@@ -119,6 +119,8 @@ Accidentally taking too much is easy to do, especially with medications that hav
 
 - **Next Dose Countdown** — The Next Dose sensor tells you exactly when your next scheduled dose is, so you can show live countdowns like "in 2 hours" or "Available now". For scheduled medications (Time of Day, Cyclic), the next dose always reflects your prescribed clock time — taking a dose late does not drift the schedule. The separate **Pills Safe to Take** sensor tells you whether it's actually safe to take now.
 
+- **Dose Status** — A single sensor (`sensor.<medication>_dose_status`) that reports the medication's current state: `not_due`, `due`, `overdue`, `limit_reached`, `limit_24h`, or `ok`. It's the same state machine the card's button uses, so it's ideal for automations — trigger a notification the moment a dose becomes `due`, or escalate when it flips to `overdue`. See [Advanced-Users.md](Advanced-Users.md) for examples.
+
 ### Pharmacokinetics Overview
 
 If you want to understand what's happening in your body between doses, AX Dose Logger can optionally model the **amount of medication in your system over time**. When enabled, it creates sensors based on your tracking type:
@@ -376,11 +378,24 @@ For full card configuration options (color schemes, column layouts, chip customi
 
 ## Reminders
 
-There's a ready-made Blueprint you can import for push notifications with Take, Skip, and Snooze actions:
+There's a ready-made Blueprint you can import for state-driven push notifications with Take, Skip, and Snooze actions:
 
 1. Go to Settings → Automations → Blueprints → Import Blueprint
 2. Paste: `https://raw.githubusercontent.com/Axildor/AX-Dose-Logger/main/blueprints/reminder.yaml`
-3. Create a new automation from the blueprint, pick your phone, and map your AX Dose Logger entities.
+3. Create a new automation from the blueprint, pick your phone, and map your AX Dose Logger entities — including the **Dose Status** sensor, which is the trigger source.
+
+The blueprint triggers on **Dose Status** transitions, so each state can have its own behavior:
+
+| Dose Status | What happens |
+|---|---|
+| **Due** | Reminder notification with Take / Snooze / Skip buttons, repeated until you respond |
+| **Overdue** | Escalation notification (separate title/message) with the same buttons |
+| **Limit Reached** | Single warning that the pill-count window is full |
+| **24h Limit** | Single safety warning that the daily strength limit would be exceeded |
+
+Each state also has an optional **action** input (e.g. `Action on Overdue` to flash lights or notify a second device), plus a per-reminder action that runs alongside every notification in the loop.
+
+> **Auto-dismiss**: The notification is cleared automatically when the dose is taken — no matter how. Taking the pill from the notification, the dashboard card, or the `take_dose` service all dismiss it. **Skip** records the skipped slot so the next dose time advances and the reminder doesn't re-fire for the same slot.
 
 > **Safety guard**: The blueprint has an optional "Pills Safe to Take Sensor" input. When mapped, the notification's **Taken** action will not auto-log a dose if you're at the pill limit — instead it sends a warning telling you to open the AX Dose Logger card to override. This keeps the notification from bypassing the rolling-window overdose protection.
 

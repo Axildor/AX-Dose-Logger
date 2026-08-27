@@ -89,8 +89,23 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if self._tracking_type == TRACKING_REGULAR_INTERVAL:
             hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
             if schedule_timestamps:
-                last_ts = schedule_timestamps[-1]
-                self._attr_native_value = last_ts + timedelta(hours=hours_between)
+                # Chained-deadline model (parity with the overdue sensor and
+                # the Time of Day slot model): the next dose is the next
+                # *future* chained deadline ``anchor + (n+1) * interval``,
+                # not the stale fixed ``anchor + interval``.  When a dose
+                # time is missed, next_dose advances to the following
+                # deadline so the reminder blueprint re-arms at each missed
+                # dose time instead of looping on one past timestamp.
+                interval = timedelta(hours=hours_between)
+                # max() not [-1]: adherence-override / undo flows can leave
+                # the merged dose+skip list unsorted.
+                anchor = max(schedule_timestamps)
+                elapsed = now - anchor
+                if elapsed <= timedelta(0):
+                    self._attr_native_value = anchor + interval
+                else:
+                    n = int(elapsed.total_seconds() // interval.total_seconds())
+                    self._attr_native_value = anchor + (n + 1) * interval
             else:
                 self._attr_native_value = now
         elif self._tracking_type == TRACKING_TIME_OF_DAY:

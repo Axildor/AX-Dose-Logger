@@ -32,6 +32,7 @@ from .sensors.drink_master_sleep_disruption import (
     DrinkMasterSleepDisruptionSensor,
 )
 from .sensors.drink_total import DrinkTotalSensor
+from .sensors.dose_status import PillDoseStatusSensor
 from .sensors.last_dose import PillLastDoseSensor
 from .sensors.limit_exceeded import Pill24hLimitExceededSensor
 from .sensors.next_dose import PillNextDoseSensor
@@ -94,6 +95,10 @@ async def _setup_medicine_sensors(
         entities.append(PillSteadyStateSensor(entry, coordinator))
         entities.append(PillOverdueSensor(entry, coordinator))
     entities.append(PillStrengthSensor(entry, coordinator))
+    # Dose Status enum sensor — single-source-of-truth state for automations
+    # + the card (not_due/due/overdue/limit_reached/limit_24h/ok). Created
+    # for ALL tracking types: As-Needed meds report ok/limit_reached/limit_24h.
+    entities.append(PillDoseStatusSensor(entry, coordinator))
     entities.append(PillDaysSinceFirstDoseSensor(entry, coordinator))
     # Days-left inventory-burn indicator.  Scheduled medications show
     # "Days left" (config-derived doses/day); As-Needed medications show

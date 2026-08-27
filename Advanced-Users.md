@@ -225,6 +225,22 @@ Key entities and their attributes for template references:
 - `remaining`: `daily_limit - amount`, or `null` when no limit is configured
 - `unit_of_measurement`: the medication's strength unit (mg/μg/g)
 
+**Dose Status** (`sensor.ibuprofen_dose_status`)
+- State: one of `not_due` / `due` / `overdue` / `limit_reached` / `limit_24h` / `ok`. A single enum sensor that answers "can/should I take it right now?" — the same state machine the card's button uses, so automations and the card can never disagree. Created for all tracking types (As-Needed meds report `ok` / `limit_reached` / `limit_24h`).
+  - `not_due` — scheduled medication, next slot still in the future
+  - `due` — the scheduled slot has arrived (within the first half of the grace window)
+  - `overdue` — past half the grace window (latency warning)
+  - `limit_reached` — pill-count rolling window is full (or Cyclic OFF day)
+  - `limit_24h` — 24h strength limit already exceeded, or the next dose would push over it
+  - `ok` — As-Needed medication, available to take
+- `next_dose_at`: next scheduled slot (ISO datetime; `null` for As-Needed)
+- `overdue_since`: when the missed slot began (ISO datetime; `null` when not overdue)
+- `grace_minutes`: configured on-time window
+- `safe_count`: pills safe to take right now (mirrors the Pills Safe to Take sensor)
+- `amount_24h` / `daily_limit`: 24h strength sum and configured cap
+- `tracking_type`: the medication's tracking type
+- The sensor flips states at the exact transition instants (slot arrival, half-grace boundary, window expiry) via point-in-time timers — no waiting for the next minute tick. Use it in automations with a State trigger, e.g. `trigger: state → entity_id: sensor.ibuprofen_dose_status → to: due`.
+
 **24h Limit Exceeded** (`binary_sensor.ibuprofen_24h_limit_exceeded`)
 - State: `on` / `off`. Turns on when the current 24h strength sum has already exceeded the configured `daily_limit`, OR when the next configured dose would push the total over the limit (pre-warning). Only created when `daily_limit > 0`.
 - `current_amount`: total strength consumed in the last 24 hours
@@ -356,6 +372,32 @@ automation:
       - service: notify.mobile_app_your_phone
         data:
           message: "⚠️ No pills safe to take for Ibuprofen"
+```
+
+**Notify when a dose becomes due (Dose Status sensor):**
+```yaml
+automation:
+  - trigger:
+      - platform: state
+        entity_id: sensor.ibuprofen_dose_status
+        to: "due"
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          message: "💊 Ibuprofen dose is due now"
+```
+
+**Escalate when a dose becomes overdue:**
+```yaml
+automation:
+  - trigger:
+      - platform: state
+        entity_id: sensor.ibuprofen_dose_status
+        to: "overdue"
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          message: "🔴 Ibuprofen dose is overdue — the on-time window is closing"
 ```
 
 **Notify when steady state is reached** (scheduled medications only):

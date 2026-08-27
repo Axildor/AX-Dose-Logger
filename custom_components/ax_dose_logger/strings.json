@@ -808,6 +808,17 @@
       },
       "drink_add_refill": {
         "name": "Add Stock"
+      },
+      "dose_status": {
+        "name": "Dose Status",
+        "state": {
+          "not_due": "Not Due",
+          "due": "Due",
+          "overdue": "Overdue",
+          "limit_reached": "Limit Reached",
+          "limit_24h": "24h Limit Reached",
+          "ok": "OK"
+        }
       }
     },
     "calendar": {
