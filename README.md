@@ -390,14 +390,16 @@ The blueprint triggers on **Dose Status** transitions, so each state can have it
 |---|---|
 | **Due** | Reminder notification with Take / Snooze / Skip buttons, repeated until you respond |
 | **Overdue** | Escalation notification (separate title/message) with the same buttons |
-| **Limit Reached** | Single warning that the pill-count window is full |
-| **24h Limit** | Single safety warning that the daily strength limit would be exceeded |
+| **Limit Reached** | Optional warning that the pill-count window is full (**off by default** — enable with the *Notify on Limit Reached* toggle) |
+| **24h Limit** | Optional safety warning that the daily strength limit would be exceeded (**off by default** — enable with the *Notify on 24h Limit* toggle) |
 
-Each state also has an optional **action** input (e.g. `Action on Overdue` to flash lights or notify a second device), plus a per-reminder action that runs alongside every notification in the loop.
+Each state also has an optional **action** input (e.g. `Action on Overdue` to flash lights or notify a second device), plus a per-reminder action that runs alongside every notification in the loop. The limit-state actions run independently of the notification toggles.
 
 > **Auto-dismiss**: The notification is cleared automatically when the dose is taken — no matter how. Taking the pill from the notification, the dashboard card, or the `take_dose` service all dismiss it. **Skip** records the skipped slot so the next dose time advances and the reminder doesn't re-fire for the same slot.
 
-> **Safety guard**: The blueprint has an optional "Pills Safe to Take Sensor" input. When mapped, the notification's **Taken** action will not auto-log a dose if you're at the pill limit — instead it sends a warning telling you to open the AX Dose Logger card to override. This keeps the notification from bypassing the rolling-window overdose protection.
+> **Taken confirmation**: When the dose is logged from any path, an optional "Dose taken" confirmation notification is shown (on by default, with a customizable title/message). It auto-dismisses after a configurable timeout (default 5 minutes), and an optional `Action on Taken` input can run alongside it (e.g. flash lights or speak a confirmation on a speaker).
+
+> **Safety guard**: The blueprint reads the `safe_count` attribute from the Dose Status sensor automatically. The notification's **Taken** action will not auto-log a dose if you're at the pill limit — instead it sends a warning telling you to open the AX Dose Logger card to override. This keeps the notification from bypassing the rolling-window overdose protection.
 
 ---
 

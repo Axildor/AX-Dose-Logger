@@ -5,10 +5,12 @@ blueprint:
 
     Triggers on Dose Status sensor transitions so each state can have its own
     behavior: Due and Overdue run a reminder loop with Take / Snooze / Skip
-    notification actions; Limit Reached and 24h Limit send a single warning.
-    The phone notification is dismissed automatically when the dose is taken
-    by ANY path — notification action, dashboard card, or the take_dose
-    service — and Skip records the skipped slot so the next dose time advances.
+    notification actions; Limit Reached and 24h Limit send an optional
+    warning (off by default). The phone notification is dismissed
+    automatically when the dose is taken by ANY path — notification action,
+    dashboard card, or the take_dose service — and an optional "dose taken"
+    confirmation (with adjustable auto-dismiss) can be shown. Skip records
+    the skipped slot so the next dose time advances.
 
     Only two selections are needed: the medication's Dose Status sensor and
     your phone. Everything else (take, skip, safety guard) is derived from
@@ -48,9 +50,18 @@ blueprint:
       name: Overdue — notification message
       description: "Default: You missed your medication time — take it as soon as possible."
       default: "You missed your medication time — take it as soon as possible."
+    notify_on_limit_reached:
+      name: Notify on Limit Reached
+      description: >-
+        Send a phone notification when the pill-count window locks out.
+        Off by default — the "Action on Limit Reached" input below still runs
+        if configured.
+      default: false
+      selector:
+        boolean:
     notification_title_limit:
       name: Limit Reached — notification title
-      description: "Sent when the pill-count window is full. Default: Pill limit reached"
+      description: "Sent when the pill-count window is full (if enabled above). Default: Pill limit reached"
       default: "Pill limit reached"
     notification_message_limit:
       name: Limit Reached — notification message
@@ -58,9 +69,18 @@ blueprint:
       default: >-
         The pill limit window is full — open the AX Dose Logger card to
         override if needed.
+    notify_on_limit_24h:
+      name: Notify on 24h Limit
+      description: >-
+        Send a phone notification when the 24h strength limit is hit.
+        Off by default — the "Action on 24h Limit" input below still runs if
+        configured.
+      default: false
+      selector:
+        boolean:
     notification_title_limit_24h:
       name: 24h Limit — notification title
-      description: "Sent when the 24h strength limit is hit. Default: Daily limit warning"
+      description: "Sent when the 24h strength limit is hit (if enabled above). Default: Daily limit warning"
       default: "Daily limit warning"
     notification_message_limit_24h:
       name: 24h Limit — notification message
@@ -68,6 +88,34 @@ blueprint:
       default: >-
         The 24h strength limit would be exceeded — open the AX Dose Logger
         card for details.
+    notify_on_taken:
+      name: Notify When Dose Taken
+      description: >-
+        Send a confirmation notification when the dose is logged (from any
+        path — notification action, dashboard card, or service). On by
+        default; auto-dismisses after the timeout below.
+      default: true
+      selector:
+        boolean:
+    notification_title_taken:
+      name: Taken — notification title
+      description: "Confirmation sent when the dose is logged (if enabled above). Default: Dose taken"
+      default: "Dose taken"
+    notification_message_taken:
+      name: Taken — notification message
+      description: "Default: Your dose has been logged."
+      default: "Your dose has been logged."
+    taken_timeout:
+      name: Taken Confirmation Auto-Dismiss (minutes)
+      description: >-
+        How long the "dose taken" confirmation stays on screen before it is
+        cleared automatically.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: min
     action_on_due:
       name: Action on Due (Optional)
       description: >-
@@ -86,13 +134,21 @@ blueprint:
       default: []
     action_on_limit_reached:
       name: Action on Limit Reached (Optional)
-      description: Runs when the pill-count window locks out.
+      description: Runs when the pill-count window locks out (independent of the notification toggle).
       selector:
         action: {}
       default: []
     action_on_limit_24h:
       name: Action on 24h Limit (Optional)
-      description: Runs when the 24h strength limit is reached.
+      description: Runs when the 24h strength limit is reached (independent of the notification toggle).
+      selector:
+        action: {}
+      default: []
+    action_on_taken:
+      name: Action on Taken (Optional)
+      description: >-
+        Runs when the dose is logged from any path (e.g. flash lights,
+        speak a confirmation on a speaker).
       selector:
         action: {}
       default: []
@@ -126,11 +182,19 @@ variables:
   action_snooze: "SNOOZE_{{ entry_id }}"
   action_skip: "SKIP_{{ entry_id }}"
   tag_id: "reminder_{{ entry_id }}"
+  # Separate tag for the "dose taken" confirmation so clearing it never
+  # touches an active reminder notification (and vice versa).
+  tag_taken: "taken_{{ entry_id }}"
   snooze_delay: !input snooze_time
   title_due: !input notification_title_due
   message_due: !input notification_message_due
   title_overdue: !input notification_title_overdue
   message_overdue: !input notification_message_overdue
+  notify_limit: !input notify_on_limit_reached
+  notify_limit_24h: !input notify_on_limit_24h
+  notify_taken: !input notify_on_taken
+  title_taken: !input notification_title_taken
+  message_taken: !input notification_message_taken
   # Safety guard — the Dose Status sensor exposes `safe_count` as an
   # attribute (same compute_safe_to_take source as the "Pills Safe to Take"
   # sensor). 0 means the pill-limit window is full; None (attribute missing
@@ -160,7 +224,7 @@ mode: restart
 
 action:
   - choose:
-      # ── Limit states: single notice, no reminder loop ─────────────────
+      # ── Limit states: optional notice, no reminder loop ───────────────
       - conditions:
           - condition: trigger
             id: limit_reached
@@ -173,16 +237,20 @@ action:
             message: "clear_notification"
             data:
               tag: "{{ tag_id }}"
-          - device_id: !input notify_device
-            domain: mobile_app
-            type: notify
-            title: !input notification_title_limit
-            message: !input notification_message_limit
-            data:
-              ttl: 0
-              priority: "high"
-              tag: "{{ tag_id }}"
-          - stop: "Limit notice sent."
+          # Optional warning notification (off by default)
+          - choose:
+              - conditions: "{{ notify_limit | bool }}"
+                sequence:
+                  - device_id: !input notify_device
+                    domain: mobile_app
+                    type: notify
+                    title: !input notification_title_limit
+                    message: !input notification_message_limit
+                    data:
+                      ttl: 0
+                      priority: "high"
+                      tag: "{{ tag_id }}"
+          - stop: "Limit notice handled."
 
       - conditions:
           - condition: trigger
@@ -196,16 +264,20 @@ action:
             message: "clear_notification"
             data:
               tag: "{{ tag_id }}"
-          - device_id: !input notify_device
-            domain: mobile_app
-            type: notify
-            title: !input notification_title_limit_24h
-            message: !input notification_message_limit_24h
-            data:
-              ttl: 0
-              priority: "high"
-              tag: "{{ tag_id }}"
-          - stop: "24h limit warning sent."
+          # Optional warning notification (off by default)
+          - choose:
+              - conditions: "{{ notify_limit_24h | bool }}"
+                sequence:
+                  - device_id: !input notify_device
+                    domain: mobile_app
+                    type: notify
+                    title: !input notification_title_limit_24h
+                    message: !input notification_message_limit_24h
+                    data:
+                      ttl: 0
+                      priority: "high"
+                      tag: "{{ tag_id }}"
+          - stop: "24h limit warning handled."
 
       # ── Due / Overdue: reminder loop ──────────────────────────────────
       # Both states share one loop; the wording is picked live each pass so
@@ -233,12 +305,19 @@ action:
                 - choose: []
                   default: !input optional_action
                 # Clear the old notification so the new one triggers a sound
+                # (also clears a lingering "dose taken" confirmation)
                 - device_id: !input notify_device
                   domain: mobile_app
                   type: notify
                   message: "clear_notification"
                   data:
                     tag: "{{ tag_id }}"
+                - device_id: !input notify_device
+                  domain: mobile_app
+                  type: notify
+                  message: "clear_notification"
+                  data:
+                    tag: "{{ tag_taken }}"
                 # Send the Mobile Notification
                 - device_id: !input notify_device
                   domain: mobile_app
@@ -315,6 +394,29 @@ action:
                           message: "clear_notification"
                           data:
                             tag: "{{ tag_id }}"
+                        # Optional "dose taken" confirmation + action
+                        - choose: []
+                          default: !input action_on_taken
+                        - choose:
+                            - conditions: "{{ notify_taken | bool }}"
+                              sequence:
+                                - device_id: !input notify_device
+                                  domain: mobile_app
+                                  type: notify
+                                  title: "{{ title_taken }}"
+                                  message: "{{ message_taken }}"
+                                  data:
+                                    tag: "{{ tag_taken }}"
+                                # Auto-dismiss the confirmation after the
+                                # configured timeout
+                                - delay:
+                                    minutes: !input taken_timeout
+                                - device_id: !input notify_device
+                                  domain: mobile_app
+                                  type: notify
+                                  message: "clear_notification"
+                                  data:
+                                    tag: "{{ tag_taken }}"
 
                     # Snooze via the notification action
                     - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.data.action == action_snooze }}"
@@ -339,8 +441,8 @@ action:
                         - stop: "Dose skipped."
 
                     # Dose taken by any other path (dashboard card, take_dose
-                    # service) — the event matches on entry_id. Just dismiss
-                    # the notification; the dose is already logged.
+                    # service) — the event matches on entry_id. Dismiss the
+                    # reminder notification; the dose is already logged.
                     - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'event' and wait.trigger.event.event_type == 'ax_dose_logger_dose_taken' }}"
                       sequence:
                         - device_id: !input notify_device
@@ -349,9 +451,34 @@ action:
                           message: "clear_notification"
                           data:
                             tag: "{{ tag_id }}"
+                        # Optional "dose taken" confirmation + action
+                        - choose: []
+                          default: !input action_on_taken
+                        - choose:
+                            - conditions: "{{ notify_taken | bool }}"
+                              sequence:
+                                - device_id: !input notify_device
+                                  domain: mobile_app
+                                  type: notify
+                                  title: "{{ title_taken }}"
+                                  message: "{{ message_taken }}"
+                                  data:
+                                    tag: "{{ tag_taken }}"
+                                # Auto-dismiss the confirmation after the
+                                # configured timeout
+                                - delay:
+                                    minutes: !input taken_timeout
+                                - device_id: !input notify_device
+                                  domain: mobile_app
+                                  type: notify
+                                  message: "clear_notification"
+                                  data:
+                                    tag: "{{ tag_taken }}"
 
                     # Dose status left due/overdue (taken, skipped, or the
-                    # window moved on) — dismiss the notification.
+                    # window moved on) — dismiss the notification. No
+                    # "taken" confirmation here: this branch also catches
+                    # skips and window moves, so the reason is ambiguous.
                     - conditions: "{{ wait.trigger is not none and wait.trigger.platform == 'state' }}"
                       sequence:
                         - device_id: !input notify_device
