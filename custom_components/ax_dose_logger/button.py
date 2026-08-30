@@ -273,9 +273,7 @@ class DrinkLogButton(AxDoseLoggerEntity, ButtonEntity):
             # Options-first read (B2 parity with DrinkCoordinator._allowed_profiles):
             # the options flow writes allowed_profiles to entry.options, so a
             # data-only read would expose stale routing info to the card.
-            "allowed_profiles": entry.options.get(
-                "allowed_profiles", entry.data.get("allowed_profiles", ["default"])
-            ),
+            "allowed_profiles": entry.options.get("allowed_profiles", entry.data.get("allowed_profiles", ["default"])),
             "shared_drink": entry.options.get("shared_drink", entry.data.get("shared_drink", False)),
         }
 

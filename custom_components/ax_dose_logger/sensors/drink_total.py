@@ -49,9 +49,7 @@ class DrinkTotalSensor(RestoreSensor):
             "device_type": "drink",
             "role": "total",
             # Options-first read (B2 parity with DrinkCoordinator._allowed_profiles).
-            "allowed_profiles": entry.options.get(
-                "allowed_profiles", entry.data.get("allowed_profiles", ["default"])
-            ),
+            "allowed_profiles": entry.options.get("allowed_profiles", entry.data.get("allowed_profiles", ["default"])),
             "shared_drink": entry.options.get("shared_drink", entry.data.get("shared_drink", False)),
         }
 

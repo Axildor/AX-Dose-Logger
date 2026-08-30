@@ -85,7 +85,9 @@ SERVICE_SET_METRIC_SCHEMA = vol.Schema(
 )
 
 
-def _get_coordinator_for_drink_entity(hass: HomeAssistant, entity_id: str) -> AxDoseLoggerCoordinator | DrinkCoordinator:
+def _get_coordinator_for_drink_entity(
+    hass: HomeAssistant, entity_id: str
+) -> AxDoseLoggerCoordinator | DrinkCoordinator:
     """
     Resolve a granular-drink entity_id to its coordinator.
 
