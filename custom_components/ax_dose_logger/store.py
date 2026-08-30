@@ -38,6 +38,18 @@ SKIPPED_STORAGE_KEY = "ax_dose_logger_skipped_slots"
 ADHERENCE_STORAGE_VERSION = 1
 ADHERENCE_STORAGE_KEY = "ax_dose_logger_adherence"
 
+# Averages reset anchors — the timestamp of the last "Reset Averages" tool
+# action.  Average sensors clamp their effective window start to
+# max(history_start_date, reset_time) so doses logged before the reset stop
+# counting toward the 7/14/30/365-day averages WITHOUT deleting any dose
+# data (Total Doses, PK, stock, and Adherence % are untouched).
+# Keys: entry_id for medicine + granular drink entries (both share the
+# dose-history store keyed by entry_id); "master::{profile_id}::{substance}"
+# for Master Tracker (per-substance aggregate) coordinators.
+# Shape: { key: { "reset_time": "iso" | null } }
+AVERAGES_STORAGE_VERSION = 1
+AVERAGES_STORAGE_KEY = "ax_dose_logger_averages"
+
 # Legacy storage key from the pre-rebrand "pill_logger" domain.
 # Kept for the safer migration variant: on first load under the new key,
 # if the new key is empty we copy data from the legacy key but do NOT
@@ -156,6 +168,12 @@ class AxDoseLoggerStore:
         # { entry_id: { "overrides": ["iso", ...], "reset_time": "iso" | None } }
         self._adherence_store: Store = Store(hass, ADHERENCE_STORAGE_VERSION, ADHERENCE_STORAGE_KEY)
         self._adherence_data: dict[str, dict] = {}
+        # Averages reset anchors:
+        # { key: { "reset_time": "iso" | None } } — key is entry_id for
+        # medicine + granular drink entries, "master::{profile_id}::{substance}"
+        # for Master Tracker coordinators.
+        self._averages_store: Store = Store(hass, AVERAGES_STORAGE_VERSION, AVERAGES_STORAGE_KEY)
+        self._averages_data: dict[str, dict] = {}
         # Per-(profile_id, substance) drink master stores (created lazily).
         # Rekeyed from substance-only to the 2D (profile_id, substance) tuple
         # for the M2M multi-profile topology (see plans/m2m-decoupled-topology-plan.md).
@@ -240,6 +258,22 @@ class AxDoseLoggerStore:
             "AX Dose Logger adherence store loaded: %d entries, %d total overrides",
             len(self._adherence_data),
             total_overrides,
+        )
+
+        # Load averages reset anchors from separate store.
+        # Forward-only: a pre-fix installation has no averages store, so every
+        # entry loads as {"reset_time": None} — averages keep their full
+        # history until the user explicitly resets them.
+        averages_data = await self._averages_store.async_load()
+        if averages_data:
+            self._averages_data = averages_data
+        else:
+            self._averages_data = {}
+        total_anchors = sum(1 for v in self._averages_data.values() if v.get("reset_time"))
+        LOGGER.info(
+            "AX Dose Logger averages store loaded: %d entries, %d reset anchors",
+            len(self._averages_data),
+            total_anchors,
         )
 
     async def async_load_drink_master(self, profile_id: str, substance: str, store_key: str) -> None:
@@ -365,6 +399,32 @@ class AxDoseLoggerStore:
         self._adherence_data[entry_id] = {"overrides": overrides, "reset_time": reset_time}
         self._adherence_store.async_delay_save(
             lambda: self._adherence_data, _SAVE_DEBOUNCE_SECONDS
+        )
+
+    # ------------------------------------------------------------------
+    # Averages reset anchors (Reset Averages tool)
+    # ------------------------------------------------------------------
+    @callback
+    def get_averages_reset(self, key: str) -> dict:
+        """Get the averages reset anchor for a specific key.
+
+        ``key`` is an entry_id (medicine + granular drink coordinators) or
+        ``"master::{profile_id}::{substance}"`` (Master Tracker
+        coordinators).  Returns ``{"reset_time": "iso" | None}``; an empty
+        dict if the key has no persisted reset anchor.
+        """
+        return self._averages_data.get(key, {})
+
+    @callback
+    def schedule_save_averages_reset(self, key: str, reset_time: str | None) -> None:
+        """Update the in-memory averages slice and schedule a debounced save.
+
+        ``reset_time`` is the ISO timestamp of the last "Reset Averages"
+        action, or ``None`` if never reset.
+        """
+        self._averages_data[key] = {"reset_time": reset_time}
+        self._averages_store.async_delay_save(
+            lambda: self._averages_data, _SAVE_DEBOUNCE_SECONDS
         )
 
     # ------------------------------------------------------------------

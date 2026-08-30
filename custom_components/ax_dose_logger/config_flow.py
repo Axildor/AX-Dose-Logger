@@ -532,21 +532,11 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             fields[vol.Optional("enable_adherence", default=default_adherence)] = sel.BooleanSelector()
             fields[vol.Optional("adherence_grace_minutes", default=60)] = _ADHERENCE_GRACE_SELECTOR
-            # Anti-drift dose buffer (see const.py DOSE_BUFFER_DEFAULT_MIN).
-            # Optional with the conservative 5-min default so existing entries
-            # gain the buffer on next options save without a migration step.
-            fields[
-                vol.Optional(
-                    "dose_buffer_minutes",
-                    default=self._data.get(
-                        "dose_buffer_minutes",
-                        self._entry.options.get(
-                            "dose_buffer_minutes",
-                            self._entry.data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN),
-                        ),
-                    ),
-                )
-            ] = _DOSE_BUFFER_SELECTOR
+            # NOTE: dose_buffer_minutes is intentionally NOT shown here. It is
+            # collected once in the tracking-type schedule steps (next to
+            # time_window_hours / pill_limit, which cap it) and carried
+            # forward in self._data. Showing it again here duplicated the
+            # field in the initial flow.
 
         # Retention window for persistent history (doses, skipped slots,
         # adherence overrides, effectiveness PROs).  Default 365 = CMS/NCQA

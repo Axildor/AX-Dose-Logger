@@ -90,6 +90,10 @@ class DrinkCoordinatorData:
 
     dose_history: list[tuple[datetime, float, str | None]] = field(default_factory=list)
     last_dose_time: datetime | None = None
+    # Averages reset anchor (Reset Averages tool) — does not affect
+    # dose_history / PK / stock.  Average sensors clamp their effective
+    # window start to max(history_start_date, avg_reset_time).
+    avg_reset_time: datetime | None = None
 
 
 class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
@@ -164,9 +168,19 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
                 continue
         dose_history = prune_dose_triples(dose_history, cutoff)
         last_dose = dose_history[-1][0] if dose_history else None
+        # Averages reset anchor (Reset Averages tool).  Forward-only: a
+        # pre-fix installation has no averages store, so the anchor loads
+        # as None — averages keep their full history until explicitly reset.
+        raw_averages = self._store.get_averages_reset(self._entry.entry_id)
+        avg_reset_time: datetime | None = None
+        if isinstance(raw_averages, dict):
+            avg_reset_str = raw_averages.get("reset_time")
+            if isinstance(avg_reset_str, str):
+                avg_reset_time = dt_util.parse_datetime(avg_reset_str)
         self.data = DrinkCoordinatorData(
             dose_history=dose_history,
             last_dose_time=last_dose,
+            avg_reset_time=avg_reset_time,
         )
         LOGGER.debug(
             "DrinkCoordinator setup for %s: %d doses loaded (retention=%dd)",
@@ -182,6 +196,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         return DrinkCoordinatorData(
             dose_history=data.dose_history,
             last_dose_time=last_dose,
+            avg_reset_time=data.avg_reset_time,
         )
 
     def _push_update(self) -> None:
@@ -194,6 +209,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         return DrinkCoordinatorData(
             dose_history=data.dose_history,
             last_dose_time=last_dose,
+            avg_reset_time=data.avg_reset_time,
         )
 
     # ------------------------------------------------------------------
@@ -452,6 +468,22 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         )
         self._push_update()
 
+    async def async_averages_reset(self) -> None:
+        """Reset this granular drink's rolling averages only (no history impact).
+
+        Sets a persisted reset anchor; the DrinkAvgDosesSensor instances
+        clamp their effective window start to
+        max(history_start_date, avg_reset_time) so pre-reset drinks stop
+        counting toward the 7/14/30/365-day averages.  Total drinks, PK
+        (body mass), stock, and the master's aggregate averages are
+        untouched — no drink data is deleted.
+        """
+        self.data.avg_reset_time = dt_util.now()
+        self._store.schedule_save_averages_reset(
+            self._entry.entry_id, self.data.avg_reset_time.isoformat()
+        )
+        self._push_update()
+
     def is_within_cooldown(self, now: datetime | None = None) -> bool:
         """Return True if a new drink would violate the cooldown window.
 
@@ -554,6 +586,10 @@ class DrinkMasterCoordinatorData:
     # peak_time == the recompute ``now`` -- the peak is already in the past.
     peak_body_mass: float = 0.0
     peak_time: datetime | None = None
+    # Averages reset anchor (Reset Averages tool) — does not affect
+    # dose_history / PK / stock.  The master's average sensors clamp their
+    # effective window start to max(history_start_date, avg_reset_time).
+    avg_reset_time: datetime | None = None
 
 
 class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
@@ -684,10 +720,21 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
 
         # Rebuild contributing entry-id set from the doses (best-effort;
         # not stored per-dose -- see contributing_entry_ids note in dataclass).
+        # Averages reset anchor (Reset Averages tool).  Forward-only: a
+        # pre-fix installation has no averages store, so the anchor loads
+        # as None — averages keep their full history until explicitly reset.
+        master_key = f"master::{self._profile_id}::{self._substance}"
+        raw_averages = self._store.get_averages_reset(master_key)
+        avg_reset_time: datetime | None = None
+        if isinstance(raw_averages, dict):
+            avg_reset_str = raw_averages.get("reset_time")
+            if isinstance(avg_reset_str, str):
+                avg_reset_time = dt_util.parse_datetime(avg_reset_str)
         self.data = DrinkMasterCoordinatorData(
             dose_history=doses,
             last_dose_time=last_dose,
             body_mass=body_mass,
+            avg_reset_time=avg_reset_time,
         )
         # Forecast the caffeine peak + its wall-clock time so self.data is
         # fully valid (peak_body_mass / peak_time populated) the instant
@@ -749,6 +796,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             contributing_entry_ids=data.contributing_entry_ids,
             peak_body_mass=peak_body_mass,
             peak_time=peak_time,
+            avg_reset_time=data.avg_reset_time,
         )
 
     def _push_update(self) -> None:
@@ -1000,6 +1048,24 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         self.data.body_mass = 0.0
         self._last_decay = None
         self._save()
+        self._push_update()
+
+    async def async_averages_reset(self) -> None:
+        """Reset this substance's aggregate rolling averages only (no history impact).
+
+        Sets a persisted reset anchor; the DrinkMasterAvgDosesSensor
+        instances clamp their effective window start to
+        max(history_start_date, avg_reset_time) so pre-reset drinks (across
+        ALL granular drinks of this substance) stop counting toward the
+        7/14/30/365-day aggregate averages.  Body mass (PK), per-drink
+        totals, and granular averages are untouched — no drink data is
+        deleted.
+        """
+        self.data.avg_reset_time = dt_util.now()
+        self._store.schedule_save_averages_reset(
+            f"master::{self._profile_id}::{self._substance}",
+            self.data.avg_reset_time.isoformat(),
+        )
         self._push_update()
 
     # ------------------------------------------------------------------

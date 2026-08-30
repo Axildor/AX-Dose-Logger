@@ -43,6 +43,7 @@ SERVICE_SKIP_DOSE: Final = "skip_dose"
 SERVICE_LOG_DRINK: Final = "log_drink"
 SERVICE_UNDO_DRINK: Final = "undo_drink"
 SERVICE_RESET_DRINK: Final = "reset_drink"
+SERVICE_AVERAGES_RESET: Final = "averages_reset"
 
 # Service fields
 ATTR_ENTRY_ID: Final = "entry_id"
@@ -249,6 +250,17 @@ async def _async_reset_drink(call: ServiceCall) -> None:
     await coordinator.async_reset()
 
 
+async def _async_averages_reset(call: ServiceCall) -> None:
+    """Handle the ``averages_reset`` service — reset rolling averages only.
+
+    Sets a persisted reset anchor so the 7/14/30/365-day average sensors
+    stop counting pre-reset doses.  Total Doses, PK, stock, and Adherence %
+    are untouched — no dose data is deleted.
+    """
+    coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
+    await coordinator.async_averages_reset()
+
+
 def async_setup_services(hass: HomeAssistant) -> None:
     """
     Register all ax_dose_logger services.
@@ -282,6 +294,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_UNDO_DRINK, _async_undo_drink, schema=SERVICE_BASE_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
     hass.services.async_register(DOMAIN, SERVICE_RESET_DRINK, _async_reset_drink, schema=SERVICE_BASE_SCHEMA)
+    # pylint: disable-next=home-assistant-service-registered-in-setup-entry
+    hass.services.async_register(DOMAIN, SERVICE_AVERAGES_RESET, _async_averages_reset, schema=SERVICE_BASE_SCHEMA)
 
 
 def async_unload_services(hass: HomeAssistant) -> None:
@@ -301,6 +315,7 @@ def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_LOG_DRINK,
         SERVICE_UNDO_DRINK,
         SERVICE_RESET_DRINK,
+        SERVICE_AVERAGES_RESET,
     ):
         if hass.services.has_service(DOMAIN, service_name):
             hass.services.async_remove(DOMAIN, service_name)

@@ -109,3 +109,11 @@ reset_drink:
       selector:
         config_entry:
           integration: ax_dose_logger
+
+averages_reset:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: ax_dose_logger

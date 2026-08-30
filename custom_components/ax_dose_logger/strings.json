@@ -441,7 +441,6 @@
           "enable_calendar": "Calendar Entity",
           "enable_adherence": "Track Dose Adherence",
           "adherence_grace_minutes": "On-Time Window",
-          "dose_buffer_minutes": "Dose Buffer",
           "retention_days": "History Retention (days)"
         },
         "data_description": {
@@ -450,7 +449,6 @@
           "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for as-needed medications.",
           "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
           "adherence_grace_minutes": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on).",
-          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class. This is an availability relaxation only — it does not affect the 24h strength safety limit or your adherence score.",
           "retention_days": "How many days of dose, skip, adherence, and effectiveness-metric history to keep locally for the rolling sensors and a future medical-export feature. 365 days matches the CMS/NCQA Proportion-of-Days-Covered adherence-measure floor. Older entries are pruned from the local store; the HA recorder is not used. Range 30–1095."
         }
       },
@@ -591,6 +589,16 @@
         "entry_id": {
           "name": "Medication",
           "description": "The medication to reset adherence for."
+        }
+      }
+    },
+    "averages_reset": {
+      "name": "Reset Averages",
+      "description": "Resets the rolling averages (7/14/30/365-day) only. Doses logged before the reset stop counting toward the averages; no dose data is deleted — Total Doses, Amount in Body, pill inventory, and Adherence % are untouched.",
+      "fields": {
+        "entry_id": {
+          "name": "Medication",
+          "description": "The medication to reset the averages for."
         }
       }
     },
@@ -782,6 +790,9 @@
       },
       "reset_adherence": {
         "name": "Reset Adherence %"
+      },
+      "reset_averages": {
+        "name": "Reset Averages"
       },
       "cover_last_missed": {
         "name": "Mark Last Adherence Taken"

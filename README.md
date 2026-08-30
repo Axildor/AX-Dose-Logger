@@ -365,9 +365,9 @@ Once installed, add it to your dashboard via the visual editor and pick your med
 <!-- SCREENSHOT: Card showing the Stats pane — rolling average boxes (7/14/30/365 days), adherence percentage boxes, total doses, days since first dose -->
 ![Stats pane](screenshots/stats-pane.png)
 
-**Tools pane** — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset History, Undo Last Dose buttons:
+**Tools pane** — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset Averages, Reset History, Undo Last Dose buttons. **Reset Averages** (under General Tools) restarts the 7/14/30/365-day averages from now — doses logged before the reset stop counting toward the averages, but no dose data is deleted (Total Doses, Amount in Body, and Adherence % are untouched). Available on medications, drink trackers, and Master Trackers:
 
-<!-- SCREENSHOT: Card showing the Tools pane — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset History, Undo Last Dose buttons -->
+<!-- SCREENSHOT: Card showing the Tools pane — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset Averages, Reset History, Undo Last Dose buttons -->
 ![Tools pane](screenshots/tools-pane.png)
 
 > **Skip Dose** clears the overdue alarm and advances the next-dose schedule for a deliberately-skipped scheduled dose (e.g. prescriber-directed "skip if dizzy", a taper step, or a drug holiday) **without logging a dose** — Amount in Body, pill inventory, total doses, and last dose are all untouched, so the pharmacokinetic graph stays clean. Adherence stays penalized (you genuinely did not take it); for a prescriber-directed skip, press **Mark Last Adherence Taken** afterwards to credit the slot. Skip Dose is only available for scheduled medications (Time of Day, Regular Interval, Cyclic); As Needed meds have no schedule to skip.

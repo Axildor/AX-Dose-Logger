@@ -761,9 +761,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
     ``_async_process_on_unload`` runs them after we return.
     """
     device_category = entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
-    # Drink Settings only forwards to sensor; drinks forward to sensor+button+number.
+    # Drink Settings forwards to sensor+button (the button platform hosts the
+    # Master Tracker Averages Reset buttons); drinks forward to
+    # sensor+button+number.
     if device_category == DEVICE_CATEGORY_DRINK_SETTINGS:
-        platforms = ["sensor"]
+        platforms = ["sensor", "button"]
     elif device_category == DEVICE_CATEGORY_DRINKS:
         platforms = ["sensor", "button", "number"]
     else:

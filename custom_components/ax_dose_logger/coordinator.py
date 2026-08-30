@@ -67,6 +67,12 @@ class AxDoseLoggerCoordinatorData:
     # Adherence-specific state (does not affect dose_history)
     adherence_overrides: list[datetime] = field(default_factory=list)
     adherence_reset_time: datetime | None = None
+    # Averages reset anchor (does not affect dose_history / PK / stock /
+    # adherence).  Set by the "Reset Averages" tool; average sensors clamp
+    # their effective window start to max(history_start_date, avg_reset_time)
+    # so pre-reset doses stop counting toward the rolling averages without
+    # deleting any dose data.
+    avg_reset_time: datetime | None = None
     # Skipped-dose slots (does not affect dose_history / PK / stock).
     # Consumed ONLY by the overdue + next_dose sensors so a deliberate
     # skip clears the overdue alarm and advances the schedule without
@@ -198,11 +204,22 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             if isinstance(reset_str, str):
                 adherence_reset_time = dt_util.parse_datetime(reset_str)
 
+        # Averages reset anchor (Reset Averages tool).  Forward-only: a
+        # pre-fix installation has no averages store, so the anchor loads
+        # as None — averages keep their full history until explicitly reset.
+        raw_averages = self._store.get_averages_reset(self._entry.entry_id)
+        avg_reset_time: datetime | None = None
+        if isinstance(raw_averages, dict):
+            avg_reset_str = raw_averages.get("reset_time")
+            if isinstance(avg_reset_str, str):
+                avg_reset_time = dt_util.parse_datetime(avg_reset_str)
+
         self.data = AxDoseLoggerCoordinatorData(
             dose_history=dose_history,
             last_dose_time=last_dose,
             adherence_overrides=adherence_overrides,
             adherence_reset_time=adherence_reset_time,
+            avg_reset_time=avg_reset_time,
             skipped_slots=skipped_slots,
             metric_values=metric_values,
         )
@@ -276,6 +293,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             pk_result=pk_result,
             adherence_overrides=data.adherence_overrides,
             adherence_reset_time=data.adherence_reset_time,
+            avg_reset_time=data.avg_reset_time,
             skipped_slots=data.skipped_slots,
             metric_values=data.metric_values,
         )
@@ -386,10 +404,14 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self.data.last_dose_time = None
         self.data.adherence_overrides.clear()
         self.data.adherence_reset_time = None
+        self.data.avg_reset_time = None
         self.data.skipped_slots.clear()
         self._save()
         self._save_skipped()
         self._save_adherence()
+        # A full history wipe makes the averages anchor meaningless — clear
+        # it so the averages re-anchor to the (now empty) history cleanly.
+        self._store.schedule_save_averages_reset(self._entry.entry_id, None)
 
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_reset_{self._entry.entry_id}")
@@ -410,6 +432,25 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
 
         # Fire legacy signal
         async_dispatcher_send(self.hass, f"pill_adherence_reset_{self._entry.entry_id}")
+
+        self._push_update()
+
+    async def async_averages_reset(self) -> None:
+        """Reset the rolling averages only (no dose history impact).
+
+        Sets a persisted reset anchor; the average sensors clamp their
+        effective window start to max(history_start_date, avg_reset_time)
+        so pre-reset doses stop counting toward the 7/14/30/365-day
+        averages.  Total Doses, Amount in Body (PK), stock, and Adherence %
+        are untouched — no dose data is deleted.
+        """
+        self.data.avg_reset_time = dt_util.now()
+        self._store.schedule_save_averages_reset(
+            self._entry.entry_id, self.data.avg_reset_time.isoformat()
+        )
+
+        # Fire legacy signal
+        async_dispatcher_send(self.hass, f"pill_averages_reset_{self._entry.entry_id}")
 
         self._push_update()
 

@@ -107,7 +107,18 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         now = dt_util.now()
         if not self._history_start_date:
             self._history_start_date = now
-        days_since_start = (now - self._history_start_date).total_seconds() / 86400.0
+        # Averages reset anchor (Reset Averages tool): clamp the effective
+        # window start so pre-reset drinks (across ALL granular drinks of
+        # this substance) stop counting toward the aggregate average.  The
+        # raw history_start_date attribute is NOT modified — the frontend
+        # reads it for the days-since reveal logic.
+        avg_reset = (
+            self._coordinator.data.avg_reset_time if self._coordinator.data else None
+        )
+        effective_start = self._history_start_date
+        if avg_reset is not None and avg_reset > effective_start:
+            effective_start = avg_reset
+        days_since_start = (now - effective_start).total_seconds() / 86400.0
         days_since_start = max(1.0, days_since_start)
         actual_window_days = min(days_since_start, float(self._window_days))
 
@@ -124,6 +135,7 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
             "effective_window_days": round(actual_window_days, 1),
             "doses_in_window": len(valid_timestamps),
             "history_start_date": self._history_start_date.isoformat() if self._history_start_date else None,
+            "averages_reset_time": avg_reset.isoformat() if avg_reset else None,
             "substance": self._substance,
             "drink_master": True,
         }

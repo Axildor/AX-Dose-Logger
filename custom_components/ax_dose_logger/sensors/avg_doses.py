@@ -132,7 +132,17 @@ class PillAvgDosesSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         now = dt_util.now()
         if not self._history_start_date:
             self._history_start_date = now
-        days_since_start = (now - self._history_start_date).total_seconds() / 86400.0
+        # Averages reset anchor (Reset Averages tool): clamp the effective
+        # window start so pre-reset doses stop counting toward the average.
+        # The raw history_start_date attribute is NOT modified — the
+        # frontend reads it for the days-since reveal logic.
+        avg_reset = (
+            self.coordinator.data.avg_reset_time if self.coordinator.data else None
+        )
+        effective_start = self._history_start_date
+        if avg_reset is not None and avg_reset > effective_start:
+            effective_start = avg_reset
+        days_since_start = (now - effective_start).total_seconds() / 86400.0
         days_since_start = max(1.0, days_since_start)
         actual_window_days = min(days_since_start, float(self._window_days_target))
 
@@ -162,4 +172,5 @@ class PillAvgDosesSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "effective_window_days": round(actual_window_days, 1),
             "timestamps": [ts.isoformat() for ts in valid_timestamps],
             "history_start_date": self._history_start_date.isoformat() if self._history_start_date else None,
+            "averages_reset_time": avg_reset.isoformat() if avg_reset else None,
         }
