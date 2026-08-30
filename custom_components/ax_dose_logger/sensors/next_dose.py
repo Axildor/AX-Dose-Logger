@@ -120,7 +120,7 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
             try:
                 anchor_date = date.fromisoformat(anchor_str)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 anchor_date = now.date()
             dose_hour, dose_minute = parse_dose_time(dose_time_str)
 
@@ -168,9 +168,7 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             pills_remaining = max(0, max_pills - len(valid_timestamps_for_calc))
             if pills_remaining == 0 and valid_timestamps_for_calc:
                 self._attr_native_value = (
-                    valid_timestamps_for_calc[0]
-                    + timedelta(hours=time_window)
-                    - timedelta(minutes=buffer_minutes)
+                    valid_timestamps_for_calc[0] + timedelta(hours=time_window) - timedelta(minutes=buffer_minutes)
                 )
             elif dose_timestamps:
                 self._attr_native_value = dose_timestamps[-1]

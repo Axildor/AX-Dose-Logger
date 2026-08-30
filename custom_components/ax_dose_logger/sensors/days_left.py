@@ -157,7 +157,7 @@ class PillDaysLeftSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return 0.0
         try:
             return max(0.0, float(state.state))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return 0.0
 
     def _doses_per_day_scheduled(self) -> float:
@@ -320,7 +320,7 @@ class DrinkDaysLeftSensor(RestoreSensor):
             return 0.0
         try:
             return max(0.0, float(state.state))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return 0.0
 
     def _doses_per_day_avg(self) -> float | None:

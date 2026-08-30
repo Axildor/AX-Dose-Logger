@@ -315,6 +315,7 @@ results.append(
     )
 )
 
+
 # Adherence with pps=2: expected = slots x 2; 1 pill in one slot = 1 actual.
 def adherence_pps_check(name, now, doses, pills_per_slot, grace_hours, expected_actual, expected_expected):
     early_grace = timedelta(hours=grace_hours)
@@ -339,7 +340,9 @@ def adherence_pps_check(name, now, doses, pills_per_slot, grace_hours, expected_
         expected += pills_per_slot
         actual += min(a.assigned_count, pills_per_slot)
     ok = actual == expected_actual and expected == expected_expected
-    print(f"[{'PASS' if ok else 'FAIL'}] {name}: actual={actual}/{expected} (want {expected_actual}/{expected_expected})")
+    print(
+        f"[{'PASS' if ok else 'FAIL'}] {name}: actual={actual}/{expected} (want {expected_actual}/{expected_expected})"
+    )
     return ok
 
 

@@ -268,12 +268,7 @@
         }
       }
     },
-    "selector": {
-      "allowed_profiles": {
-        "name": "Allowed Profiles"
-      }
-    },
-    "errors": {
+    "error": {
       "name_exists": "A profile with this name already exists. Choose a different name.",
       "name_required": "A profile name is required.",
       "select_profile": "You must select an existing profile or create a new one."
@@ -513,7 +508,7 @@
         }
       }
     },
-    "errors": {
+    "error": {
       "name_exists": "A profile with this name already exists. Choose a different name.",
       "name_required": "A profile name is required.",
       "select_profile": "You must select an existing profile or create a new one."

@@ -136,9 +136,7 @@ class PillAvgDosesSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         # window start so pre-reset doses stop counting toward the average.
         # The raw history_start_date attribute is NOT modified — the
         # frontend reads it for the days-since reveal logic.
-        avg_reset = (
-            self.coordinator.data.avg_reset_time if self.coordinator.data else None
-        )
+        avg_reset = self.coordinator.data.avg_reset_time if self.coordinator.data else None
         effective_start = self._history_start_date
         if avg_reset is not None and avg_reset > effective_start:
             effective_start = avg_reset

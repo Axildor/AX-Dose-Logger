@@ -82,21 +82,45 @@ def main() -> int:
     # at 21:00 → 0s overdue, NOT 8h. At 05:00 next day (2nd deadline) the
     # anchor advances to 05:00 → 0s overdue, NOT 16h.
     doses = [BASE]
-    all_ok &= check("overdue anchor at 21:00 (1st deadline)", _overdue_anchor(doses, BASE + timedelta(hours=8)), BASE + timedelta(hours=8))
-    all_ok &= check("overdue anchor at 05:00 next day (2nd deadline)", _overdue_anchor(doses, BASE + timedelta(hours=16)), BASE + timedelta(hours=16))
-    all_ok &= check("overdue anchor at 13:00 next day (3rd deadline)", _overdue_anchor(doses, BASE + timedelta(hours=24)), BASE + timedelta(hours=24))
+    all_ok &= check(
+        "overdue anchor at 21:00 (1st deadline)",
+        _overdue_anchor(doses, BASE + timedelta(hours=8)),
+        BASE + timedelta(hours=8),
+    )
+    all_ok &= check(
+        "overdue anchor at 05:00 next day (2nd deadline)",
+        _overdue_anchor(doses, BASE + timedelta(hours=16)),
+        BASE + timedelta(hours=16),
+    )
+    all_ok &= check(
+        "overdue anchor at 13:00 next day (3rd deadline)",
+        _overdue_anchor(doses, BASE + timedelta(hours=24)),
+        BASE + timedelta(hours=24),
+    )
 
     # Mid-interval: overdue counts from the most recent deadline only.
     # At 02:00 next day (5h past the 21:00 deadline) anchor = 21:00.
-    all_ok &= check("overdue anchor mid-interval (5h past 2nd deadline)", _overdue_anchor(doses, BASE + timedelta(hours=13)), BASE + timedelta(hours=8))
+    all_ok &= check(
+        "overdue anchor mid-interval (5h past 2nd deadline)",
+        _overdue_anchor(doses, BASE + timedelta(hours=13)),
+        BASE + timedelta(hours=8),
+    )
 
     # Not yet due: no overdue.
     all_ok &= check("overdue None before first deadline", _overdue_anchor(doses, BASE + timedelta(hours=7)), None)
 
     # ── 2. next_dose advances to the next future deadline ─────────────
-    all_ok &= check("next_dose at 21:00 → 05:00", _next_dose(doses, BASE + timedelta(hours=8)), BASE + timedelta(hours=16))
-    all_ok &= check("next_dose at 05:00 → 13:00", _next_dose(doses, BASE + timedelta(hours=16)), BASE + timedelta(hours=24))
-    all_ok &= check("next_dose before first deadline → 21:00", _next_dose(doses, BASE + timedelta(hours=7)), BASE + timedelta(hours=8))
+    all_ok &= check(
+        "next_dose at 21:00 → 05:00", _next_dose(doses, BASE + timedelta(hours=8)), BASE + timedelta(hours=16)
+    )
+    all_ok &= check(
+        "next_dose at 05:00 → 13:00", _next_dose(doses, BASE + timedelta(hours=16)), BASE + timedelta(hours=24)
+    )
+    all_ok &= check(
+        "next_dose before first deadline → 21:00",
+        _next_dose(doses, BASE + timedelta(hours=7)),
+        BASE + timedelta(hours=8),
+    )
 
     # Parity with the shared helper used by steady_state.
     class _Entry:  # minimal stub: options fall back to data
@@ -114,7 +138,9 @@ def main() -> int:
     late = BASE + timedelta(hours=20)
     doses_late = [BASE, late]
     all_ok &= check("overdue cleared after late dose", _overdue_anchor(doses_late, late + timedelta(hours=1)), None)
-    all_ok &= check("next_dose = late dose + interval", _next_dose(doses_late, late + timedelta(hours=1)), late + timedelta(hours=8))
+    all_ok &= check(
+        "next_dose = late dose + interval", _next_dose(doses_late, late + timedelta(hours=1)), late + timedelta(hours=8)
+    )
 
     # ── 4. Unsorted merged timestamps (override/undo edge case) ───────
     # The merged dose+skip list is not guaranteed sorted: an override
@@ -123,9 +149,19 @@ def main() -> int:
     # (18:00) is only 4h elapsed → next_dose = 02:00 next day; a [-1]
     # anchor (14:00) would wrongly yield 22:00.
     unsorted = [BASE, BASE + timedelta(hours=5), BASE + timedelta(hours=1)]
-    all_ok &= check("unsorted list: next_dose anchored at max()", _next_dose(unsorted, BASE + timedelta(hours=9)), BASE + timedelta(hours=13))
-    all_ok &= check("unsorted list: overdue None before max()+interval", _overdue_anchor(unsorted, BASE + timedelta(hours=9)), None)
-    all_ok &= check("unsorted list: overdue anchors at max()+interval", _overdue_anchor(unsorted, BASE + timedelta(hours=13)), BASE + timedelta(hours=13))
+    all_ok &= check(
+        "unsorted list: next_dose anchored at max()",
+        _next_dose(unsorted, BASE + timedelta(hours=9)),
+        BASE + timedelta(hours=13),
+    )
+    all_ok &= check(
+        "unsorted list: overdue None before max()+interval", _overdue_anchor(unsorted, BASE + timedelta(hours=9)), None
+    )
+    all_ok &= check(
+        "unsorted list: overdue anchors at max()+interval",
+        _overdue_anchor(unsorted, BASE + timedelta(hours=13)),
+        BASE + timedelta(hours=13),
+    )
 
     print()
     print("ALL PASS" if all_ok else "FAILURES DETECTED")

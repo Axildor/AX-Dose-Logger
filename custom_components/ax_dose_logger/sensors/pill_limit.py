@@ -89,9 +89,7 @@ class PillLimitSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             # The window expires `buffer` minutes earlier than the strict
             # window (the dose falls out of the count at window - buffer).
             window_expires_at = (
-                valid_timestamps[0]
-                + timedelta(hours=time_window)
-                - timedelta(minutes=buffer_minutes)
+                valid_timestamps[0] + timedelta(hours=time_window) - timedelta(minutes=buffer_minutes)
             ).isoformat()
 
         self._attr_extra_state_attributes = {

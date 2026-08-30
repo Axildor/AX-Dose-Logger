@@ -237,7 +237,11 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return False, 0.0, daily_limit
 
         cutoff = now - timedelta(hours=_WINDOW_HOURS_24H)
-        amount = sum(float(s) for ts, s in self.coordinator.data.dose_history if ts >= cutoff) if self.coordinator.data else 0.0
+        amount = (
+            sum(float(s) for ts, s in self.coordinator.data.dose_history if ts >= cutoff)
+            if self.coordinator.data
+            else 0.0
+        )
         already = amount > daily_limit
         would = (amount + strength) > daily_limit and not already
         return (already or would), amount, daily_limit
@@ -287,7 +291,7 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
         try:
             anchor_date = date.fromisoformat(anchor_str)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             anchor_date = now.date()
         dose_hour, dose_minute = parse_dose_time(dose_time_str)
 

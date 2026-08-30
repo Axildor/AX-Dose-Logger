@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Sanity-check the graph sampling helpers (pure math, no HA stubbing)."""
+
 import os
 import sys
 from datetime import datetime, timedelta
@@ -43,8 +44,9 @@ assert len(samples) == 240, f"expected 240 samples, got {len(samples)}"
 # 2. Monotonic decay after the peak (dose at 06:00, t_max 1h -> peak 07:00;
 #    window starts 00:00, so the whole window is post-peak decay).
 values = [v for _, v in samples]
-assert all(values[i] >= values[i + 1] - 1e-9 for i in range(len(values) - 1)), \
+assert all(values[i] >= values[i + 1] - 1e-9 for i in range(len(values) - 1)), (
     "curve not monotonically decaying post-peak"
+)
 
 # 3. Endpoint parity: last sample == direct compute at END.
 direct = PKModel.compute(PARAMS, history, END).body

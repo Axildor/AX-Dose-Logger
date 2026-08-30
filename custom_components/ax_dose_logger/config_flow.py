@@ -10,10 +10,10 @@ from .const import (
     ALCOHOL_DEFAULT_LIMIT_G,
     CAFFEINE_DEFAULT_LIMIT_MG,
     CURRENT_VERSION,
+    DEFAULT_PROFILE_ID,
     DEVICE_CATEGORIES,
     DEVICE_CATEGORY_DRINK_SETTINGS,
     DEVICE_CATEGORY_DRINKS,
-    DEFAULT_PROFILE_ID,
     DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
     DOSE_BUFFER_DEFAULT_MIN,
@@ -21,11 +21,11 @@ from .const import (
     DRINK_TYPES,
     GLOBAL_PK_DEFAULTS,
     MAX_DOSES_PER_DAY,
+    MAX_RETENTION_DAYS,
+    MIN_RETENTION_DAYS,
     PILLS_PER_SLOT_DEFAULT,
     PILLS_PER_SLOT_MAX,
     PILLS_PER_SLOT_MIN,
-    MAX_RETENTION_DAYS,
-    MIN_RETENTION_DAYS,
     PK_DEFAULTS,
     RELEASE_INSTANT,
     RELEASE_SUSTAINED,
@@ -89,7 +89,11 @@ _PILL_LIMIT_SELECTOR = sel.NumberSelector(
 # (e.g. 2 pills at 08:00 + 2 at 20:00 = 4/day). Default 1 = legacy behavior.
 _PILLS_PER_SLOT_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(
-        min=PILLS_PER_SLOT_MIN, max=PILLS_PER_SLOT_MAX, step=1, unit_of_measurement="pills", mode=sel.NumberSelectorMode.BOX
+        min=PILLS_PER_SLOT_MIN,
+        max=PILLS_PER_SLOT_MAX,
+        step=1,
+        unit_of_measurement="pills",
+        mode=sel.NumberSelectorMode.BOX,
     )
 )
 _TIME_WINDOW_SELECTOR = sel.NumberSelector(
@@ -571,10 +575,12 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Multi-select of profile UUIDs (M2M allowed_profiles).
                 vol.Required("allowed_profiles", default=self._data.get("allowed_profiles", [])): sel.SelectSelector(
                     sel.SelectSelectorConfig(
-                        options=[*[{"value": p["value"], "label": p["label"]} for p in _get_profile_choices(self.hass)], {"value": "__new__", "label": "➕ New profile…"}],
+                        options=[
+                            *[{"value": p["value"], "label": p["label"]} for p in _get_profile_choices(self.hass)],
+                            {"value": "__new__", "label": "+ New profile…"},
+                        ],
                         multiple=True,
                         mode=sel.SelectSelectorMode.LIST,
-                        translation_key="allowed_profiles",
                     )
                 ),
                 vol.Optional("shared_drink", default=self._data.get("shared_drink", False)): _SHARED_DRINK_SELECTOR,
@@ -1329,7 +1335,9 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 # so existing drinks gain the 5-min default on next options save.
                 vol.Optional(
                     "dose_buffer_minutes",
-                    default=options.get("dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)),
+                    default=options.get(
+                        "dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)
+                    ),
                 ): _DOSE_BUFFER_SELECTOR,
                 vol.Required(
                     "dose_strength", default=options.get("dose_strength", data.get("dose_strength", 0))
@@ -1339,14 +1347,14 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 ): _DRINKING_DURATION_SELECTOR,
                 # M2M allowed_profiles (re-editable).  The __new__ sentinel
                 # lets the admin create a new profile inline.
-                vol.Required(
-                    "allowed_profiles", default=current_allowed
-                ): sel.SelectSelector(
+                vol.Required("allowed_profiles", default=current_allowed): sel.SelectSelector(
                     sel.SelectSelectorConfig(
-                        options=[*[{"value": p["value"], "label": p["label"]} for p in _get_profile_choices(self.hass)], {"value": "__new__", "label": "➕ New profile…"}],
+                        options=[
+                            *[{"value": p["value"], "label": p["label"]} for p in _get_profile_choices(self.hass)],
+                            {"value": "__new__", "label": "+ New profile…"},
+                        ],
                         multiple=True,
                         mode=sel.SelectSelectorMode.LIST,
-                        translation_key="allowed_profiles",
                     )
                 ),
                 vol.Optional(

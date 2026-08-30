@@ -50,13 +50,12 @@ from .const import (
     RELEASE_INSTANT,
     RETENTION_DAYS,
 )
-from .sliding_window import effective_dose_buffer_minutes
 from .pk_model import PKModel, PKParams, PKResult
 from .retention import (
-    prune_dose_pairs,
     prune_dose_triples,
     retention_cutoff,
 )
+from .sliding_window import effective_dose_buffer_minutes
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -115,7 +114,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         hass: HomeAssistant,
         entry: ConfigEntry,
         store: AxDoseLoggerStore,
-        master_coordinators: dict[tuple[str, str], "DrinkMasterCoordinator"],
+        master_coordinators: dict[tuple[str, str], DrinkMasterCoordinator],
     ) -> None:
         """Initialize the granular drink coordinator.
 
@@ -167,7 +166,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
                 if eff_profile is not None and not isinstance(eff_profile, str):
                     eff_profile = None
                 dose_history.append((dt, float(strength_val), eff_profile))
-            except (ValueError, TypeError, IndexError):
+            except ValueError, TypeError, IndexError:
                 continue
         dose_history = prune_dose_triples(dose_history, cutoff)
         # Sort-on-load: legacy stores may contain backdated doses written
@@ -232,9 +231,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         entries so single-user installs route to the legacy default master
         unchanged.
         """
-        allowed = self._entry.options.get(
-            "allowed_profiles", self._entry.data.get("allowed_profiles")
-        )
+        allowed = self._entry.options.get("allowed_profiles", self._entry.data.get("allowed_profiles"))
         if not allowed:
             return [DEFAULT_PROFILE_ID]
         return list(allowed)
@@ -250,7 +247,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         allowed = self._allowed_profiles()
         return allowed[0] if allowed else DEFAULT_PROFILE_ID
 
-    def _get_master_for(self, profile_id: str) -> "DrinkMasterCoordinator | None":
+    def _get_master_for(self, profile_id: str) -> DrinkMasterCoordinator | None:
         """Look up the live master coordinator for (profile_id, this drink's substance).
 
         Reads from ``hass.data[DOMAIN]["_drink_masters"]`` on each call so we
@@ -294,8 +291,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         if len(allowed) == 1:
             return allowed[0]  # convenience default
         raise HomeAssistantError(
-            "This drink is shared by multiple profiles; specify target_profile "
-            f"(allowed_profiles={allowed})."
+            f"This drink is shared by multiple profiles; specify target_profile (allowed_profiles={allowed})."
         )
 
     # ------------------------------------------------------------------
@@ -515,9 +511,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         untouched — no drink data is deleted.
         """
         self.data.avg_reset_time = dt_util.now()
-        self._store.schedule_save_averages_reset(
-            self._entry.entry_id, self.data.avg_reset_time.isoformat()
-        )
+        self._store.schedule_save_averages_reset(self._entry.entry_id, self.data.avg_reset_time.isoformat())
         self._push_update()
 
     def is_within_cooldown(self, now: datetime | None = None) -> bool:
@@ -583,7 +577,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         )
         try:
             return max(1, int(val))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return RETENTION_DAYS
 
     # ------------------------------------------------------------------
@@ -661,7 +655,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
     Alcohol uses zero-order elimination incremental simulation.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - constructor mirrors the (profile, substance) key tuple + shared store wiring
         self,
         hass: HomeAssistant,
         profile_id: str,
@@ -721,9 +715,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         # ``update_global_constants``; the bolus list is keyed on a
         # (dose count, last dose timestamp) fingerprint.
         self._cached_caffeine_ir_params: PKParams | None = None
-        self._caffeine_bolus_cache: (
-            tuple[tuple[int, datetime], list[tuple[datetime, float]]] | None
-        ) = None
+        self._caffeine_bolus_cache: tuple[tuple[int, datetime], list[tuple[datetime, float]]] | None = None
 
     # ------------------------------------------------------------------
     # Identity accessors (for sensors + views)
@@ -783,7 +775,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
                     if source_entry_id is not None and not isinstance(source_entry_id, str):
                         source_entry_id = None
                     doses.append((dt, float(item[1]), float(item[2]), source_entry_id))
-            except (ValueError, TypeError, IndexError):
+            except ValueError, TypeError, IndexError:
                 continue
         doses = prune_dose_triples(doses, cutoff)
         # Sort-on-load: legacy stores may contain backdated doses written
@@ -1085,8 +1077,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         # the full t_dur is a safe upper bound and keeps the window inclusive.
         t_max = self._caffeine_tmax
         peak_window_end = max(
-            dose_time + timedelta(hours=t_dur + t_max)
-            for dose_time, _strength, t_dur, *_ in dose_history
+            dose_time + timedelta(hours=t_dur + t_max) for dose_time, _strength, t_dur, *_ in dose_history
         )
         if peak_window_end <= now:
             # All doses absorbed -- the current mass is the post-peak value.
@@ -1168,9 +1159,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         surgically remove only its own contributions via
         ``async_remove_doses`` instead of popping the newest dose blindly.
         """
-        self.data.dose_history.append(
-            (timestamp, dose_strength, t_dur_hours, source_entry_id)
-        )
+        self.data.dose_history.append((timestamp, dose_strength, t_dur_hours, source_entry_id))
         # Sort-on-insert: a backdated drink log must not corrupt
         # ``last_dose_time`` -- it always reflects the true most-recent dose.
         self.data.dose_history.sort(key=lambda dose: dose[0])
@@ -1226,11 +1215,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         removed_total = 0
 
         # Pass 1: newest-first, remove only doses tagged with this source.
-        matching = [
-            i
-            for i, dose in enumerate(history)
-            if len(dose) > 3 and dose[3] == source_entry_id
-        ]
+        matching = [i for i, dose in enumerate(history) if len(dose) > 3 and dose[3] == source_entry_id]
         matching.sort(key=lambda i: history[i][0], reverse=True)
         for idx in matching[:count]:
             removed = history.pop(idx)
@@ -1325,7 +1310,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         )
         try:
             return max(1, int(val))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return RETENTION_DAYS
 
     @callback
@@ -1483,9 +1468,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             # view runs this on the executor concurrently with the tick's
             # recompute, and a cached hypothetical peak would corrupt the
             # sensor's real forecast (data race).
-            peak_mass, peak_time = self._forecast_caffeine_peak(
-                hypothetical, now, current_mass, cache={}
-            )
+            peak_mass, peak_time = self._forecast_caffeine_peak(hypothetical, now, current_mass, cache={})
             if peak_time is None or peak_mass <= target:
                 return None
             half_life = self._caffeine_half_life

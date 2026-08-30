@@ -26,14 +26,13 @@ pruning old alcohol doses is a no-op for the alcohol simulation.  Do not
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date, datetime, timedelta
-from typing import Iterable
 
 
 def retention_cutoff(now: datetime, retention_days: int) -> datetime:
     """Return the earliest ``datetime`` that should be retained."""
-    if retention_days < 0:
-        retention_days = 0
+    retention_days = max(retention_days, 0)
     return now - timedelta(days=retention_days)
 
 

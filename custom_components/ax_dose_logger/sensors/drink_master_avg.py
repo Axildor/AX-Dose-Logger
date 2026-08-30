@@ -20,17 +20,19 @@ from homeassistant.core import callback
 from ..const import (
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
+    master_unique_id,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
-from ..const import master_unique_id
 from ._tracker_info import tracker_device_info
 
 # Sensor-specific keys per substance (common keys live in MASTER_TRACKERS).
 _SENSOR_INFO = {
-    DRINK_TYPE_CAFFEINE: {        "translation_key": "drink_master_avg_caffeine",
+    DRINK_TYPE_CAFFEINE: {
+        "translation_key": "drink_master_avg_caffeine",
         "icon": "mdi:chart-bell-curve",
     },
-    DRINK_TYPE_ALCOHOL: {        "translation_key": "drink_master_avg_alcohol",
+    DRINK_TYPE_ALCOHOL: {
+        "translation_key": "drink_master_avg_alcohol",
         "icon": "mdi:chart-bell-curve",
     },
 }
@@ -112,9 +114,7 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         # this substance) stop counting toward the aggregate average.  The
         # raw history_start_date attribute is NOT modified — the frontend
         # reads it for the days-since reveal logic.
-        avg_reset = (
-            self._coordinator.data.avg_reset_time if self._coordinator.data else None
-        )
+        avg_reset = self._coordinator.data.avg_reset_time if self._coordinator.data else None
         effective_start = self._history_start_date
         if avg_reset is not None and avg_reset > effective_start:
             effective_start = avg_reset

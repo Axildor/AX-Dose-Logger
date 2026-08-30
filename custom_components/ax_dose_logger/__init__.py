@@ -3,6 +3,7 @@ from types import MappingProxyType
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigType
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
@@ -33,6 +34,11 @@ from .views import (
 )
 
 PLATFORMS = ["sensor", "button", "number", "calendar"]
+
+# UI-only integration: no YAML configuration is accepted. This satisfies the
+# hassfest CONFIG_SCHEMA requirement for integrations that define async_setup
+# (audit D3) while rejecting any `ax_dose_logger:` YAML block with a clear error.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 # Options whose changes require entity add/remove (and thus a reload).
 # All other options (PK params, dose_time, pill_limit, etc.) are read
@@ -260,8 +266,7 @@ async def _setup_drink_masters(hass: HomeAssistant, settings_entry: AxDoseLogger
         if coord.config_entry is settings_entry and key[0] != profile_id:
             masters.pop(key, None)
             LOGGER.info(
-                "Purged stale master coordinator keyed under %s for settings "
-                "entry %s (real profile_id=%s).",
+                "Purged stale master coordinator keyed under %s for settings entry %s (real profile_id=%s).",
                 key[0],
                 settings_entry.entry_id,
                 profile_id,
@@ -503,7 +508,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
     return True
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa: ARG001 - HA-mandated signature; UI-only integration, YAML config unused
     """Set up domain-level, entry-independent pieces (audit D3).
 
     Registers the three REST views ONCE at integration (domain) setup --
@@ -593,9 +598,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
             # log_drink routing (target_profile validation), so a reload is
             # required for the new set to take effect.
             "prev_allowed_profiles": list(
-                entry.options.get(
-                    "allowed_profiles", entry.data.get("allowed_profiles", [])
-                )
+                entry.options.get("allowed_profiles", entry.data.get("allowed_profiles", []))
             ),
         }
         async_setup_services(hass)
@@ -666,11 +669,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
         # async_setup_entry which re-reads allowed_profiles.
         entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
         prev_allowed = entry_data.get("prev_allowed_profiles", [])
-        curr_allowed = list(
-            entry.options.get(
-                "allowed_profiles", entry.data.get("allowed_profiles", [])
-            )
-        )
+        curr_allowed = list(entry.options.get("allowed_profiles", entry.data.get("allowed_profiles", [])))
         if prev_allowed != curr_allowed:
             await hass.config_entries.async_reload(entry.entry_id)
         return
@@ -777,8 +776,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
         )
         affected_entry_ids.append(child.entry_id)
         LOGGER.info(
-            "M2M scrubber: removed profile %s from drink %s allowed_profiles "
-            "(now %d profile(s) remain).",
+            "M2M scrubber: removed profile %s from drink %s allowed_profiles (now %d profile(s) remain).",
             deleted_profile_id,
             child.title,
             len(new_allowed),

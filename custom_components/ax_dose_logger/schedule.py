@@ -139,6 +139,8 @@ def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pas
             overdue.
         lateness_cap: Required when ``lateness_mode == LATENESS_CAPPED``;
             ignored otherwise.
+        pills_per_slot: Number of doses each slot can cover (default 1).
+            Values below 1 are clamped to 1.
 
     Returns:
         List of :class:`SlotAssignment` in chronological slot order.
@@ -147,8 +149,7 @@ def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pas
         msg = "lateness_cap is required when lateness_mode == LATENESS_CAPPED"
         raise ValueError(msg)
 
-    if pills_per_slot < 1:
-        pills_per_slot = 1
+    pills_per_slot = max(pills_per_slot, 1)
 
     # Build the slot timeline: for each calendar day in the window, one
     # slot per parsed time, in chronological order across the whole span.
@@ -199,11 +200,7 @@ def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pas
         # Consume up to ``pills_per_slot`` doses for this slot (all within
         # the same lateness window).  With the default pills_per_slot=1
         # this is exactly the historical one-dose-per-slot behavior.
-        while (
-            assigned_count < pills_per_slot
-            and dose_idx < len(sorted_doses)
-            and sorted_doses[dose_idx] < late_bound
-        ):
+        while assigned_count < pills_per_slot and dose_idx < len(sorted_doses) and sorted_doses[dose_idx] < late_bound:
             if assigned_ts is None:
                 assigned_ts = sorted_doses[dose_idx]
             assigned_count += 1

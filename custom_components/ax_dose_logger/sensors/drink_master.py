@@ -11,18 +11,20 @@ from homeassistant.core import callback
 from ..const import (
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
+    master_unique_id,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
-from ..const import master_unique_id
 from ._tracker_info import MASTER_TRACKERS, tracker_device_info
 
 # Sensor-specific keys per substance (common keys live in MASTER_TRACKERS).
 _SENSOR_INFO = {
-    DRINK_TYPE_CAFFEINE: {        "translation_key": "total_caffeine_in_body",
+    DRINK_TYPE_CAFFEINE: {
+        "translation_key": "total_caffeine_in_body",
         "icon": "mdi:coffee",
         "pk_model": "bateman_ir_uniform",
     },
-    DRINK_TYPE_ALCOHOL: {        "translation_key": "total_alcohol_in_body",
+    DRINK_TYPE_ALCOHOL: {
+        "translation_key": "total_alcohol_in_body",
         "icon": "mdi:glass-wine",
         "pk_model": "zero_order",
     },
@@ -44,7 +46,9 @@ class DrinkMasterSensor(RestoreSensor):
     _attr_suggested_display_precision = 0  # default to no decimal places in HA UI
     _attr_should_poll = False
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
+    def __init__(
+        self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None
+    ) -> None:
         """Initialize the master PK sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         common = MASTER_TRACKERS[coordinator.substance]
@@ -60,7 +64,9 @@ class DrinkMasterSensor(RestoreSensor):
         # Stable device identifiers — not tied to entry_id so the device
         # survives Drink Settings entry recreation.  with_name=True because
         # this is the device's namesake entity (has_entity_name=False).
-        self._attr_device_info = tracker_device_info(profile_id, self._substance, with_name=True, profile_name=profile_name)
+        self._attr_device_info = tracker_device_info(
+            profile_id, self._substance, with_name=True, profile_name=profile_name
+        )
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "pk_model": self._pk_model,

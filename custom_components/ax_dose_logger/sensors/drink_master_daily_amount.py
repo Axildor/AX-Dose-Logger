@@ -29,9 +29,9 @@ from ..const import (
     CAFFEINE_DEFAULT_LIMIT_MG,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
+    master_unique_id,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
-from ..const import master_unique_id
 from ._tracker_info import tracker_device_info
 
 # Fixed 24-hour rolling window for this sensor.
@@ -41,13 +41,15 @@ _WINDOW_HOURS = 24
 # ``unit`` is retained here for the limit-lookup context (read alongside
 # limit_key/default_limit in _read_daily_limit + _update_state).
 _SENSOR_INFO = {
-    DRINK_TYPE_CAFFEINE: {        "translation_key": "drink_master_daily_amount_caffeine",
+    DRINK_TYPE_CAFFEINE: {
+        "translation_key": "drink_master_daily_amount_caffeine",
         "icon": "mdi:calendar-clock",
         "unit": "mg",
         "limit_key": "caffeine_daily_limit_mg",
         "default_limit": float(CAFFEINE_DEFAULT_LIMIT_MG),
     },
-    DRINK_TYPE_ALCOHOL: {        "translation_key": "drink_master_daily_amount_alcohol",
+    DRINK_TYPE_ALCOHOL: {
+        "translation_key": "drink_master_daily_amount_alcohol",
         "icon": "mdi:calendar-clock",
         "unit": "g",
         "limit_key": "alcohol_daily_limit_g",

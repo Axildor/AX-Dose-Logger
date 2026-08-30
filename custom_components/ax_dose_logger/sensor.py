@@ -12,14 +12,15 @@ from .const import (
 from .data import AxDoseLoggerConfigEntry
 from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from .sensors.adherence import PillAdherenceSensor
-from .sensors.daily_remaining import PillDailyRemainingSensor
 from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.concentration import PillConcentrationSensor
+from .sensors.daily_remaining import PillDailyRemainingSensor
 from .sensors.days_left import (
     DrinkDaysLeftSensor,
     PillDaysLeftSensor,
 )
 from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
+from .sensors.dose_status import PillDoseStatusSensor
 from .sensors.drink_avg_doses import DrinkAvgDosesSensor
 from .sensors.drink_cooldown import DrinkCooldownSensor
 from .sensors.drink_last_dose import DrinkLastDoseSensor
@@ -36,7 +37,6 @@ from .sensors.drink_master_sleep_disruption import (
     DrinkMasterSleepDisruptionSensor,
 )
 from .sensors.drink_total import DrinkTotalSensor
-from .sensors.dose_status import PillDoseStatusSensor
 from .sensors.last_dose import PillLastDoseSensor
 from .sensors.limit_exceeded import Pill24hLimitExceededSensor
 from .sensors.next_dose import PillNextDoseSensor
@@ -214,9 +214,7 @@ async def _setup_drink_settings_sensors(
         # unless a limit is configured) — no dead entity when no limit is set.
         limit_key = "caffeine_daily_limit_mg" if substance == DRINK_TYPE_CAFFEINE else "alcohol_daily_limit_g"
         default_limit = 400.0 if substance == DRINK_TYPE_CAFFEINE else 0.0
-        limit_val = float(
-            entry.options.get(limit_key, entry.data.get(limit_key, default_limit))
-        )
+        limit_val = float(entry.options.get(limit_key, entry.data.get(limit_key, default_limit)))
         if limit_val > 0:
             entities.append(DrinkMasterDailyRemainingSensor(entry, master, profile_id, profile_name))
         for window in (7, 14, 30, 365):

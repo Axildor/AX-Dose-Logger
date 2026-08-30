@@ -48,7 +48,7 @@ class FakeDT:
 
         try:
             return _dt.fromisoformat(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
 
@@ -97,9 +97,7 @@ def _make_master(substance: str, stored: dict | None = None) -> dc.DrinkMasterCo
     master._store_key = f"fake_key_{substance}"
     master._caffeine_half_life = dc.GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]
     master._caffeine_tmax = dc.GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]
-    master._alcohol_elimination_rate = dc.GLOBAL_PK_DEFAULTS[
-        "global_alcohol_elimination_rate"
-    ]
+    master._alcohol_elimination_rate = dc.GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]
     master._last_decay = None
     master.data = dc.DrinkMasterCoordinatorData()
     if stored is not None:
@@ -129,9 +127,7 @@ def _ts(minute: int) -> datetime:
 def test_provenance_tagging() -> None:
     """async_add_dose stores (ts, strength, t_dur, source_entry_id)."""
     master = _make_master(DRINK_TYPE_CAFFEINE)
-    asyncio.run(
-        master.async_add_dose(_ts(0), 90.0, 0.25, source_entry_id="entryA")
-    )
+    asyncio.run(master.async_add_dose(_ts(0), 90.0, 0.25, source_entry_id="entryA"))
     dose = master.data.dose_history[0]
     assert len(dose) == 4, f"expected 4-element tuple, got {len(dose)}"
     assert dose[3] == "entryA", f"provenance not tagged: {dose[3]!r}"
@@ -151,30 +147,20 @@ def test_surgical_reset_interleaved() -> None:
         (_ts(40), 90.0, "entryA"),
     ]
     for ts, strength, source in plan:
-        asyncio.run(
-            master.async_add_dose(ts, strength, 0.25, source_entry_id=source)
-        )
+        asyncio.run(master.async_add_dose(ts, strength, 0.25, source_entry_id=source))
     assert len(master.data.dose_history) == 5
 
     # Reset drink A: remove its 3 doses surgically.
-    removed = asyncio.run(
-        master.async_remove_doses("entryA", 3)
-    )
+    removed = asyncio.run(master.async_remove_doses("entryA", 3))
     assert removed == 3, f"expected 3 removals, got {removed}"
     remaining = master.data.dose_history
     assert len(remaining) == 2, f"expected 2 remaining doses, got {len(remaining)}"
-    assert all(dose[3] == "entryB" for dose in remaining), (
-        f"B's doses must survive A's reset: {remaining}"
-    )
-    assert [dose[1] for dose in remaining] == [80.0, 80.0], (
-        f"B's strengths must be intact: {remaining}"
-    )
+    assert all(dose[3] == "entryB" for dose in remaining), f"B's doses must survive A's reset: {remaining}"
+    assert [dose[1] for dose in remaining] == [80.0, 80.0], f"B's strengths must be intact: {remaining}"
     # B5 ordering invariant: history stays chronologically sorted.
     ts_list = [dose[0] for dose in remaining]
     assert ts_list == sorted(ts_list), f"history not sorted after removal: {ts_list}"
-    assert master.data.last_dose_time == _ts(30), (
-        f"last_dose_time must be B's latest: {master.data.last_dose_time}"
-    )
+    assert master.data.last_dose_time == _ts(30), f"last_dose_time must be B's latest: {master.data.last_dose_time}"
     print("PASS: surgical reset keeps interleaved B doses intact (sorted, correct last_dose_time)")
 
 
@@ -187,13 +173,9 @@ def test_surgical_reset_alcohol_body_mass() -> None:
         (_ts(20), 14.0, "entryA"),
     ]
     for ts, strength, source in plan:
-        asyncio.run(
-            master.async_add_dose(ts, strength, 0.0, source_entry_id=source)
-        )
+        asyncio.run(master.async_add_dose(ts, strength, 0.0, source_entry_id=source))
     expected_after = 10.0  # only B's grams remain
-    removed = asyncio.run(
-        master.async_remove_doses("entryA", 2)
-    )
+    removed = asyncio.run(master.async_remove_doses("entryA", 2))
     assert removed == 2, f"expected 2 removals, got {removed}"
     assert abs(master.data.body_mass - expected_after) < 1e-9, (
         f"body_mass must be reduced only by A's grams: {master.data.body_mass}"
@@ -235,9 +217,7 @@ def test_legacy_fallback_pop_newest() -> None:
     master = _make_master(DRINK_TYPE_CAFFEINE, stored)
     # Reset "entryA" (which has no tagged doses): legacy fallback pops the
     # newest 2 doses regardless of contributor (pre-B1 behavior).
-    removed = asyncio.run(
-        master.async_remove_doses("entryA", 2)
-    )
+    removed = asyncio.run(master.async_remove_doses("entryA", 2))
     assert removed == 2, f"expected 2 removals, got {removed}"
     assert len(master.data.dose_history) == 1
     assert master.data.dose_history[0][1] == 90.0, (
@@ -250,22 +230,15 @@ def test_undo_drink_surgical() -> None:
     """DrinkCoordinator.async_undo_drink removes only its own master dose."""
     # Simulate the master state after A and B each logged one dose.
     master = _make_master(DRINK_TYPE_CAFFEINE)
-    asyncio.run(
-        master.async_add_dose(_ts(0), 90.0, 0.25, source_entry_id="entryA")
-    )
-    asyncio.run(
-        master.async_add_dose(_ts(10), 80.0, 0.25, source_entry_id="entryB")
-    )
+    asyncio.run(master.async_add_dose(_ts(0), 90.0, 0.25, source_entry_id="entryA"))
+    asyncio.run(master.async_add_dose(_ts(10), 80.0, 0.25, source_entry_id="entryB"))
     # A undoes its drink: exactly A's dose (the OLDER one) must be removed,
     # not the master's most-recent (B's) dose.
-    removed = asyncio.run(
-        master.async_remove_doses("entryA", 1)
-    )
+    removed = asyncio.run(master.async_remove_doses("entryA", 1))
     assert removed == 1
     remaining = master.data.dose_history
-    assert len(remaining) == 1 and remaining[0][3] == "entryB", (
-        f"B's dose must survive A's undo: {remaining}"
-    )
+    assert len(remaining) == 1, f"B's dose must survive A's undo: {remaining}"
+    assert remaining[0][3] == "entryB", f"surviving dose must be B's: {remaining}"
     assert master.data.last_dose_time == _ts(10)
     print("PASS: per-dose undo removes the contributor's dose, not the newest")
 

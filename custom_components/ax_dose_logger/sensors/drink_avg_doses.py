@@ -86,9 +86,7 @@ class DrinkAvgDosesSensor(RestoreSensor):
         # window start so pre-reset drinks stop counting toward the average.
         # The raw history_start_date attribute is NOT modified — the
         # frontend reads it for the days-since reveal logic.
-        avg_reset = (
-            self._coordinator.data.avg_reset_time if self._coordinator.data else None
-        )
+        avg_reset = self._coordinator.data.avg_reset_time if self._coordinator.data else None
         effective_start = self._history_start_date
         if avg_reset is not None and avg_reset > effective_start:
             effective_start = avg_reset

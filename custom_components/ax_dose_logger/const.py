@@ -146,6 +146,7 @@ def master_unique_id(profile_id: str, substance: str) -> str:
         return f"drink_master_{substance}"
     return f"drink_master_{profile_id}_{substance}"
 
+
 # --- Global PK defaults (Drink Settings singleton) ---
 GLOBAL_PK_DEFAULTS: dict[str, float] = {
     "global_caffeine_half_life": 5.0,  # hours
@@ -306,7 +307,7 @@ def parse_dose_time(value) -> tuple[int, int]:
         try:
             parts = value.split(":")
             return (int(parts[0]), int(parts[1]))
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return (8, 0)
     return (8, 0)
 
@@ -322,7 +323,7 @@ def get_pills_per_slot(entry: ConfigEntry) -> int:
     raw = entry.options.get("pills_per_slot", entry.data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT))
     try:
         value = int(raw)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         value = PILLS_PER_SLOT_DEFAULT
     return max(PILLS_PER_SLOT_MIN, min(PILLS_PER_SLOT_MAX, value))
 

@@ -5,8 +5,8 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    DEVICE_CATEGORY_DRINKS,
     DEVICE_CATEGORY_DRINK_SETTINGS,
+    DEVICE_CATEGORY_DRINKS,
     DOMAIN,
     TRACKING_AS_NEEDED,
 )
@@ -51,9 +51,7 @@ async def async_setup_entry(
             master = masters.get((profile_id, substance))
             if master is None:
                 continue
-            master_entities.append(
-                DrinkMasterAveragesResetButton(entry, master, profile_id, profile_name)
-            )
+            master_entities.append(DrinkMasterAveragesResetButton(entry, master, profile_id, profile_name))
         if master_entities:
             async_add_entities(master_entities)
         return

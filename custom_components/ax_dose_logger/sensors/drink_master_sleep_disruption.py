@@ -49,9 +49,9 @@ from ..const import (
     DRINK_LOW_THRESHOLD,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
+    master_unique_id,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
-from ..const import master_unique_id
 from ._tracker_info import tracker_device_info
 
 # Sensor-specific keys per substance (common keys — tracker_id, device_name,
@@ -59,7 +59,10 @@ from ._tracker_info import tracker_device_info
 # three sensor classes' unique_id/translation_key pairs plus the disruption
 # bands + thresholds that are specific to this file.
 _SENSOR_INFO = {
-    DRINK_TYPE_CAFFEINE: {        "disruption_translation_key": "sleep_disruption_caffeine",        "estimated_low_translation_key": "estimated_low_time_caffeine",        "low_hours_until_translation_key": "low_hours_until_caffeine",
+    DRINK_TYPE_CAFFEINE: {
+        "disruption_translation_key": "sleep_disruption_caffeine",
+        "estimated_low_translation_key": "estimated_low_time_caffeine",
+        "low_hours_until_translation_key": "low_hours_until_caffeine",
         "icon": "mdi:bed-clock",
         "unit": "mg",
         # (upper_bound_exclusive, label) — bare labels, no unit suffix.
@@ -79,7 +82,10 @@ _SENSOR_INFO = {
         # matches the sensor's target).
         "low_threshold": DRINK_LOW_THRESHOLD[DRINK_TYPE_CAFFEINE],
     },
-    DRINK_TYPE_ALCOHOL: {        "disruption_translation_key": "sleep_disruption_alcohol",        "estimated_low_translation_key": "estimated_low_time_alcohol",        "low_hours_until_translation_key": "low_hours_until_alcohol",
+    DRINK_TYPE_ALCOHOL: {
+        "disruption_translation_key": "sleep_disruption_alcohol",
+        "estimated_low_translation_key": "estimated_low_time_alcohol",
+        "low_hours_until_translation_key": "low_hours_until_alcohol",
         "icon": "mdi:glass-wine",
         "unit": "g",
         "bands": [
@@ -116,7 +122,9 @@ class DrinkMasterSleepDisruptionSensor(RestoreSensor):
     _attr_should_poll = False
     # Categorical string sensor — no state_class / native unit.
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
+    def __init__(
+        self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None
+    ) -> None:
         """Initialize the sleep-disruption band sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
@@ -209,7 +217,9 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
     _attr_should_poll = False
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
+    def __init__(
+        self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None
+    ) -> None:
         """Initialize the Estimated Low Time timestamp sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
@@ -332,7 +342,9 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_suggested_display_precision = 1
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
+    def __init__(
+        self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None
+    ) -> None:
         """Initialize the Low - Hours Until countdown sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
@@ -368,7 +380,7 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
         ):
             try:
                 self._attr_native_value = float(last_state.state)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 # Non-numeric restored state — ignore; the coordinator push
                 # below recomputes the correct value immediately.
                 pass
@@ -455,7 +467,9 @@ class DrinkMasterEstimatedNoneTimeSensor(RestoreSensor):
     _attr_should_poll = False
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
+    def __init__(
+        self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None
+    ) -> None:
         """Initialize the Estimated None Time timestamp sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
@@ -545,7 +559,9 @@ class DrinkMasterNextBandSensor(RestoreSensor):
     _attr_should_poll = False
     # Categorical string sensor — no state_class / native unit.
 
-    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
+    def __init__(
+        self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None
+    ) -> None:
         """Initialize the Next Band categorical sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator

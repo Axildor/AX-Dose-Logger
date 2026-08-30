@@ -97,7 +97,8 @@ def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordina
     service.async_get_config_entry(hass, DOMAIN, entry_id)
     coordinator = hass.data.get(DOMAIN, {}).get(entry_id, {}).get("coordinator")
     if coordinator is None:
-        raise HomeAssistantError("This config entry has no coordinator")
+        msg = "This config entry has no coordinator"
+        raise HomeAssistantError(msg)
     return coordinator
 
 
@@ -205,7 +206,10 @@ def _validate_profile_id(hass: HomeAssistant, profile_id: str) -> None:
     from .const import DEVICE_CATEGORY_DRINK_SETTINGS
 
     for entry in hass.config_entries.async_entries(DOMAIN):
-        if entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS and entry.data.get("profile_id") == profile_id:
+        if (
+            entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS
+            and entry.data.get("profile_id") == profile_id
+        ):
             return
     raise HomeAssistantError(
         f"Profile '{profile_id}' does not exist (it may have been deleted). "

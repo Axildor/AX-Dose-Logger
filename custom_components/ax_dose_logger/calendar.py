@@ -13,7 +13,7 @@ medication's tracking type configuration:
 """
 
 import math
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
@@ -207,9 +207,9 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         # so the calendar and sensors agree on which instant the grid starts.
         anchor: datetime | None = None
         if self.coordinator.data:
-            schedule_ts: list[datetime] = [
-                ts for ts, _ in self.coordinator.data.dose_history
-            ] + list(self.coordinator.data.skipped_slots)
+            schedule_ts: list[datetime] = [ts for ts, _ in self.coordinator.data.dose_history] + list(
+                self.coordinator.data.skipped_slots
+            )
             if schedule_ts:
                 anchor = max(schedule_ts)
 

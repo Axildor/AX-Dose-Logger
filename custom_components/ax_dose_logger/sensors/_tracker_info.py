@@ -19,7 +19,6 @@ from ..const import (
     DOMAIN,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
-    master_unique_id,
     tracker_id_for,
 )
 from ..sliding_window import local_date
@@ -77,7 +76,7 @@ def tracker_device_info(
     }
     if with_name:
         if profile_name:
-            kwargs["name"] = f"{profile_name} {info["device_name"]}"
+            kwargs["name"] = f"{profile_name} {info['device_name']}"
         else:
             kwargs["name"] = info["device_name"]
     return DeviceInfo(**kwargs)
@@ -101,6 +100,6 @@ def tracker_substance(tracker_id: str) -> tuple[str, str] | None:
             return (DEFAULT_PROFILE_ID, substance)
         prefix = f"{substance}_tracker_"
         if tracker_id.startswith(prefix):
-            profile_id = tracker_id[len(prefix):]
+            profile_id = tracker_id[len(prefix) :]
             return (profile_id, substance)
     return None

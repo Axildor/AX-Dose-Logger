@@ -52,7 +52,7 @@ class DrinkLastDoseSensor(RestoreSensor):
         if last_state and last_state.native_value is not None:
             try:
                 self._attr_native_value = dt_util.parse_datetime(str(last_state.native_value))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 self._attr_native_value = None
         self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         self._handle_coordinator_update()

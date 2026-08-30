@@ -131,7 +131,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         )
         try:
             return max(1, int(val))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return RETENTION_DAYS
 
     # ------------------------------------------------------------------
@@ -160,7 +160,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
                     dt = dt_util.parse_datetime(ts_str)
                     if dt:
                         dose_history.append((dt, float(strength_val)))
-                except (ValueError, TypeError, IndexError):
+                except ValueError, TypeError, IndexError:
                     continue
         dose_history = prune_dose_pairs(dose_history, cutoff)
         # Sort-on-load: legacy stores may contain backdated doses written
@@ -446,9 +446,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         are untouched — no dose data is deleted.
         """
         self.data.avg_reset_time = dt_util.now()
-        self._store.schedule_save_averages_reset(
-            self._entry.entry_id, self.data.avg_reset_time.isoformat()
-        )
+        self._store.schedule_save_averages_reset(self._entry.entry_id, self.data.avg_reset_time.isoformat())
 
         self._push_update()
 
@@ -606,11 +604,7 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         cutoff = retention_cutoff(dt_util.now(), self._retention_days())
         kept = prune_timestamps(self.data.adherence_overrides, cutoff)
         serialized = [ts.isoformat() for ts in kept]
-        reset_iso = (
-            self.data.adherence_reset_time.isoformat()
-            if self.data.adherence_reset_time is not None
-            else None
-        )
+        reset_iso = self.data.adherence_reset_time.isoformat() if self.data.adherence_reset_time is not None else None
         self._store.schedule_save_adherence(self._entry.entry_id, serialized, reset_iso)
 
     # ------------------------------------------------------------------

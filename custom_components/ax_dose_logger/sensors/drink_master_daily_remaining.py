@@ -37,9 +37,9 @@ from ..const import (
     CAFFEINE_DEFAULT_LIMIT_MG,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
+    master_unique_id,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
-from ..const import master_unique_id
 from ._tracker_info import tracker_device_info
 
 # Fixed 24-hour rolling window for this sensor (mirrors the daily-amount sensor).

@@ -127,7 +127,7 @@ class PKModel:
                     high = mid_ka
                 else:
                     low = mid_ka
-            except (ValueError, ZeroDivisionError):
+            except ValueError, ZeroDivisionError:
                 low = mid_ka
         return (low + high) / 2
 

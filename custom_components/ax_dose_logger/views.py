@@ -287,12 +287,12 @@ class AxDoseLoggerGraphView(HomeAssistantView):
         # --- Query params (clamped; bogus values fall back to defaults) ---
         try:
             hours = int(float(request.query.get("hours", "720")))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             hours = 720
         hours = max(_GRAPH_HOURS_MIN, min(hours, _GRAPH_HOURS_MAX))
         try:
             points = int(float(request.query.get("points", str(_GRAPH_POINTS_DEFAULT))))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             points = _GRAPH_POINTS_DEFAULT
         points = max(_GRAPH_POINTS_MIN, min(points, _GRAPH_POINTS_MAX))
 
@@ -320,9 +320,7 @@ class AxDoseLoggerGraphView(HomeAssistantView):
                     return self.json({"amount": [], "metrics": {}})
                 now = dt_util.now()
                 start = now - timedelta(hours=hours)
-                samples = await hass.async_add_executor_job(
-                    coordinator.sample_body_mass_curve, start, now, points
-                )
+                samples = await hass.async_add_executor_job(coordinator.sample_body_mass_curve, start, now, points)
                 payload = [[ts.isoformat(), round(v, 2)] for ts, v in samples]
                 _LOGGER.debug(
                     "ax_dose_logger graph REST: master device_id=%s profile=%s substance=%s "
@@ -361,17 +359,13 @@ class AxDoseLoggerGraphView(HomeAssistantView):
 
         # PK curve sampling is CPU-bound (points × len(history) Bateman
         # evaluations) — offload to the executor like predict_low.
-        samples = await hass.async_add_executor_job(
-            coordinator.sample_amount_curve, start, now, points
-        )
+        samples = await hass.async_add_executor_job(coordinator.sample_amount_curve, start, now, points)
         amount = [[ts.isoformat(), round(v, 2)] for ts, v in samples]
 
         # Effectiveness metrics: date-keyed map straight from the
         # coordinator (already pruned to the retention window; cheap copy).
         metrics = {
-            key: dict(dated)
-            for key, dated in (coordinator.data.metric_values or {}).items()
-            if isinstance(dated, dict)
+            key: dict(dated) for key, dated in (coordinator.data.metric_values or {}).items() if isinstance(dated, dict)
         }
 
         _LOGGER.debug(

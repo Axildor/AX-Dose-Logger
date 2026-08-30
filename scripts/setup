@@ -1,7 +1,38 @@
 #!/usr/bin/env bash
+# Dev-environment setup: Python deps + local hassfest validator.
+#
+# The hassfest validator is not on PyPI — it lives in the HA core repo under
+# script/hassfest. We extract it to /tmp/hassfest-repo so scripts/lint can run
+# the same validation GitHub CI runs (ghcr.io/home-assistant/hassfest) without
+# requiring Docker. Re-run this script to refresh the validator to dev HEAD.
 
 set -e
 
 cd "$(dirname "$0")/.."
 
+echo "==> Installing Python requirements"
 python3 -m pip install --requirement requirements.txt
+
+echo "==> Provisioning local hassfest validator (/tmp/hassfest-repo)"
+if command -v docker >/dev/null 2>&1; then
+    echo "    Docker available — scripts/lint will use the official image; skipping local copy."
+else
+    python3 - <<'EOF'
+import tarfile, tempfile, os, shutil, urllib.request
+
+dest = "/tmp/hassfest-repo"
+url = "https://github.com/home-assistant/core/archive/refs/heads/dev.tar.gz"
+print(f"    Downloading {url} ...")
+tmpdir = tempfile.mkdtemp()
+tarball = os.path.join(tmpdir, "core.tar.gz")
+urllib.request.urlretrieve(url, tarball)
+with tarfile.open(tarball) as t:
+    members = [m for m in t.getmembers() if m.name.startswith("core-dev/script/")]
+    t.extractall(members=members, filter="data")
+shutil.rmtree(dest, ignore_errors=True)
+os.makedirs(dest)
+shutil.move(os.path.join(tmpdir, "core-dev", "script"), os.path.join(dest, "script"))
+shutil.rmtree(tmpdir)
+print(f"    Done — {dest}/script ready.")
+EOF
+fi

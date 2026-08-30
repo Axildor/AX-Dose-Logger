@@ -404,9 +404,7 @@ class AxDoseLoggerStore:
         treatment-restart anchor, or ``None`` if never reset.
         """
         self._adherence_data[entry_id] = {"overrides": overrides, "reset_time": reset_time}
-        self._adherence_store.async_delay_save(
-            lambda: self._adherence_data, _SAVE_DEBOUNCE_SECONDS
-        )
+        self._adherence_store.async_delay_save(lambda: self._adherence_data, _SAVE_DEBOUNCE_SECONDS)
 
     # ------------------------------------------------------------------
     # Averages reset anchors (Reset Averages tool)
@@ -430,9 +428,7 @@ class AxDoseLoggerStore:
         action, or ``None`` if never reset.
         """
         self._averages_data[key] = {"reset_time": reset_time}
-        self._averages_store.async_delay_save(
-            lambda: self._averages_data, _SAVE_DEBOUNCE_SECONDS
-        )
+        self._averages_store.async_delay_save(lambda: self._averages_data, _SAVE_DEBOUNCE_SECONDS)
 
     # ------------------------------------------------------------------
     # Drink master storage (caffeine/alcohol aggregated PK)

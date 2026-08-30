@@ -443,7 +443,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
             try:
                 anchor_date = date.fromisoformat(anchor_str)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 anchor_date = now.date()
             dose_hour, dose_minute = parse_dose_time(dose_time_str)
             cycle_length = days_on + days_off

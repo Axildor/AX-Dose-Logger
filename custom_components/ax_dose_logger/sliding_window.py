@@ -67,7 +67,7 @@ def is_on_day(entry: ConfigEntry, check_date: date, fallback_date: date | None =
 
     try:
         anchor_date = date.fromisoformat(anchor_str)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         anchor_date = fallback_date if fallback_date is not None else check_date
 
     cycle_length = days_on + days_off
@@ -103,7 +103,7 @@ def effective_dose_buffer_minutes(
     )
     try:
         raw_f = float(raw)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raw_f = float(DOSE_BUFFER_DEFAULT_MIN)
     if time_window_hours <= 0:
         return 0

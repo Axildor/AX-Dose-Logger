@@ -62,7 +62,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if last_state and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 self._attr_native_value = int(float(last_state.state))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
 
     @callback
@@ -222,7 +222,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         try:
             anchor_date = date.fromisoformat(anchor_str)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             anchor_date = now.date()
 
         dose_hour, dose_minute = parse_dose_time(dose_time_str)

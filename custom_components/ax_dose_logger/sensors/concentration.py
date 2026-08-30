@@ -72,7 +72,7 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             try:
                 old_mass = float(last_state.state)
                 self._attr_native_value = round(old_mass, 1)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
 
     @callback

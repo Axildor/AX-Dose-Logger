@@ -30,7 +30,7 @@ from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from ..const import DOSE_BUFFER_DEFAULT_MIN, DOMAIN
+from ..const import DOMAIN, DOSE_BUFFER_DEFAULT_MIN
 from ..drink_coordinator import DrinkCoordinator
 from ..sliding_window import effective_dose_buffer_minutes
 
@@ -75,7 +75,7 @@ class DrinkCooldownSensor(RestoreSensor):
         if last_state_obj is not None:
             try:
                 self._attr_native_value = int(float(last_state_obj.state))
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 self._attr_native_value = 1
             if last_state_obj.attributes:
                 self._attr_extra_state_attributes = {
@@ -123,11 +123,7 @@ class DrinkCooldownSensor(RestoreSensor):
                 # cooldown (the last drink falls out of the window at
                 # cooldown - buffer), keeping the displayed next-available
                 # time in sync with the is_within_cooldown gate.
-                cooldown_ends_at = (
-                    last_dose_time
-                    + timedelta(hours=cooldown_h)
-                    - timedelta(minutes=buffer_minutes)
-                )
+                cooldown_ends_at = last_dose_time + timedelta(hours=cooldown_h) - timedelta(minutes=buffer_minutes)
                 available = 0 if within else 1
 
         self._attr_native_value = available
