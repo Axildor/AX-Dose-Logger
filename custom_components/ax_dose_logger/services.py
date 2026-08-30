@@ -85,6 +85,32 @@ SERVICE_SET_METRIC_SCHEMA = vol.Schema(
 )
 
 
+def _get_coordinator_for_drink_entity(hass: HomeAssistant, entity_id: str) -> AxDoseLoggerCoordinator | DrinkCoordinator:
+    """
+    Resolve a granular-drink entity_id to its coordinator.
+
+    Looks up the entity in the entity registry to find its config_entry_id,
+    then retrieves the coordinator. This is the authoritative server-side
+    resolution path used by the frontend card's Log Drink popup, which sends
+    ``entity_id`` instead of ``entry_id`` (the card cannot rely on
+    ``hass.entities[...].config_entry_id`` being serialized by every HA
+    frontend version).
+
+    Raises ``HomeAssistantError`` if the entity is not found in the registry,
+    does not belong to this integration, or has no config entry.
+    """
+    ent_reg = er.async_get(hass)
+    entry = ent_reg.async_get(entity_id)
+    if entry is None:
+        raise HomeAssistantError(f"Entity '{entity_id}' not found in the entity registry.")
+    if entry.platform != DOMAIN:
+        raise HomeAssistantError(f"Entity '{entity_id}' does not belong to the {DOMAIN} integration.")
+    if entry.config_entry_id is None:
+        raise HomeAssistantError(f"Entity '{entity_id}' has no associated config entry.")
+
+    return _get_coordinator(hass, entry.config_entry_id)
+
+
 def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordinator | DrinkCoordinator:
     """
     Retrieve the coordinator for the given config entry.
@@ -202,14 +228,23 @@ def _validate_profile_id(hass: HomeAssistant, profile_id: str) -> None:
     coordinator is even called.  The coordinator-level guard (``.get`` +
     warning) is defense-in-depth for the narrow race between this validation
     and the coordinator execution.
+
+    Mirrors ``_profile_id_of()`` in ``__init__.py``: the legacy singleton
+    Drink Settings entry (``unique_id == "drink_settings"``) owns the
+    reserved literal ``DEFAULT_PROFILE_ID`` ("default") even though its
+    ``data`` may not carry a ``profile_id`` key (pre-migration entries).
     """
-    from .const import DEVICE_CATEGORY_DRINK_SETTINGS
+    from .const import DEFAULT_PROFILE_ID, DEVICE_CATEGORY_DRINK_SETTINGS
 
     for entry in hass.config_entries.async_entries(DOMAIN):
-        if (
-            entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS
-            and entry.data.get("profile_id") == profile_id
-        ):
+        if entry.data.get("device_category") != DEVICE_CATEGORY_DRINK_SETTINGS:
+            continue
+        if entry.unique_id == "drink_settings":
+            # Legacy singleton: owns the reserved "default" profile id.
+            if profile_id == DEFAULT_PROFILE_ID:
+                return
+            continue
+        if entry.data.get("profile_id") == profile_id:
             return
     raise HomeAssistantError(
         f"Profile '{profile_id}' does not exist (it may have been deleted). "
@@ -217,26 +252,53 @@ def _validate_profile_id(hass: HomeAssistant, profile_id: str) -> None:
     )
 
 
-# log_drink / undo_drink / reset_drink reuse the same base schema
-# (entry_id + optional timestamp for log_drink) as the medicine services.
-SERVICE_LOG_DRINK_SCHEMA = SERVICE_TAKE_DOSE_SCHEMA.extend(
+# log_drink accepts EITHER entry_id (config entry selector, for
+# automations/scripts) OR entity_id (a granular drink's log button, for the
+# frontend card). The card sends entity_id because it cannot rely on
+# hass.entities[...].config_entry_id being serialized by every HA frontend
+# version; the handler resolves entity_id to the config entry server-side
+# via the entity registry (authoritative).
+SERVICE_LOG_DRINK_SCHEMA = vol.Schema(
     {
+        vol.Optional(ATTR_ENTRY_ID): selector.ConfigEntrySelector({"integration": DOMAIN}),
+        vol.Optional(ATTR_ENTITY_ID): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="button", integration=DOMAIN)
+        ),
+        vol.Optional(ATTR_TIMESTAMP): selector.DateTimeSelector(),
         vol.Optional(ATTR_TARGET_PROFILE): str,
     }
 )
 
 
+def _validate_log_drink_call(call: ServiceCall) -> None:
+    """Ensure exactly one of entry_id / entity_id is present."""
+    has_entry = bool(call.data.get(ATTR_ENTRY_ID))
+    has_entity = bool(call.data.get(ATTR_ENTITY_ID))
+    if has_entry == has_entity:  # both present or both absent
+        msg = "Provide exactly one of 'entry_id' or 'entity_id'."
+        raise vol.Invalid(msg)
+
+
 async def _async_log_drink(call: ServiceCall) -> None:
     """Handle the ``log_drink`` service — log a granular drink.
+
+    Accepts either ``entry_id`` (config entry, for automations/scripts) or
+    ``entity_id`` (a granular drink's log button, for the frontend card).
+    The card sends ``entity_id`` because it cannot rely on
+    ``hass.entities[...].config_entry_id`` being serialized by every HA
+    frontend version; the entity registry resolves it server-side.
 
     M2M routing: the optional ``target_profile`` (an immutable profile id
     UUID) selects which profile's Master Tracker receives the PK payload.
     If omitted, the coordinator applies the single-profile convenience
-    default (when the drink has exactly one allowed profile) or raises
-    (multiple profiles -- the frontend card must disambiguate).  The local
+    default (when the drink popup must disambiguate).  The local
     inventory always decrements regardless of the target.
     """
-    coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
+    _validate_log_drink_call(call)
+    if call.data.get(ATTR_ENTITY_ID):
+        coordinator = _get_coordinator_for_drink_entity(call.hass, call.data[ATTR_ENTITY_ID])
+    else:
+        coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
     timestamp = None
     if call.data.get(ATTR_TIMESTAMP):
         timestamp = dt_util.parse_datetime(call.data[ATTR_TIMESTAMP])

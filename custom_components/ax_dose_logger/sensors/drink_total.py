@@ -48,7 +48,10 @@ class DrinkTotalSensor(RestoreSensor):
             "substance": self._substance,
             "device_type": "drink",
             "role": "total",
-            "allowed_profiles": entry.data.get("allowed_profiles", ["default"]),
+            # Options-first read (B2 parity with DrinkCoordinator._allowed_profiles).
+            "allowed_profiles": entry.options.get(
+                "allowed_profiles", entry.data.get("allowed_profiles", ["default"])
+            ),
             "shared_drink": entry.options.get("shared_drink", entry.data.get("shared_drink", False)),
         }
 
@@ -78,7 +81,10 @@ class DrinkTotalSensor(RestoreSensor):
             "substance": self._substance,
             "device_type": "drink",
             "role": "total",
-            "allowed_profiles": self._entry.data.get("allowed_profiles", ["default"]),
+            # Options-first read (B2 parity with DrinkCoordinator._allowed_profiles).
+            "allowed_profiles": self._entry.options.get(
+                "allowed_profiles", self._entry.data.get("allowed_profiles", ["default"])
+            ),
             "shared_drink": self._entry.options.get("shared_drink", self._entry.data.get("shared_drink", False)),
         }
         self.async_write_ha_state()

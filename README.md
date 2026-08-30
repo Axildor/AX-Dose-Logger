@@ -246,7 +246,7 @@ Edit the global metabolic constants via **Configure** on the Drink Settings entr
 
 In addition to the **Log Drink** button, three services are available for automations:
 
-- `ax_dose_logger.log_drink` — log a drink (entry_id + optional timestamp)
+- `ax_dose_logger.log_drink` — log a drink (entry_id **or** entity_id + optional timestamp + target_profile). Identify the drink either by its config entry (`entry_id`) or directly by its Log Drink button entity (`entity_id: button.<drink>_log_drink`) — the entity form is what the dashboard card uses.
 - `ax_dose_logger.undo_drink` — revert the last drink + its master contribution
 - `ax_dose_logger.reset_drink` — clear a drink's local history + master contribution
 
