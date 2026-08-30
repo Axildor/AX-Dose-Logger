@@ -81,10 +81,18 @@ set_metric:
 log_drink:
   fields:
     entry_id:
-      required: true
+      required: false
       selector:
         config_entry:
           integration: ax_dose_logger
+    entity_id:
+      required: false
+      selector:
+        entity:
+          multiple: false
+          filter:
+            - domain: button
+              integration: ax_dose_logger
     timestamp:
       required: false
       selector:
