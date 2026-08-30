@@ -4,9 +4,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DEVICE_CATEGORY_DRINKS, DOMAIN, TRACKING_AS_NEEDED
+from .const import (
+    DEVICE_CATEGORY_DRINK_SETTINGS,
+    DEVICE_CATEGORY_DRINKS,
+    DOMAIN,
+    TRACKING_AS_NEEDED,
+)
 from .data import AxDoseLoggerConfigEntry
-from .drink_coordinator import DrinkCoordinator
+from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from .entity import AxDoseLoggerEntity
 
 
@@ -27,6 +32,30 @@ async def async_setup_entry(
         )
         return
 
+    # --- Drink Settings (Master Tracker host) ---
+    if category == DEVICE_CATEGORY_DRINK_SETTINGS:
+        # Master Tracker devices get one Averages Reset button per substance
+        # (caffeine / alcohol), each bound to that substance's aggregate
+        # DrinkMasterCoordinator.  Created here (not in sensor.py) because
+        # buttons live on the button platform.
+        from .const import DEFAULT_PROFILE_ID
+
+        masters: dict[tuple[str, str], DrinkMasterCoordinator] = hass.data[DOMAIN].get("_drink_masters", {})
+        if entry.unique_id == "drink_settings":
+            profile_id = DEFAULT_PROFILE_ID
+        else:
+            profile_id = entry.data.get("profile_id", DEFAULT_PROFILE_ID)
+        profile_name = entry.data.get("profile_name")
+        master_entities = []
+        for substance in ("caffeine", "alcohol"):
+            master = masters.get((profile_id, substance))
+            if master is None:
+                continue
+            master_entities.append(DrinkMasterAveragesResetButton(entry, master, profile_id, profile_name))
+        if master_entities:
+            async_add_entities(master_entities)
+        return
+
     # --- Medicine (legacy) ---
     tracking_type = entry.data.get("tracking_type")
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
@@ -34,6 +63,7 @@ async def async_setup_entry(
         PillTakeButton(entry, coordinator),
         PillResetButton(entry, coordinator),
         PillUndoButton(entry, coordinator),
+        PillAveragesResetButton(entry, coordinator),
     ]
     # Adherence + Skip tools are only meaningful for scheduled medications.
     # As Needed (PRN) devices have no schedule → no overdue alarm → no
@@ -173,6 +203,32 @@ class PillSkipDoseButton(AxDoseLoggerEntity, ButtonEntity):
         await self.coordinator.async_skip_dose()
 
 
+class PillAveragesResetButton(AxDoseLoggerEntity, ButtonEntity):
+    """Button entity that resets the rolling averages only (no history impact).
+
+    Sets a persisted reset anchor so the 7/14/30/365-day average sensors
+    stop counting pre-reset doses.  Total Doses, Amount in Body (PK),
+    stock, and Adherence % are untouched — no dose data is deleted.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry, coordinator):
+        super().__init__(entry, coordinator)
+        self._attr_translation_key = "reset_averages"
+        self._attr_unique_id = f"{entry.entry_id}_reset_averages"
+        self._attr_icon = "mdi:chart-bell-curve-remove"
+        self._attr_entity_category = EntityCategory.CONFIG
+        # Frontend contract: lets the card resolve this button by role
+        # rather than entity_id suffix (the robust pattern — see
+        # PillAdherenceCoverButton for the bug suffix-matching caused).
+        self._attr_extra_state_attributes = {"role": "averages_reset"}
+
+    async def async_press(self):
+        """When pressed, reset the rolling averages via the coordinator."""
+        await self.coordinator.async_averages_reset()
+
+
 # =====================================================================
 # Drink buttons (granular drink devices)
 # =====================================================================
@@ -206,14 +262,30 @@ class DrinkLogButton(AxDoseLoggerEntity, ButtonEntity):
         # matching (entity_id is slugify(translated_name), not the unique_id
         # stem; "Log Drink" → log_drink happens to match, but undo/reset do
         # not — role makes all three robust).
+        # M2M topology: expose allowed_profiles + shared_drink so the
+        # frontend card can auto-populate its profile picker (multi-select
+        # read from the config entry data/options) and decide whether to
+        # show the "Who is logging this?" popup (shared_drink flag).
         self._attr_extra_state_attributes = {
             "substance": entry.data.get("drink_type"),
             "device_type": "drink",
             "role": "log",
+            "allowed_profiles": entry.data.get("allowed_profiles", ["default"]),
+            "shared_drink": entry.options.get("shared_drink", entry.data.get("shared_drink", False)),
         }
 
     async def async_press(self):
-        """Log a drink. Cooldown is card-enforced (override always allowed)."""
+        """Log a drink. Cooldown is card-enforced (override always allowed).
+
+        M2M button-press routing: the button is a stateless HA trigger and
+        cannot carry a per-press target_profile.  When the drink has
+        exactly one allowed profile, the convenience default routes to
+        it (single-user / single-profile case).  When the drink has
+        multiple allowed profiles, the button CANNOT disambiguate, so it
+        raises -- shared drinks must be logged via the frontend card
+        (which calls the log_drink service with target_profile).  A drink
+        with zero allowed profiles logs to inventory only (no PK routing).
+        """
         await self._drink_coordinator.async_log_drink(dt_util.now())
 
 
@@ -258,3 +330,64 @@ class DrinkUndoButton(AxDoseLoggerEntity, ButtonEntity):
 
     async def async_press(self):
         await self._drink_coordinator.async_undo_drink()
+
+
+class DrinkAveragesResetButton(AxDoseLoggerEntity, ButtonEntity):
+    """Button that resets a granular drink's rolling averages only (no history impact)."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry, coordinator: DrinkCoordinator):
+        super().__init__(entry, coordinator)
+        self._drink_coordinator: DrinkCoordinator = coordinator
+        self._attr_translation_key = "reset_averages"
+        self._attr_unique_id = f"{entry.entry_id}_reset_averages"
+        self._attr_icon = "mdi:chart-bell-curve-remove"
+        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_extra_state_attributes = {
+            "substance": entry.data.get("drink_type"),
+            "device_type": "drink",
+            "role": "averages_reset",
+        }
+
+    async def async_press(self):
+        await self._drink_coordinator.async_averages_reset()
+
+
+# =====================================================================
+# Master Tracker buttons (Drink Settings entry — per-substance aggregate)
+# =====================================================================
+class DrinkMasterAveragesResetButton(AxDoseLoggerEntity, ButtonEntity):
+    """Button that resets a Master Tracker's aggregate rolling averages.
+
+    Hosted on the virtual Caffeine Tracker / Alcohol Tracker devices (the
+    Drink Settings entry).  Resets the (profile, substance) aggregate
+    averages across ALL granular drinks of the substance without touching
+    any drink's history, body mass (PK), or the granular averages.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        entry,
+        coordinator: DrinkMasterCoordinator,
+        profile_id: str,
+        profile_name: str | None,
+    ):
+        super().__init__(entry, coordinator)
+        self._master_coordinator: DrinkMasterCoordinator = coordinator
+        self._attr_translation_key = "reset_averages"
+        self._attr_unique_id = f"master_{profile_id}_{coordinator.substance}_reset_averages"
+        self._attr_icon = "mdi:chart-bell-curve-remove"
+        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_extra_state_attributes = {
+            "substance": coordinator.substance,
+            "device_type": "drink_master",
+            "role": "averages_reset",
+            "profile_id": profile_id,
+            "profile_name": profile_name,
+        }
+
+    async def async_press(self):
+        await self._master_coordinator.async_averages_reset()

@@ -35,6 +35,7 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Dose Interval | 1–48 h | Minimum hours between consecutive doses | 8 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
+| Pills per Dose | 1–10 pills | Pills prescribed per dose time; reminders stay active until all are logged | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 8 |
 
 #### Time of Day
@@ -44,6 +45,7 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Dose Time | Time picker | Time of day to take the medication | 08:00 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the window | 1 |
+| Pills per Dose | 1–10 pills | Pills prescribed per dose time; reminders stay active until all are logged | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 24 |
 
 #### As Needed (PRN)
@@ -117,6 +119,73 @@ Click **Configure** on the integration entry to change settings without recreati
 
 ---
 
+### Changing the Home Assistant Timezone
+
+AX Dose Logger reads the current time from Home Assistant's configured timezone (`time_zone` in `configuration.yaml` or the UI General settings). Two scenarios affect how your medication schedule is displayed:
+
+**Daylight Saving Time transitions (spring forward / fall back)**
+- **Time of Day** and **Cyclic** schedules are wall-clock-anchored — a slot set at 08:00 stays at 08:00 across both DST transitions. Your medication times do not shift.
+- **Regular Interval** schedules are elapsed-time-anchored (the next dose is always `hours_between` real hours after the last dose). On a spring-forward day the wall-clock gap between two doses is one hour shorter; on a fall-back day it is one hour longer. The *actual* dosing interval is always preserved (pharmacokinetically correct and keeps the minimum-spacing safety floor). The Calendar entity uses the same anchor as the Next Dose sensor, so the two always agree.
+
+**Changing the HA timezone setting (relocation / travelling)**
+- Dose timestamps are stored as absolute UTC instants (ISO 8601 with offset), so your dose history and all PK calculations (concentration, steady state) are preserved exactly — only their wall-clock display changes.
+- **Regular Interval** is inherently zone-safe — the next-dose instant is computed from the last dose's absolute instant, so it carries over correctly to the new timezone.
+- **Time of Day** and **Cyclic** rebuild their slot grid in the new timezone. Historical doses taken in the old zone may not match the new zone's slot grid for the transition day, which can cause a one-day adherence dip. This self-heals as soon as you take your next dose in the new timezone — no action is needed. The schedule resumes correct tracking from that point.
+
+### Multi-User Households (Profiles)
+
+The drinks subsystem supports **fully isolated per-person tracking** for multi-user households via a Many-to-Many topology between **Profiles** (the biological PK layer) and **Drinks** (the global inventory layer). Single-user setups are unaffected — an implicit "Default" profile is used automatically.
+
+#### Profiles (biological layer)
+
+A **profile** is a Drink Settings config entry representing one person. Each profile owns:
+- Its own PK constants (caffeine half-life, caffeine t-max, alcohol elimination rate) — editable via **Configure** on that profile's Drink Settings entry.
+- Its own per-substance daily limits (caffeine mg, alcohol g).
+- Its own two Master Tracker devices ("Alice Caffeine Tracker", "Alice Alcohol Tracker") with fully independent decay curves.
+- Its own `.storage` files for the aggregated dose history + body mass.
+
+Profiles are identified by an **immutable UUID** (the config entry's own `entry_id`) — the display name ("Alice") is mutable and can be renamed via the Drink Settings options flow without affecting routing, storage, or device identity. The legacy single-user "Default" profile uses a reserved literal id (`default`) and keeps the original un-profiled device names ("Caffeine Tracker") + store files — no migration, no broken entities.
+
+#### Drinks (global inventory layer)
+
+A **drink** (e.g. "Coca-Cola 33cl") is a global household asset, **not** owned by any profile. At setup you pick which profiles may route PK payloads from it via a multi-select **Allowed Profiles** field. Examples:
+- A 12-pack shared by two partners → Allowed Profiles = `[Alice, Bob]`.
+- Alice's personal morning coffee → Allowed Profiles = `[Alice]`.
+- A pure-inventory tracker (no PK) → Allowed Profiles = `[]` (empty — valid; tracks stock only).
+
+Reassign a drink's allowed profiles any time via the drink's **Configure** (options) flow.
+
+#### Logging a shared drink (split-routing)
+
+When a drink has more than one allowed profile, pressing **Log Drink** requires choosing **whose** body the payload routes to. The dashboard card shows a **"Who is logging this?"** popup and calls the `ax_dose_logger.log_drink` service with a `target_profile` argument:
+
+```yaml
+service: ax_dose_logger.log_drink
+data:
+  entry_id: <the shared drink's config entry id>
+  target_profile: <the profile UUID whose Master Tracker should receive the dose>
+```
+
+The local inventory always decrements (the 12-pack loses one unit regardless of who drank it); only the PK payload is routed to the chosen profile. Automations reading the `ax_dose_logger_drink_taken` event can disambiguate via the `device_owner_id` (the drink's native profile) and `target_profile_id` (whose PK curve changed) event fields.
+
+- A drink with **one** allowed profile: `target_profile` is optional (defaults to that profile) — single-user behavior, no popup.
+- A drink with **zero** allowed profiles: logs to inventory only (no PK routing).
+- The raw **Log Drink button entity** (stateless HA trigger) cannot carry a per-press target, so it uses the single-profile convenience default and raises if the drink is shared — use the card for shared drinks.
+
+#### Undo / Reset with split-routing
+
+Undo and Reset are **per-dose aware**: each logged dose records which profile received it, so Undo removes the dose from *that* profile's Master Tracker (not the drink's native profile), and Reset surgically removes only this drink's contributions from each affected profile (rather than wiping one profile's entire curve). This prevents the corruption that would occur if a shared drink's reset wiped an unrelated person's caffeine curve.
+
+#### Deleting a profile (non-destructive)
+
+Removing a profile's Drink Settings entry **does not** delete any drink devices. The integration scrubs the deleted profile's UUID from every drink's Allowed Profiles array — the drinks survive for the remaining users. A drink whose Allowed Profiles becomes empty after scrubbing degrades to a pure-inventory tracker (no PK routing); it is never deleted.
+
+#### Per-profile retention
+
+Each Drink Settings entry has its own **History Retention** slider, so Alice and Bob can have different retention windows if desired. Granular drinks inherit retention from whichever profile's Drink Settings entry is found first (the universal drinks retention model is preserved).
+
+---
+
 ## Entity States & Attributes
 
 > This section is for advanced users who want to build custom templates beyond the dedicated AX Dose Logger Card. The card handles all of this automatically — you only need these details if you're hand-rolling your own Lovelace templates.
@@ -155,8 +224,31 @@ Key entities and their attributes for template references:
 - `window_hours`: `24` (fixed rolling window)
 - `doses_in_window`: count of doses logged in the window
 - `daily_limit`: configured 24h limit (in the medication's unit), or `null` when set to `0` (no limit)
-- `remaining`: `daily_limit - amount`, or `null` when no limit is configured
+- `remaining`: `daily_limit - amount`, or `null` when no limit is configured. **Deprecated** — prefer the standalone *Daily Remaining* sensor below (kept so existing templates keep working).
 - `unit_of_measurement`: the medication's strength unit (mg/μg/g)
+
+**Daily Remaining** (`sensor.ibuprofen_daily_remaining`) — only created when a 24h Strength Limit is configured
+- State: `daily_limit − amount in last 24h` (in the medication's unit, 1 decimal). A negative value means the limit is already exceeded (overage). The standalone, automation-friendly form of the Amount in Last 24h sensor's `remaining` attribute.
+- `window_hours`: `24` (fixed rolling window)
+- `daily_limit`: configured 24h limit, or `null` when set to `0`
+- `amount_24h`: the current 24h intake sum (mirrors the Amount in Last 24h state)
+- `unit_of_measurement`: the medication's strength unit (mg/μg/g)
+
+**Dose Status** (`sensor.ibuprofen_dose_status`)
+- State: one of `not_due` / `due` / `overdue` / `limit_reached` / `limit_24h` / `ok`. A single enum sensor that answers "can/should I take it right now?" — the same state machine the card's button uses, so automations and the card can never disagree. Created for all tracking types (As-Needed meds report `ok` / `limit_reached` / `limit_24h`).
+  - `not_due` — scheduled medication, next slot still in the future
+  - `due` — the scheduled slot has arrived (within the first half of the grace window)
+  - `overdue` — past half the grace window (latency warning)
+  - `limit_reached` — pill-count rolling window is full (or Cyclic OFF day)
+  - `limit_24h` — 24h strength limit already exceeded, or the next dose would push over it
+  - `ok` — As-Needed medication, available to take
+- `next_dose_at`: next scheduled slot (ISO datetime; `null` for As-Needed)
+- `overdue_since`: when the missed slot began (ISO datetime; `null` when not overdue)
+- `grace_minutes`: configured on-time window
+- `safe_count`: pills safe to take right now (mirrors the Pills Safe to Take sensor)
+- `amount_24h` / `daily_limit`: 24h strength sum and configured cap
+- `tracking_type`: the medication's tracking type
+- The sensor flips states at the exact transition instants (slot arrival, half-grace boundary, window expiry) via point-in-time timers — no waiting for the next minute tick. Use it in automations with a State trigger, e.g. `trigger: state → entity_id: sensor.ibuprofen_dose_status → to: due`.
 
 **24h Limit Exceeded** (`binary_sensor.ibuprofen_24h_limit_exceeded`)
 - State: `on` / `off`. Turns on when the current 24h strength sum has already exceeded the configured `daily_limit`, OR when the next configured dose would push the total over the limit (pre-warning). Only created when `daily_limit > 0`.
@@ -190,8 +282,18 @@ Key entities and their attributes for template references:
 - `body_mass`: raw current body-mass (mg caffeine / g alcohol)
 - `body_mass_unit`: unit string
 - `current_band`: the current band label
-- `next_band`: the next-lower band label
-- `minutes_until_next_band`: estimated decay time to the next-lower band
+- `next_band`: the next-lower band label. **Deprecated** — prefer the standalone *Next Band* sensor below (kept so existing templates keep working).
+- `minutes_until_next_band`: estimated decay time to the next-lower band. **Deprecated** — prefer the *Next Band* sensor's attribute of the same name.
+
+**Next Band** (Master Tracker — `sensor.caffeine_tracker_next_band`)
+- State: the next-lower disruption band label (`Low` / `Moderate` / `High`), or `unknown` when already in the lowest band (no next transition). Trigger automations on the upcoming transition (`state == "Low"`).
+- `current_band`: the current band label
+- `minutes_until_next_band`: estimated minutes until the body-mass crosses into the next-lower band (int; `null` when already in the lowest band)
+- `next_band_at`: ISO wall-clock time of the predicted crossing
+
+**Estimated None Time** (Master Tracker — `sensor.caffeine_tracker_estimated_none_time`)
+- State: TIMESTAMP — predicted wall-clock time the body-mass decays into the sleep-safe **None** band (the Low → None boundary: 11 mg caffeine / 1 g alcohol); `unknown` once at or below it. The longer-horizon companion to *Low - Timestamp*; ideal for time-trigger automations ("remind me when sleep-safe").
+- `none_threshold`: the Low → None boundary in the substance's unit
 
 ---
 
@@ -208,7 +310,8 @@ Each medication and drink shows up as a **Device** in Home Assistant. Replace `i
 | Last Dose | `sensor.ibuprofen_last_dose` | Timestamp of most recent dose | — |
 | Pills Safe to Take | `sensor.ibuprofen_pills_safe_to_take` | Remaining pills safe to take in the current window | `timestamps`, `time_window_hours`, `in_on_window` (Cyclic only), `window_expires_at` (when the limit resets; `null` if not at the limit) |
 | Amount in Body | `sensor.ibuprofen_amount_in_body` | Current drug amount in body (mg) — requires PK fields | `last_updated`, `gut_mass`, `ka`, `lag_time`, `dose_history` (IR); `gut_ir_mass`, `matrix_sr_mass`, `gut_sr_mass`, `ka`, `kr`, `lag_time`, `dose_history` (ER) |
-| Amount in Last 24h | `sensor.ibuprofen_amount_in_last_24h` | Total dose strength consumed in the last 24 hours (mg/μg/g) | `window_hours`, `doses_in_window`, `daily_limit` (`null` when 0), `remaining` (`null` when no limit), `unit_of_measurement` |
+| Amount in Last 24h | `sensor.ibuprofen_amount_in_last_24h` | Total dose strength consumed in the last 24 hours (mg/μg/g) | `window_hours`, `doses_in_window`, `daily_limit` (`null` when 0), `remaining` (deprecated — use Daily Remaining), `unit_of_measurement` |
+| Daily Remaining | `sensor.ibuprofen_daily_remaining` | Remaining daily allowance (`daily_limit − amount_24h`; negative = overage; only when `daily_limit > 0`) | `window_hours`, `daily_limit`, `amount_24h`, `unit_of_measurement` |
 | 24h Limit Exceeded | `binary_sensor.ibuprofen_24h_limit_exceeded` | On when 24h strength limit is/would be exceeded (only when `daily_limit > 0`) | `current_amount`, `daily_limit`, `next_dose_strength`, `remaining`, `already_exceeded`, `would_exceed`, `unit_of_measurement` |
 | Next Dose | `sensor.ibuprofen_next_dose` | Timestamp of next scheduled dose | `safe_to_take` (number of pills safe to take remaining now) |
 | 7-Day Average | `sensor.ibuprofen_avg_daily_doses_7_days` | Day-level dose coverage over 7 days (0.0–1.0) | `covered_days`, `scheduled_days`, `effective_window_days` |
@@ -289,6 +392,32 @@ automation:
       - service: notify.mobile_app_your_phone
         data:
           message: "⚠️ No pills safe to take for Ibuprofen"
+```
+
+**Notify when a dose becomes due (Dose Status sensor):**
+```yaml
+automation:
+  - trigger:
+      - platform: state
+        entity_id: sensor.ibuprofen_dose_status
+        to: "due"
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          message: "💊 Ibuprofen dose is due now"
+```
+
+**Escalate when a dose becomes overdue:**
+```yaml
+automation:
+  - trigger:
+      - platform: state
+        entity_id: sensor.ibuprofen_dose_status
+        to: "overdue"
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          message: "🔴 Ibuprofen dose is overdue — the on-time window is closing"
 ```
 
 **Notify when steady state is reached** (scheduled medications only):

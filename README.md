@@ -117,6 +117,8 @@ AX Dose Logger supports four ways to track a medication, depending on how you ta
 Accidentally taking too much is easy to do, especially with medications that have a wide dosing window. AX Dose Logger helps prevent that:
 
 - **Pill Limit Tracking** — You set how many pills are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so the limit recovers one at a time. On Cyclic OFF days, the limit drops to 0 automatically.
+- **Pills per Dose** — If your prescription is more than one pill per dose time (e.g. 2 pills at 8 AM and 2 at 8 PM), set **Pills per Dose** and reminders stay active until *all* pills for that dose are logged — one pill no longer clears the reminder. Adherence and "Days Left" account for the full daily quantity automatically. Available for Time of Day and Regular Interval medications.
+- **Anti-Drift Buffer** — A small configurable buffer (default 5 minutes) lets the next dose become available slightly before the strict window elapses, so taking each dose a few minutes late doesn't gradually push the next dose later every day ("schedule creep"). Capped at 25% of the window for safety. Adjustable per medication and per drink in the options.
 - **Overdose Warning** — When the pill limit hits 0, the Take button on the dedicated AX Dose Logger Card turns red and asks you to confirm before logging.
 
 <!-- SCREENSHOT: Daily pane with pill limit at 0 — Take button red with the confirmation dialog visible -->
@@ -124,6 +126,8 @@ Accidentally taking too much is easy to do, especially with medications that hav
 
 
 - **Next Dose Countdown** — The Next Dose sensor tells you exactly when your next scheduled dose is, so you can show live countdowns like "in 2 hours" or "Available now". For scheduled medications (Time of Day, Cyclic), the next dose always reflects your prescribed clock time — taking a dose late does not drift the schedule. The separate **Pills Safe to Take** sensor tells you whether it's actually safe to take now.
+
+- **Dose Status** — A single sensor (`sensor.<medication>_dose_status`) that reports the medication's current state: `not_due`, `due`, `overdue`, `limit_reached`, `limit_24h`, or `ok`. It's the same state machine the card's button uses, so it's ideal for automations — trigger a notification the moment a dose becomes `due`, or escalate when it flips to `overdue`. See [Advanced-Users.md](Advanced-Users.md) for examples.
 
 ### Pharmacokinetics Overview
 
@@ -296,6 +300,22 @@ When a limit is set (> 0), the sensor exposes a `remaining` attribute (`daily_li
 
 > **Intake vs. body load:** *Amount in Last 24h* tracks **how much you swallowed** in the rolling window — the correct value for comparing against FDA/Dietary Guidelines daily limits (which are stated as total daily *intake*, not plasma concentration). For the **current active amount in your body** (accounting for absorption and elimination), use the Master Tracker's *Amount in Body* sensor instead. These answer different questions: a dose taken 20 hours ago has mostly cleared from your body but still counts toward your 24h intake budget.
 
+### Multi-User Households (Profiles)
+
+By default the integration runs in **single-profile mode**: one implicit "Default" profile holds the Drink Settings (PK constants + daily limits) and the two Master Tracker devices. Single-user setups see no change.
+
+For a multi-user household (e.g. two partners), the integration supports **fully isolated per-person tracking** via a Many-to-Many topology:
+
+- **Profiles** (biological layer): each person gets their own Drink Settings entry — their own PK constants (caffeine half-life, alcohol elimination rate), their own daily limits, and their own Caffeine Tracker + Alcohol Tracker devices with independent decay curves. Create a new profile from the **Drink Setup** step ("➕ New profile…") or let the card create one on first use.
+- **Drinks** (global inventory layer): each physical drink (e.g. "Coca-Cola 33cl") is a shared household asset, **not** owned by any profile. At setup you pick which profiles may route PK payloads from it via a multi-select **Allowed Profiles** field. A 12-pack shared by two people gets both profiles; each person's morning coffee gets just their own.
+- **Logging a shared drink**: when you press Log Drink on a multi-profile drink, the dashboard card asks **"Who is logging this?"** and routes the caffeine/alcohol payload to the chosen profile's Master Tracker while decrementing the shared inventory. The `ax_dose_logger.log_drink` service accepts an optional `target_profile` argument for the same split-routing from automations.
+- **Deleting a profile is non-destructive**: removing a person's Drink Settings entry scrubs their profile from every drink's Allowed Profiles list — the drink devices themselves survive for the remaining users (a shared 12-pack is not destroyed when one person leaves).
+
+Each profile's Master Tracker devices are named after the profile (e.g. "Alice Caffeine Tracker", "Bob Alcohol Tracker") so they're easy to tell apart on the dashboard.
+
+> **Backwards compatible**: existing single-user installs keep the implicit "Default" profile with the original Master Tracker device names ("Caffeine Tracker", "Alcohol Tracker") and store files — no migration step, no broken entities. See [Advanced-Users.md](Advanced-Users.md) for the full configuration reference.
+
+
 ### Sleep Disruption Bands
 
 The Sleep Disruption sensor classifies the current body-mass load into a categorical band indicating how much it is likely to disrupt sleep. The state is a bare label (no unit suffix); the threshold ranges are documented below. The band is recomputed on every coordinator push (dose event or 1-min decay tick) so it tracks clearance in real time.
@@ -346,6 +366,8 @@ Once installed, add it to your dashboard via the visual editor and pick your med
 
 **Graphs pane** — daily-dose bar graph with timescale selector + amount-in-body line graph with timeframe selector:
 
+> **Full-history graphs, independent of the recorder.** The amount-in-body line graph and effectiveness graphs are served from the integration's own 365-day store — the PK curve is recomputed exactly from your dose history — so they are **not** truncated by Home Assistant's recorder default (`purge_keep_days: 10`). Long timeframes render smoothly too: the backend samples the curve at a fixed point budget instead of streaming raw recorder states.
+
 <!-- SCREENSHOT: Card showing the Graphs pane — daily-dose bar graph with timescale selector + amount-in-body line graph with timeframe selector -->
 <img width="441" alt="Screenshot 2026-08-11 194230" src="https://github.com/user-attachments/assets/6a6cddac-d1ab-41ef-9479-7d21ed14b4e7" />
 
@@ -355,9 +377,9 @@ Once installed, add it to your dashboard via the visual editor and pick your med
 <!-- SCREENSHOT: Card showing the Stats pane — rolling average boxes (7/14/30/365 days), adherence percentage boxes, total doses, days since first dose -->
 ![Stats pane](screenshots/stats-pane.png)
 
-**Tools pane** — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset History, Undo Last Dose buttons:
+**Tools pane** — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset Averages, Reset History, Undo Last Dose buttons. **Reset Averages** (under General Tools) restarts the 7/14/30/365-day averages from now — doses logged before the reset stop counting toward the averages, but no dose data is deleted (Total Doses, Amount in Body, and Adherence % are untouched). Available on medications, drink trackers, and Master Trackers:
 
-<!-- SCREENSHOT: Card showing the Tools pane — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset History, Undo Last Dose buttons -->
+<!-- SCREENSHOT: Card showing the Tools pane — Reset Adherence %, Mark Last Adherence Taken, Skip Dose, Reset Averages, Reset History, Undo Last Dose buttons -->
 ![Tools pane](screenshots/tools-pane.png)
 
 > **Skip Dose** clears the overdue alarm and advances the next-dose schedule for a deliberately-skipped scheduled dose (e.g. prescriber-directed "skip if dizzy", a taper step, or a drug holiday) **without logging a dose** — Amount in Body, pill inventory, total doses, and last dose are all untouched, so the pharmacokinetic graph stays clean. Adherence stays penalized (you genuinely did not take it); for a prescriber-directed skip, press **Mark Last Adherence Taken** afterwards to credit the slot. Skip Dose is only available for scheduled medications (Time of Day, Regular Interval, Cyclic); As Needed meds have no schedule to skip.
@@ -368,13 +390,28 @@ For full card configuration options (color schemes, column layouts, chip customi
 
 ## Reminders
 
-There's a ready-made Blueprint you can import for push notifications with Take, Skip, and Snooze actions:
+There's a ready-made Blueprint you can import for state-driven push notifications with Take, Skip, and Snooze actions:
 
 1. Go to Settings → Automations → Blueprints → Import Blueprint
 2. Paste: `https://raw.githubusercontent.com/Axildor/AX-Dose-Logger/main/blueprints/reminder.yaml`
-3. Create a new automation from the blueprint, pick your phone, and map your AX Dose Logger entities.
+3. Create a new automation from the blueprint and pick just two things: the medication's **Dose Status** sensor (the trigger source) and your phone. Everything else — the take/skip actions and the safety guard — is resolved from that single sensor automatically.
 
-> **Safety guard**: The blueprint has an optional "Pills Safe to Take Sensor" input. When mapped, the notification's **Taken** action will not auto-log a dose if you're at the pill limit — instead it sends a warning telling you to open the AX Dose Logger card to override. This keeps the notification from bypassing the rolling-window overdose protection.
+The blueprint triggers on **Dose Status** transitions, so each state can have its own behavior:
+
+| Dose Status | What happens |
+|---|---|
+| **Due** | Reminder notification with Take / Snooze / Skip buttons, repeated until you respond |
+| **Overdue** | Escalation notification (separate title/message) with the same buttons |
+| **Limit Reached** | Optional warning that the pill-count window is full (**off by default** — enable with the *Notify on Limit Reached* toggle) |
+| **24h Limit** | Optional safety warning that the daily strength limit would be exceeded (**off by default** — enable with the *Notify on 24h Limit* toggle) |
+
+Each state also has an optional **action** input (e.g. `Action on Overdue` to flash lights or notify a second device), plus a per-reminder action that runs alongside every notification in the loop. The limit-state actions run independently of the notification toggles.
+
+> **Auto-dismiss**: The notification is cleared automatically when the dose is taken — no matter how. Taking the pill from the notification, the dashboard card, or the `take_dose` service all dismiss it. **Skip** records the skipped slot so the next dose time advances and the reminder doesn't re-fire for the same slot.
+
+> **Taken confirmation**: When the dose is logged from any path, an optional "Dose taken" confirmation notification is shown (on by default, with a customizable title/message). It auto-dismisses after a configurable timeout (default 5 minutes), and an optional `Action on Taken` input can run alongside it (e.g. flash lights or speak a confirmation on a speaker).
+
+> **Safety guard**: The blueprint reads the `safe_count` attribute from the Dose Status sensor automatically. The notification's **Taken** action will not auto-log a dose if you're at the pill limit — instead it sends a warning telling you to open the AX Dose Logger card to override. This keeps the notification from bypassing the rolling-window overdose protection.
 
 ---
 
@@ -383,6 +420,17 @@ There's a ready-made Blueprint you can import for push notifications with Take, 
 Each medication and drink shows up as a **Device** in Home Assistant, exposing sensors, buttons, numbers, a calendar, and event-bus events you can use in any automation. The ready-made reminder blueprint above is the quickest starting point for push notifications.
 
 For custom automations — the full sensor/entity reference table, button and number entities, the calendar entity, the event-bus reference, and copy-pasteable YAML automation examples — see [Advanced Users](Advanced-Users.md).
+
+---
+
+## Fixes
+
+Recent reliability fixes you may have noticed:
+
+- **Master Tracker "Reset Averages" button** — the button entity is now created on Master Tracker devices as intended, so the averages reset works from the device as well as the card's Tools pane.
+- **Allowed Profiles edits** — changing which profiles may log a shared drink in the drink's options now takes effect immediately (the entry reloads automatically) instead of requiring the drink to be recreated.
+- **Graphs on granular drink devices** — opening the graphs pane for an individual drink no longer fails; it renders cleanly (the combined decay curve lives on the Master Tracker).
+- **Backdated doses** — logging a dose with a past timestamp no longer corrupts the "Last Dose" sensor or makes Undo remove the wrong entry; the true most-recent dose is always reported and undone.
 
 ---
 

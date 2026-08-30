@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import AxDoseLoggerCoordinator
+
+if TYPE_CHECKING:
+    from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
+
+
+@runtime_checkable
+class AxDoseLoggerCoordinatorProtocol(Protocol):
+    """Structural type for any coordinator this integration's entities host.
+
+    The base entity class hosts medicine entities (``AxDoseLoggerCoordinator``)
+    AND drink entities (``DrinkCoordinator`` / ``DrinkMasterCoordinator``),
+    but ``CoordinatorEntity``'s TypeVar is bound to ``DataUpdateCoordinator``,
+    so a Protocol cannot be used as the generic parameter itself.  The
+    minimal fix (audit D7): keep the base generic pinned to the concrete
+    medicine coordinator (the common ancestor's shared base) and use this
+    Protocol for the constructor's parameter annotation so drink coordinators
+    type-check structurally.  Runtime-safe: purely a static-typing aid.
+    """
+
+    @property
+    def data(self) -> object: ...
 
 
 class AxDoseLoggerEntity(CoordinatorEntity[AxDoseLoggerCoordinator]):
@@ -29,7 +52,7 @@ class AxDoseLoggerEntity(CoordinatorEntity[AxDoseLoggerCoordinator]):
     def __init__(
         self,
         entry: ConfigEntry,
-        coordinator: AxDoseLoggerCoordinator,
+        coordinator: AxDoseLoggerCoordinator | DrinkCoordinator | DrinkMasterCoordinator,
     ) -> None:
         """Initialize the entity from a config entry and coordinator.
 

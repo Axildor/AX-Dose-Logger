@@ -13,6 +13,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
     parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
@@ -71,6 +72,16 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "history_start_date": None,
         }
         self._next_dose_timeout_unsub = None
+        # E4: cheap recompute guard -- the full slot sweep (multi-day
+        # ``compute_slot_assignments`` lookback, x4 window sensors per med)
+        # only needs to rerun when a dose/override event occurred, the
+        # calendar date rolled over, or the next grace-expiry boundary was
+        # crossed (the latter is handled by the ``async_call_later`` timer,
+        # which forces a recompute).  Pure 1-min ticks between boundaries
+        # skip the sweep entirely.
+        self._last_adherence_fingerprint: tuple | None = None
+        self._last_computed_date: date | None = None
+        self._next_boundary: datetime | None = None
 
     def _get_timestamps(self) -> list:
         """
@@ -301,6 +312,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         """
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         parsed_times = get_dose_times(entry)
+        pills_per_slot = get_pills_per_slot(entry)
 
         if not parsed_times:
             return 0, 0
@@ -317,6 +329,7 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             early_grace=grace_td,
             lateness_mode=LATENESS_CAPPED,
             lateness_cap=grace_td,
+            pills_per_slot=get_pills_per_slot(entry),
         )
 
         actual = 0
@@ -328,9 +341,8 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             # Skip slots whose grace window is still open (not yet due).
             if now < a.slot_time + grace_td:
                 continue
-            expected += 1
-            if a.covered:
-                actual += 1
+            expected += pills_per_slot
+            actual += min(a.assigned_count, pills_per_slot)
         return actual, expected
 
     def _count_slots_regular_interval(self, now, cutoff, grace_td, timestamps):
@@ -451,8 +463,17 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return dose_time_today + timedelta(days=days_until_next_on)
         return None
 
-    def _update_state(self):
-        """Recalculate adherence percentage based on tracking type."""
+    def _update_state(self, force: bool = False):
+        """Recalculate adherence percentage based on tracking type.
+
+        E4: ``force=True`` bypasses the recompute guard (grace-expiry timer,
+        initial setup).  The guard skips the full slot sweep on pure 1-min
+        ticks when nothing relevant changed: same dose/override fingerprint,
+        same calendar date, and ``now`` still before the next grace-expiry
+        boundary.  Any dose event changes the fingerprint (the coordinator
+        pushes on every take/undo/reset/override), so pushes always
+        recompute.
+        """
         now = dt_util.now()
         timestamps = self._get_timestamps()
 
@@ -472,6 +493,23 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         if not self._history_start_date:
             self._history_start_date = now
+
+        # E4 recompute guard (scheduled types only; PRN returned above).
+        # The fingerprint covers every adherence-relevant coordinator state:
+        # dose count, most recent dose/override timestamp, and the override
+        # list length (undo/reset/override all change at least one).
+        fingerprint = (
+            len(timestamps),
+            max(timestamps) if timestamps else None,
+        )
+        if (
+            not force
+            and fingerprint == self._last_adherence_fingerprint
+            and self._last_computed_date == now.date()
+            and self._next_boundary is not None
+            and now < self._next_boundary
+        ):
+            return
 
         days_since_start = (now - self._history_start_date).total_seconds() / 86400.0
         days_since_start = max(1.0, days_since_start)
@@ -535,10 +573,20 @@ class PillAdherenceSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                     self._next_dose_timeout_unsub = async_call_later(
                         self.hass, delta_seconds, self._on_next_dose_timeout
                     )
+                # E4: record the boundary the guard compares against.  When
+                # the expiry has already passed (no timer armed) the boundary
+                # stays None so the next tick recomputes instead of skipping.
+                self._next_boundary = grace_expiry if grace_expiry > now else None
+            else:
+                self._next_boundary = None
+            self._last_adherence_fingerprint = fingerprint
+            self._last_computed_date = now.date()
 
     @callback
     def _on_next_dose_timeout(self, now):
         """Recalculate when a dose slot transitions from pending to missed."""
-        self._update_state()
+        # Force: this timer fires exactly AT a grace-expiry boundary, which
+        # the E4 timestamp guard would otherwise (correctly) skip on.
+        self._update_state(force=True)
         self.async_write_ha_state()
         self._next_dose_timeout_unsub = None

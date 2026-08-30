@@ -30,8 +30,9 @@ from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from ..const import DOMAIN
+from ..const import DOMAIN, DOSE_BUFFER_DEFAULT_MIN
 from ..drink_coordinator import DrinkCoordinator
+from ..sliding_window import effective_dose_buffer_minutes
 
 
 class DrinkCooldownSensor(RestoreSensor):
@@ -63,6 +64,7 @@ class DrinkCooldownSensor(RestoreSensor):
             "within_cooldown": False,
             "substance": self._substance,
             "device_type": "drink",
+            "role": "cooldown",
         }
         self._attr_native_value = 1
 
@@ -83,6 +85,7 @@ class DrinkCooldownSensor(RestoreSensor):
                     "within_cooldown": bool(last_state_obj.attributes.get("within_cooldown", False)),
                     "substance": self._substance,
                     "device_type": "drink",
+                    "role": "cooldown",
                 }
         self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         self._handle_coordinator_update()
@@ -99,6 +102,13 @@ class DrinkCooldownSensor(RestoreSensor):
                 self._entry.data.get("cooldown_window", 0),
             )
         )
+        raw_buffer = self._entry.options.get(
+            "dose_buffer_minutes",
+            self._entry.data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN),
+        )
+        # Anti-drift buffer mirrors medicine pill_limit (capped at 25% of the
+        # cooldown window so it cannot collapse a short cooldown).
+        buffer_minutes = effective_dose_buffer_minutes(self._entry, cooldown_h)
 
         last_dose_time = None
         cooldown_ends_at = None
@@ -109,7 +119,11 @@ class DrinkCooldownSensor(RestoreSensor):
             last_dose_time = coordinator.data.dose_history[-1][0]
             if cooldown_h > 0:
                 within = coordinator.is_within_cooldown(now)
-                cooldown_ends_at = last_dose_time + timedelta(hours=cooldown_h)
+                # The cooldown ends `buffer` minutes earlier than the strict
+                # cooldown (the last drink falls out of the window at
+                # cooldown - buffer), keeping the displayed next-available
+                # time in sync with the is_within_cooldown gate.
+                cooldown_ends_at = last_dose_time + timedelta(hours=cooldown_h) - timedelta(minutes=buffer_minutes)
                 available = 0 if within else 1
 
         self._attr_native_value = available
@@ -118,8 +132,11 @@ class DrinkCooldownSensor(RestoreSensor):
             "last_dose_time": last_dose_time.isoformat() if last_dose_time else None,
             "cooldown_window_hours": cooldown_h,
             "within_cooldown": within,
+            "dose_buffer_minutes": raw_buffer,
+            "effective_buffer_minutes": buffer_minutes,
             "substance": self._substance,
             "device_type": "drink",
+            "role": "cooldown",
         }
         # Dynamic icon: cup when available, sand-empty when locked.
         self._attr_icon = "mdi:cup-water" if available else "mdi:timer-sand-empty"

@@ -42,6 +42,7 @@ class DrinkLastDoseSensor(RestoreSensor):
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "device_type": "drink",
+            "role": "last_dose",
         }
 
     async def async_added_to_hass(self) -> None:
@@ -66,5 +67,6 @@ class DrinkLastDoseSensor(RestoreSensor):
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "device_type": "drink",
+            "role": "last_dose",
         }
         self.async_write_ha_state()

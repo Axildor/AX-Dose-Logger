@@ -21,6 +21,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
     parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
@@ -159,6 +160,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             future_days=0,
             early_grace=early_grace,
             lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+            pills_per_slot=get_pills_per_slot(entry),
         )
 
         # Latest uncovered slot at or before now → overdue anchor.
@@ -174,16 +176,40 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     # ── Regular Interval ────────────────────────────────────────────────
 
     def _compute_overdue_regular_interval(self, entry, now, timestamps):
-        """Return last_dose + hours_between if overdue, else None."""
+        """Return the most recently *reached* chained deadline, or None.
+
+        Chained-deadline model (parity with the Time of Day slot model):
+        with ``anchor = max(timestamps)`` and ``n = floor((now - anchor) /
+        interval)``, the overdue anchor is ``anchor + n * interval`` — the
+        latest deadline that has actually arrived.  This prevents overdue
+        from *stacking*: when the next dose time is reached, the anchor
+        advances to it and the counter resets to ~0 instead of continuing
+        to accumulate past the previous missed deadline (the old fixed
+        ``last_dose + interval`` anchor grew 8h → 16h → 24h… across
+        multiple missed dose times).  The value is therefore naturally
+        capped below one interval.
+
+        Adherence is deliberately unaffected: it counts every missed
+        interval as an expected dose independently, so re-anchoring this
+        display sensor does not forgive the miss.
+        """
         hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
         if not timestamps or hours_between <= 0:
             return None
 
-        last_ts = timestamps[-1]
-        next_dose_time = last_ts + timedelta(hours=hours_between)
-        if next_dose_time <= now:
-            return next_dose_time
-        return None
+        interval = timedelta(hours=hours_between)
+        # max() not [-1]: adherence-override / undo flows can leave the
+        # merged dose+skip list unsorted, so the last element is not
+        # guaranteed to be the latest instant.
+        anchor = max(timestamps)
+        elapsed = now - anchor
+        if elapsed <= timedelta(0):
+            return None
+        # Number of deadlines fully reached since the anchor dose.
+        n = int(elapsed.total_seconds() // interval.total_seconds())
+        if n <= 0:
+            return None
+        return anchor + n * interval
 
     # ── Cyclic / Calendar Pattern ───────────────────────────────────────
 

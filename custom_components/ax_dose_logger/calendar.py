@@ -4,12 +4,16 @@ Calendar platform for the AX Dose Logger integration.
 Generates calendar events representing expected dose times based on the
 medication's tracking type configuration:
   - Time of Day:  One or more daily events at the configured times.
-  - Regular Interval: Events every N hours anchored to midnight.
+  - Regular Interval: Events every N hours anchored to the last dose's
+    absolute instant (elapsed-time semantics, matching the Next Dose /
+    Overdue sensors).  Falls back to a midnight grid before the first
+    dose establishes an anchor.
   - Cyclic/Calendar Pattern: Events on ON days at the configured dose time.
   - As Needed (PRN): No future events (unpredictable).
 """
 
-from datetime import date, datetime, timedelta
+import math
+from datetime import datetime, timedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
@@ -23,6 +27,7 @@ from .const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
     parse_dose_time,
 )
 from .coordinator import AxDoseLoggerCoordinator
@@ -131,8 +136,15 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
     def _generate_time_of_day_events(
         self, entry: ConfigEntry, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
-        """One or more events per day at the configured dose times."""
+        """One or more events per day at the configured dose times.
+
+        When ``pills_per_slot`` > 1 the description states the quantity so
+        the calendar matches the slot-coverage model (a dose is complete
+        only after all pills for the slot are logged).
+        """
         parsed_times = get_dose_times(entry)
+        pills_per_slot = get_pills_per_slot(entry)
+        summary = f"{self._med_name} Dose" if pills_per_slot <= 1 else f"{self._med_name} Dose x{pills_per_slot}"
 
         events: list[CalendarEvent] = []
         tz = dt_util.now().tzinfo
@@ -144,7 +156,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
                 if event_end > start_date and event_start < end_date:
                     events.append(
                         CalendarEvent(
-                            summary=f"{self._med_name} Dose",
+                            summary=summary,
                             start=event_start,
                             end=event_end,
                         )
@@ -159,30 +171,98 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
     def _generate_regular_interval_events(
         self, entry: ConfigEntry, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
-        """Events every N hours anchored to midnight each day."""
+        """Events every N hours anchored to the last dose's absolute instant.
+
+        Anchoring to the last dose (or skipped slot) — not local midnight —
+        keeps the calendar in lockstep with the Next Dose / Overdue sensors,
+        which compute ``last_ts + timedelta(hours=N)`` (elapsed-time
+        semantics).  This resolves the DST-day divergence where a
+        midnight-anchored wall-clock grid would disagree with the
+        elapsed-time-anchored sensors by one hour, and the late-dose case
+        where the next prescribed slot is N real hours after the actual
+        dose, not the next wall-clock grid mark.  The minimum-spacing
+        safety floor (next dose is always >= hours_between real hours
+        after the last) is preserved because both code paths use the same
+        anchor + k * interval model.
+
+        The anchor is the latest of (real doses + skipped slots),
+        matching the schedule_timestamps merge used by the Next Dose
+        and Overdue sensors so the calendar and sensors agree on which
+        instant the grid starts from.
+
+        When no dose has been logged yet (no anchor), events fall back to
+        a midnight-anchored grid — the pre-first-dose default.  The first
+        dose establishes the anchor and the grid shifts to match.
+        """
         hours_between = int(entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 8)))
         if hours_between <= 0:
             hours_between = 1
 
+        interval = timedelta(hours=hours_between)
         events: list[CalendarEvent] = []
         tz = dt_util.now().tzinfo
-        current = start_date.date() - timedelta(days=1)
-        end = end_date.date() + timedelta(days=1)
-        while current <= end:
-            hour = 0
-            while hour < 24:
-                event_start = datetime(current.year, current.month, current.day, hour, 0, tzinfo=tz)
-                event_end = event_start + EVENT_DURATION
-                if event_end > start_date and event_start < end_date:
-                    events.append(
-                        CalendarEvent(
-                            summary=f"{self._med_name} Dose",
-                            start=event_start,
-                            end=event_end,
+
+        # Anchor = latest of (real doses + skipped slots), matching the
+        # schedule_timestamps merge used by the Next Dose / Overdue sensors
+        # so the calendar and sensors agree on which instant the grid starts.
+        anchor: datetime | None = None
+        if self.coordinator.data:
+            schedule_ts: list[datetime] = [ts for ts, _ in self.coordinator.data.dose_history] + list(
+                self.coordinator.data.skipped_slots
+            )
+            if schedule_ts:
+                anchor = max(schedule_ts)
+
+        if anchor is None:
+            # No anchor yet — fall back to a midnight grid (pre-first-dose
+            # default).  The first dose establishes the anchor and the
+            # grid shifts to the elapsed-time model above.
+            current = start_date.date() - timedelta(days=1)
+            end = end_date.date() + timedelta(days=1)
+            while current <= end:
+                hour = 0
+                while hour < 24:
+                    event_start = datetime(current.year, current.month, current.day, hour, 0, tzinfo=tz)
+                    event_end = event_start + EVENT_DURATION
+                    if event_end > start_date and event_start < end_date:
+                        events.append(
+                            CalendarEvent(
+                                summary=f"{self._med_name} Dose",
+                                start=event_start,
+                                end=event_end,
+                            )
                         )
-                    )
-                hour += hours_between
-            current += timedelta(days=1)
+                    hour += hours_between
+                current += timedelta(days=1)
+            return events
+
+        # Anchor exists — generate the event grid as anchor + k*interval,
+        # matching the sensors' last_ts + timedelta(hours=N) model.
+        # The anchor's original tzinfo (fixed offset from parse_datetime or
+        # zoneinfo from dt_util.now()) is preserved so the elapsed-time
+        # semantics match the sensors exactly; HA converts to the local
+        # zone for display.  Events for both past (k < 0) and future (k > 0)
+        # prescribed slots are generated so range queries show the full
+        # schedule, not just upcoming doses.
+        interval_s = interval.total_seconds()
+        # First k whose event could overlap the window (event_end > start):
+        #   anchor + k*interval + EVENT_DURATION > start_date
+        k_start = math.floor((start_date - EVENT_DURATION - anchor).total_seconds() / interval_s) + 1
+        # Last k whose event starts before end_date:
+        #   anchor + k*interval < end_date
+        k_end = math.ceil((end_date - anchor).total_seconds() / interval_s) - 1
+
+        for k in range(k_start, k_end + 1):
+            event_start = anchor + k * interval
+            event_end = event_start + EVENT_DURATION
+            events.append(
+                CalendarEvent(
+                    summary=f"{self._med_name} Dose",
+                    start=event_start,
+                    end=event_end,
+                )
+            )
+
         return events
 
     # ------------------------------------------------------------------
@@ -202,7 +282,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         current = start_date.date() - timedelta(days=1)
         end = end_date.date() + timedelta(days=1)
         while current <= end:
-            if is_on_day(entry, current, date.today()):  # ON day
+            if is_on_day(entry, current, dt_util.now().date()):  # ON day
                 event_start = datetime(
                     current.year,
                     current.month,

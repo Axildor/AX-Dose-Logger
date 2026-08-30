@@ -31,6 +31,7 @@ from homeassistant.helpers import selector, service
 
 from .const import DOMAIN
 from .coordinator import AxDoseLoggerCoordinator
+from .drink_coordinator import DrinkCoordinator
 
 # Service names
 SERVICE_TAKE_DOSE: Final = "take_dose"
@@ -43,6 +44,7 @@ SERVICE_SKIP_DOSE: Final = "skip_dose"
 SERVICE_LOG_DRINK: Final = "log_drink"
 SERVICE_UNDO_DRINK: Final = "undo_drink"
 SERVICE_RESET_DRINK: Final = "reset_drink"
+SERVICE_AVERAGES_RESET: Final = "averages_reset"
 
 # Service fields
 ATTR_ENTRY_ID: Final = "entry_id"
@@ -51,6 +53,7 @@ ATTR_TIMESTAMP: Final = "timestamp"
 ATTR_METRIC_KEY: Final = "metric_key"
 ATTR_VALUE: Final = "value"
 ATTR_OVERRIDE: Final = "override"
+ATTR_TARGET_PROFILE: Final = "target_profile"
 
 # Base schema — most services require entry_id via ConfigEntrySelector
 SERVICE_BASE_SCHEMA = vol.Schema(
@@ -82,16 +85,21 @@ SERVICE_SET_METRIC_SCHEMA = vol.Schema(
 )
 
 
-def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordinator:
+def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordinator | DrinkCoordinator:
     """
     Retrieve the coordinator for the given config entry.
 
     Raises ``HomeAssistantError`` (via ``service.async_get_config_entry``)
-    if the entry_id is invalid or not loaded.
+    if the entry_id is invalid or not loaded, or if the entry is a Drink
+    Settings entry (which hosts no coordinator of its own).
     """
     # Validate the entry exists and belongs to our domain
     service.async_get_config_entry(hass, DOMAIN, entry_id)
-    return hass.data[DOMAIN][entry_id]["coordinator"]
+    coordinator = hass.data.get(DOMAIN, {}).get(entry_id, {}).get("coordinator")
+    if coordinator is None:
+        msg = "This config entry has no coordinator"
+        raise HomeAssistantError(msg)
+    return coordinator
 
 
 def _get_coordinator_for_entity(hass: HomeAssistant, entity_id: str) -> tuple[AxDoseLoggerCoordinator, str]:
@@ -184,18 +192,59 @@ async def _async_set_metric(call: ServiceCall) -> None:
     await coordinator.async_set_metric(metric_key, value, override=override)
 
 
+def _validate_profile_id(hass: HomeAssistant, profile_id: str) -> None:
+    """Validate that a profile_id corresponds to a live Drink Settings entry.
+
+    Raises ``HomeAssistantError`` if no Drink Settings config entry has
+    ``profile_id == profile_id`` in its data (the profile was deleted, or the
+    id was never valid).  This is the Fault 1 dead-pointer guard at the
+    service-handler layer -- it gives the user a clear UI error before the
+    coordinator is even called.  The coordinator-level guard (``.get`` +
+    warning) is defense-in-depth for the narrow race between this validation
+    and the coordinator execution.
+    """
+    from .const import DEVICE_CATEGORY_DRINK_SETTINGS
+
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if (
+            entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS
+            and entry.data.get("profile_id") == profile_id
+        ):
+            return
+    raise HomeAssistantError(
+        f"Profile '{profile_id}' does not exist (it may have been deleted). "
+        f"Cannot route the drink's PK payload to a non-existent profile."
+    )
+
+
 # log_drink / undo_drink / reset_drink reuse the same base schema
 # (entry_id + optional timestamp for log_drink) as the medicine services.
-SERVICE_LOG_DRINK_SCHEMA = SERVICE_TAKE_DOSE_SCHEMA
+SERVICE_LOG_DRINK_SCHEMA = SERVICE_TAKE_DOSE_SCHEMA.extend(
+    {
+        vol.Optional(ATTR_TARGET_PROFILE): str,
+    }
+)
 
 
 async def _async_log_drink(call: ServiceCall) -> None:
-    """Handle the ``log_drink`` service — log a granular drink."""
+    """Handle the ``log_drink`` service — log a granular drink.
+
+    M2M routing: the optional ``target_profile`` (an immutable profile id
+    UUID) selects which profile's Master Tracker receives the PK payload.
+    If omitted, the coordinator applies the single-profile convenience
+    default (when the drink has exactly one allowed profile) or raises
+    (multiple profiles -- the frontend card must disambiguate).  The local
+    inventory always decrements regardless of the target.
+    """
     coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
     timestamp = None
     if call.data.get(ATTR_TIMESTAMP):
         timestamp = dt_util.parse_datetime(call.data[ATTR_TIMESTAMP])
-    await coordinator.async_log_drink(timestamp)
+    target_profile = call.data.get(ATTR_TARGET_PROFILE)
+    if target_profile:
+        # Fault 1 dead-pointer guard at the service layer.
+        _validate_profile_id(call.hass, target_profile)
+    await coordinator.async_log_drink(timestamp, target_profile=target_profile)
 
 
 async def _async_undo_drink(call: ServiceCall) -> None:
@@ -208,6 +257,17 @@ async def _async_reset_drink(call: ServiceCall) -> None:
     """Handle the ``reset_drink`` service — clear a granular drink's history."""
     coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
     await coordinator.async_reset()
+
+
+async def _async_averages_reset(call: ServiceCall) -> None:
+    """Handle the ``averages_reset`` service — reset rolling averages only.
+
+    Sets a persisted reset anchor so the 7/14/30/365-day average sensors
+    stop counting pre-reset doses.  Total Doses, PK, stock, and Adherence %
+    are untouched — no dose data is deleted.
+    """
+    coordinator = _get_coordinator(call.hass, call.data[ATTR_ENTRY_ID])
+    await coordinator.async_averages_reset()
 
 
 def async_setup_services(hass: HomeAssistant) -> None:
@@ -243,6 +303,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_UNDO_DRINK, _async_undo_drink, schema=SERVICE_BASE_SCHEMA)
     # pylint: disable-next=home-assistant-service-registered-in-setup-entry
     hass.services.async_register(DOMAIN, SERVICE_RESET_DRINK, _async_reset_drink, schema=SERVICE_BASE_SCHEMA)
+    # pylint: disable-next=home-assistant-service-registered-in-setup-entry
+    hass.services.async_register(DOMAIN, SERVICE_AVERAGES_RESET, _async_averages_reset, schema=SERVICE_BASE_SCHEMA)
 
 
 def async_unload_services(hass: HomeAssistant) -> None:
@@ -262,6 +324,7 @@ def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_LOG_DRINK,
         SERVICE_UNDO_DRINK,
         SERVICE_RESET_DRINK,
+        SERVICE_AVERAGES_RESET,
     ):
         if hass.services.has_service(DOMAIN, service_name):
             hass.services.async_remove(DOMAIN, service_name)

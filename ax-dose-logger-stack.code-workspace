@@ -5,6 +5,12 @@
 		},
 		{
 			"path": "../lovelace-pill-logger-card"
+		},
+		{
+			"path": "../ViewAssistCompanionApp"
+		},
+		{
+			"path": "../ViewAssist_Companion_App"
 		}
 	]
 }

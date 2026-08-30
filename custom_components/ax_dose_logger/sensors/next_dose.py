@@ -10,11 +10,12 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
     parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
 from ..schedule import LATENESS_UNTIL_NEXT_SLOT, compute_slot_assignments
-from ..sliding_window import compute_safe_to_take, is_on_day
+from ..sliding_window import compute_safe_to_take, effective_dose_buffer_minutes, is_on_day
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
 _TIMESTAMPS_MAX_DAYS = 365
@@ -89,8 +90,23 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if self._tracking_type == TRACKING_REGULAR_INTERVAL:
             hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
             if schedule_timestamps:
-                last_ts = schedule_timestamps[-1]
-                self._attr_native_value = last_ts + timedelta(hours=hours_between)
+                # Chained-deadline model (parity with the overdue sensor and
+                # the Time of Day slot model): the next dose is the next
+                # *future* chained deadline ``anchor + (n+1) * interval``,
+                # not the stale fixed ``anchor + interval``.  When a dose
+                # time is missed, next_dose advances to the following
+                # deadline so the reminder blueprint re-arms at each missed
+                # dose time instead of looping on one past timestamp.
+                interval = timedelta(hours=hours_between)
+                # max() not [-1]: adherence-override / undo flows can leave
+                # the merged dose+skip list unsorted.
+                anchor = max(schedule_timestamps)
+                elapsed = now - anchor
+                if elapsed <= timedelta(0):
+                    self._attr_native_value = anchor + interval
+                else:
+                    n = int(elapsed.total_seconds() // interval.total_seconds())
+                    self._attr_native_value = anchor + (n + 1) * interval
             else:
                 self._attr_native_value = now
         elif self._tracking_type == TRACKING_TIME_OF_DAY:
@@ -141,11 +157,19 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         elif self._tracking_type == TRACKING_AS_NEEDED:
             max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", 1))
             time_window = entry.options.get("time_window_hours", entry.data.get("time_window_hours", 0))
-            cutoff_for_pill_limit = now - timedelta(hours=time_window)
+            # Anti-drift buffer: keep the As-Needed next-dose timestamp in
+            # sync with pill_limit's buffered gate (the oldest dose expires
+            # `buffer` minutes earlier, so the next-available moment is
+            # window - buffer after the oldest dose). Mirrors the buffered
+            # cutoff in compute_safe_to_take / PillLimitSensor.
+            buffer_minutes = effective_dose_buffer_minutes(entry, float(time_window))
+            cutoff_for_pill_limit = now - timedelta(hours=time_window) + timedelta(minutes=buffer_minutes)
             valid_timestamps_for_calc = [ts for ts in dose_timestamps if ts >= cutoff_for_pill_limit]
             pills_remaining = max(0, max_pills - len(valid_timestamps_for_calc))
             if pills_remaining == 0 and valid_timestamps_for_calc:
-                self._attr_native_value = valid_timestamps_for_calc[0] + timedelta(hours=time_window)
+                self._attr_native_value = (
+                    valid_timestamps_for_calc[0] + timedelta(hours=time_window) - timedelta(minutes=buffer_minutes)
+                )
             elif dose_timestamps:
                 self._attr_native_value = dose_timestamps[-1]
             else:
@@ -196,6 +220,7 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             future_days=1,
             early_grace=early_grace,
             lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+            pills_per_slot=get_pills_per_slot(entry),
         )
 
         for a in assignments:

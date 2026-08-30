@@ -10,19 +10,27 @@ from .const import (
     ALCOHOL_DEFAULT_LIMIT_G,
     CAFFEINE_DEFAULT_LIMIT_MG,
     CURRENT_VERSION,
+    DEFAULT_PROFILE_ID,
     DEVICE_CATEGORIES,
     DEVICE_CATEGORY_DRINK_SETTINGS,
     DEVICE_CATEGORY_DRINKS,
     DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
+    DOSE_BUFFER_DEFAULT_MIN,
     DRINK_TYPE_CAFFEINE,
     DRINK_TYPES,
     GLOBAL_PK_DEFAULTS,
     MAX_DOSES_PER_DAY,
+    MAX_RETENTION_DAYS,
+    MIN_RETENTION_DAYS,
+    PILLS_PER_SLOT_DEFAULT,
+    PILLS_PER_SLOT_MAX,
+    PILLS_PER_SLOT_MIN,
     PK_DEFAULTS,
     RELEASE_INSTANT,
     RELEASE_SUSTAINED,
     RELEASE_TYPES,
+    RETENTION_DAYS,
     STANDARD_EFFECTIVENESS_METRICS,
     STRENGTH_UNIT_G,
     STRENGTH_UNIT_MCG,
@@ -77,8 +85,27 @@ _HOURS_BETWEEN_SELECTOR = sel.NumberSelector(
 _PILL_LIMIT_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=1, max=20, step=1, unit_of_measurement="pills", mode=sel.NumberSelectorMode.BOX)
 )
+# Pills per time slot: how many pills one scheduled slot prescribes
+# (e.g. 2 pills at 08:00 + 2 at 20:00 = 4/day). Default 1 = legacy behavior.
+_PILLS_PER_SLOT_SELECTOR = sel.NumberSelector(
+    sel.NumberSelectorConfig(
+        min=PILLS_PER_SLOT_MIN,
+        max=PILLS_PER_SLOT_MAX,
+        step=1,
+        unit_of_measurement="pills",
+        mode=sel.NumberSelectorMode.BOX,
+    )
+)
 _TIME_WINDOW_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX)
+)
+# Anti-drift dose buffer (anti-schedule-creep). Absolute minutes (clinical
+# convention), default 5 (conservative, below every on-time window; see
+# const.py DOSE_BUFFER_DEFAULT_MIN docstring). Capped at 25% of the rolling
+# window at read time by effective_dose_buffer_minutes(). Optional so
+# existing entries keep the default with no migration.
+_DOSE_BUFFER_SELECTOR = sel.NumberSelector(
+    sel.NumberSelectorConfig(min=0, max=120, step=1, unit_of_measurement="min", mode=sel.NumberSelectorMode.BOX)
 )
 _STRENGTH_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0, max=9999, step=0.5, mode=sel.NumberSelectorMode.BOX)
@@ -128,6 +155,19 @@ _DOSES_PER_DAY_SELECTOR = sel.NumberSelector(
         min=1, max=MAX_DOSES_PER_DAY, step=1, unit_of_measurement="times/day", mode=sel.NumberSelectorMode.BOX
     )
 )
+# Retention window for all persistent history (medicine doses, skipped slots,
+# adherence overrides, effectiveness PROs).  Default 365 = CMS/NCQA/PQA
+# Proportion-of-Days-Covered floor; range 30..1095 (1 month to 3 years).
+# Per-entry for medicine; universal for drinks (Drink Settings singleton).
+_RETENTION_DAYS_SELECTOR = sel.NumberSelector(
+    sel.NumberSelectorConfig(
+        min=MIN_RETENTION_DAYS,
+        max=MAX_RETENTION_DAYS,
+        step=1,
+        unit_of_measurement="days",
+        mode=sel.NumberSelectorMode.BOX,
+    )
+)
 _TRACKED_SYMPTOMS_SELECTOR = sel.SelectSelector(
     sel.SelectSelectorConfig(
         options=[{"value": key, "label": label} for key, label in STANDARD_EFFECTIVENESS_METRICS.items()],
@@ -169,6 +209,14 @@ _VOLUME_ML_SELECTOR = sel.NumberSelector(
 _ABV_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0, max=100, step=0.1, unit_of_measurement="%", mode=sel.NumberSelectorMode.BOX)
 )
+# Profile name (mutable display string) -- used in the Drink Settings options
+# flow to rename a profile.  Not used for routing (the immutable profile_id is).
+_PROFILE_NAME_SELECTOR = sel.TextSelector(
+    sel.TextSelectorConfig(multiline=False),
+)
+
+_SHARED_DRINK_SELECTOR = sel.BooleanSelector()
+
 _DOSE_STRENGTH_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0, max=9999, step=0.1, mode=sel.NumberSelectorMode.BOX)
 )
@@ -219,6 +267,30 @@ def _make_advanced_pk_section(lag_default, zero_order_default=None, release_half
         vol.Schema(advanced_schema),
         data_entry_flow.SectionConfig(collapsed=True),
     )
+
+
+def _get_profile_choices(hass) -> list[dict]:
+    """Build the multi-select options for a drink's ``allowed_profiles`` field.
+
+    Returns a list of ``{"value": profile_id, "label": profile_name}`` dicts
+    for every existing Drink Settings config entry (one per profile).  The
+    ``value`` is the immutable profile_id (UUID, or ``DEFAULT_PROFILE_ID`` for
+    the legacy singleton); the ``label`` is the mutable display name.
+    """
+    choices = []
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get("device_category") != DEVICE_CATEGORY_DRINK_SETTINGS:
+            continue
+        if entry.unique_id == "drink_settings":
+            pid = DEFAULT_PROFILE_ID
+        else:
+            pid = entry.data.get("profile_id", DEFAULT_PROFILE_ID)
+        pname = entry.data.get("profile_name") or "Default"
+        choices.append({"value": pid, "label": pname})
+    # On first run (zero Drink Settings entries) choices is empty — the
+    # multi-select renders only "➕ New profile…" and async_step_drink_setup
+    # auto-redirects to the new-profile step (no phantom "Default").
+    return choices
 
 
 class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -301,7 +373,9 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                     vol.Required("hours_between_doses", default=8): _HOURS_BETWEEN_SELECTOR,
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
+                    vol.Optional("pills_per_slot", default=PILLS_PER_SLOT_DEFAULT): _PILLS_PER_SLOT_SELECTOR,
                     vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -319,7 +393,9 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                     vol.Required("doses_per_day", default=1): _DOSES_PER_DAY_SELECTOR,
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
+                    vol.Optional("pills_per_slot", default=PILLS_PER_SLOT_DEFAULT): _PILLS_PER_SLOT_SELECTOR,
                     vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -368,6 +444,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                     vol.Required("pill_limit", default=2): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -394,6 +471,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("dose_time", default="08:00"): sel.TimeSelector(),
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
                     vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -470,27 +548,128 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             fields[vol.Optional("enable_adherence", default=default_adherence)] = sel.BooleanSelector()
             fields[vol.Optional("adherence_grace_minutes", default=60)] = _ADHERENCE_GRACE_SELECTOR
+            # NOTE: dose_buffer_minutes is intentionally NOT shown here. It is
+            # collected once in the tracking-type schedule steps (next to
+            # time_window_hours / pill_limit, which cap it) and carried
+            # forward in self._data. Showing it again here duplicated the
+            # field in the initial flow.
+
+        # Retention window for persistent history (doses, skipped slots,
+        # adherence overrides, effectiveness PROs).  Default 365 = CMS/NCQA
+        # PDC floor; range 30..1095.  Applies per-entry to this medicine.
+        fields[vol.Optional("retention_days", default=RETENTION_DAYS)] = _RETENTION_DAYS_SELECTOR
 
         return self.async_show_form(step_id="effectiveness", data_schema=vol.Schema(fields))
 
     # ------------------------------------------------------------------
     # Drinks flow — Step 1: Drink Setup
     # ------------------------------------------------------------------
+    def _drink_setup_schema(self) -> vol.Schema:
+        """Build the drink_setup form schema (factored for re-show on error)."""
+        return vol.Schema(
+            {
+                vol.Required("name", default=self._data.get("name", "My Drink")): str,
+                vol.Required("drink_type", default=DRINK_TYPE_CAFFEINE): _DRINK_TYPE_SELECTOR,
+                vol.Required("unit_of_measurement", default="Cups"): str,
+                vol.Required("initial_stock", default=12): _DRINK_STOCK_SELECTOR,
+                # Multi-select of profile UUIDs (M2M allowed_profiles).
+                vol.Required("allowed_profiles", default=self._data.get("allowed_profiles", [])): sel.SelectSelector(
+                    sel.SelectSelectorConfig(
+                        options=[
+                            *[{"value": p["value"], "label": p["label"]} for p in _get_profile_choices(self.hass)],
+                            {"value": "__new__", "label": "+ New profile…"},
+                        ],
+                        multiple=True,
+                        mode=sel.SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Optional("shared_drink", default=self._data.get("shared_drink", False)): _SHARED_DRINK_SELECTOR,
+            }
+        )
+
     async def async_step_drink_setup(self, user_input=None):
+        """Drink setup step 1 -- name, drink type, allowed profiles, shared flag.
+
+        M2M topology: ``allowed_profiles`` is a multi-select of profile UUIDs
+        that may route PK payloads from this drink.  The sentinel ``"__new__"``
+        branches to ``async_step_drink_new_profile`` to create a new profile,
+        then returns here.  ``shared_drink`` is a frontend flag (no backend
+        behavior) for the "Who is logging this?" popup.
+
+        First-run guard: if zero Drink Settings profiles exist, auto-redirect to
+        ``async_step_drink_new_profile`` (the new-profile → back-to-config-screen
+        workflow) before rendering the form — no phantom "Default" option.
+
+        Validation: ``allowed_profiles`` must contain at least one real profile
+        UUID (or the ``__new__`` sentinel to create one).  An empty submission is
+        rejected with a ``select_profile`` error and the form re-shown.
+        """
         if user_input is not None:
             self._data.update(user_input)
+            # If the user picked __new__, branch to the new-profile step.
+            ap = list(user_input.get("allowed_profiles") or [])
+            if "__new__" in ap:
+                return await self.async_step_drink_new_profile()
+            # Enforce at least one real profile UUID.
+            if not ap:
+                return self.async_show_form(
+                    step_id="drink_setup",
+                    data_schema=self._drink_setup_schema(),
+                    errors={"allowed_profiles": "select_profile"},
+                    last_step=False,
+                )
             return await self.async_step_drink_cooldown()
+
+        # First-run auto-redirect: no profiles exist yet.
+        if not _get_profile_choices(self.hass):
+            return await self.async_step_drink_new_profile()
 
         return self.async_show_form(
             step_id="drink_setup",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("name", default="My Drink"): str,
-                    vol.Required("drink_type", default=DRINK_TYPE_CAFFEINE): _DRINK_TYPE_SELECTOR,
-                    vol.Required("unit_of_measurement", default="Cups"): str,
-                    vol.Required("initial_stock", default=12): _DRINK_STOCK_SELECTOR,
-                }
-            ),
+            data_schema=self._drink_setup_schema(),
+        )
+
+    # ------------------------------------------------------------------
+    # Drinks flow — New Profile (inline creation, returns to drink_setup)
+    # ------------------------------------------------------------------
+    async def async_step_drink_new_profile(self, user_input=None):
+        """Create a new Drink Settings profile inline, then return to drink_setup.
+
+        Renders a single ``profile_name`` text field.  Validates the name is
+        non-empty and not a duplicate of an existing profile (case-insensitive).
+        On success, calls ``_ensure_drink_settings_entry(profile_name=)`` which
+        programmatically creates the Drink Settings config entry (with its own
+        HA-managed ``entry_id`` UUID as the immutable ``profile_id``) and sets
+        up the master coordinators.  The returned UUID is merged into the
+        ``allowed_profiles`` selection (replacing the ``__new__`` sentinel) and
+        ``async_step_drink_setup`` is re-shown with it pre-selected.
+        """
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            profile_name = (user_input.get("profile_name") or "").strip()
+            if not profile_name:
+                errors["profile_name"] = "name_required"
+            else:
+                existing_labels = {c["label"].lower() for c in _get_profile_choices(self.hass)}
+                if profile_name.lower() in existing_labels:
+                    errors["profile_name"] = "name_exists"
+                else:
+                    from .__init__ import _ensure_drink_settings_entry
+
+                    new_uuid = await _ensure_drink_settings_entry(self.hass, profile_name=profile_name)
+                    # Merge the new UUID into the current allowed_profiles
+                    # selection, replacing the __new__ sentinel.
+                    current = list(self._data.get("allowed_profiles", []))
+                    if "__new__" in current:
+                        current.remove("__new__")
+                    if new_uuid not in current:
+                        current.append(new_uuid)
+                    self._data["allowed_profiles"] = current
+                    return await self.async_step_drink_setup()
+        return self.async_show_form(
+            step_id="drink_new_profile",
+            data_schema=vol.Schema({vol.Required("profile_name"): _PROFILE_NAME_SELECTOR}),
+            errors=errors,
         )
 
     # ------------------------------------------------------------------
@@ -509,6 +688,8 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required("cooldown_window", default=0): _COOLDOWN_SELECTOR,
+                    # Anti-drift dose buffer (mirrors medicine pill_limit).
+                    vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
             ),
         )
@@ -561,11 +742,18 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _create_drink_entry(self):
-        """Create the drink config entry and ensure the Drink Settings singleton exists."""
+        """Create the drink config entry.
+
+        ``allowed_profiles`` is guaranteed non-empty by the ``select_profile``
+        guard in ``async_step_drink_setup`` (and the first-run auto-redirect that
+        creates the initial profile), so no unconditional default-create is
+        needed here — every drink is bound to ≥1 real profile UUID.
+        """
         # Title uses the drink name; remove the raw payload fields from data
         # that were only needed for dose_strength computation.
         title = self._data.get("name", "My Drink")
-        # Strip per-payload intermediate keys (keep dose_strength + drinking_duration)
+        # Strip per-payload intermediate keys (keep dose_strength + drinking_duration
+        # + allowed_profiles + shared_drink from the drink_setup step).
         entry_data = {k: v for k, v in self._data.items() if k not in ("caffeine_mg", "volume_ml", "abv_percent")}
         return self.async_create_entry(title=title, data=entry_data)
 
@@ -711,6 +899,24 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
+        # Pills per time slot (scheduled types only). Optional so existing
+        # entries keep the default of 1 with no migration.
+        if tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL):
+            main_schema[
+                vol.Optional(
+                    "pills_per_slot",
+                    default=options.get("pills_per_slot", data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT)),
+                )
+            ] = _PILLS_PER_SLOT_SELECTOR
+        # Anti-drift dose buffer (anti-schedule-creep). Optional so existing
+        # entries gain the 5-min default on next options save without a
+        # migration step.
+        main_schema[
+            vol.Optional(
+                "dose_buffer_minutes",
+                default=options.get("dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)),
+            )
+        ] = _DOSE_BUFFER_SELECTOR
 
         return self.async_show_form(
             step_id="init",
@@ -781,6 +987,20 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
+        # Pills per time slot (scheduled types only). Config-flow default
+        # since the entry's data/options don't yet carry fields for the new
+        # tracking type.
+        if new_tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL):
+            schema[
+                vol.Optional(
+                    "pills_per_slot",
+                    default=options.get("pills_per_slot", data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT)),
+                )
+            ] = _PILLS_PER_SLOT_SELECTOR
+        # Anti-drift dose buffer (anti-schedule-creep). Config-flow default
+        # since the entry's data/options don't yet carry fields for the new
+        # tracking type.
+        schema[vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN)] = _DOSE_BUFFER_SELECTOR
 
         return self.async_show_form(
             step_id="schedule",
@@ -924,6 +1144,8 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                     "dose_time",
                     "time_window_hours",
                     "pill_limit",
+                    "pills_per_slot",
+                    "dose_buffer_minutes",
                     "daily_limit",
                     "enable_calendar",
                 )
@@ -979,6 +1201,18 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             ] = _ADHERENCE_GRACE_SELECTOR
 
+        # Per-entry retention window for persistent history (doses, skipped
+        # slots, adherence overrides, effectiveness PROs).  Optional with the
+        # 365-day default so existing entries get 365 with no migration — the
+        # coordinator's get(..., RETENTION_DAYS) fallback handles entries
+        # that have never opened the options flow.
+        fields[
+            vol.Optional(
+                "retention_days",
+                default=options.get("retention_days", data.get("retention_days", RETENTION_DAYS)),
+            )
+        ] = _RETENTION_DAYS_SELECTOR
+
         return self.async_show_form(step_id="effectiveness", data_schema=vol.Schema(fields))
 
     # ------------------------------------------------------------------
@@ -996,6 +1230,12 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="drink_settings_options",
             data_schema=vol.Schema(
                 {
+                    # Mutable profile display name (rename).  The immutable
+                    # profile_id (entry_id UUID) is NOT editable here.
+                    vol.Optional(
+                        "profile_name",
+                        default=options.get("profile_name", data.get("profile_name")),
+                    ): _PROFILE_NAME_SELECTOR,
                     vol.Required(
                         "global_caffeine_half_life",
                         default=options.get(
@@ -1031,6 +1271,14 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                             "alcohol_daily_limit_g", data.get("alcohol_daily_limit_g", ALCOHOL_DEFAULT_LIMIT_G)
                         ),
                     ): _ALCOHOL_DAILY_LIMIT_SELECTOR,
+                    # Universal drinks retention window — one knob for every
+                    # granular drink AND both drink-master (caffeine/alcohol)
+                    # stores.  Granular drink entries inherit this value (they
+                    # do not carry their own retention_days); see DrinkCoordinator.
+                    vol.Required(
+                        "retention_days",
+                        default=options.get("retention_days", data.get("retention_days", RETENTION_DAYS)),
+                    ): _RETENTION_DAYS_SELECTOR,
                 }
             ),
         )
@@ -1039,26 +1287,118 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
     # Granular drink options flow — cooldown + dose_strength + drinking_duration
     # ------------------------------------------------------------------
     async def async_step_drink_options(self, user_input=None):
-        """Edit a granular drink's mutable settings (name/drink_type immutable)."""
+        """Edit a granular drink's mutable settings (name/drink_type immutable).
+
+        M2M: ``allowed_profiles`` is re-editable here so the admin can grant/revoke
+        profile access post-setup.  Changing it is a structural reload (the
+        coordinator caches the array at setup).  ``shared_drink`` is the
+        frontend flag for the "Who is logging this?" popup.
+        """
         if user_input is not None:
             self._data.update(user_input)
+            # If the user picked __new__, branch to the new-profile step.
+            ap = list(user_input.get("allowed_profiles") or [])
+            if "__new__" in ap:
+                return await self.async_step_drink_new_profile()
+            # Enforce at least one real profile UUID (no empty allowed_profiles).
+            if not ap:
+                return self.async_show_form(
+                    step_id="drink_options",
+                    data_schema=self._drink_options_schema(),
+                    errors={"allowed_profiles": "select_profile"},
+                    last_step=False,
+                )
             return self.async_create_entry(title="", data=self._data)
 
-        options = self._entry.options
-        data = self._entry.data
         return self.async_show_form(
             step_id="drink_options",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        "cooldown_window", default=options.get("cooldown_window", data.get("cooldown_window", 0))
-                    ): _COOLDOWN_SELECTOR,
-                    vol.Required(
-                        "dose_strength", default=options.get("dose_strength", data.get("dose_strength", 0))
-                    ): _DOSE_STRENGTH_SELECTOR,
-                    vol.Required(
-                        "drinking_duration", default=options.get("drinking_duration", data.get("drinking_duration", 15))
-                    ): _DRINKING_DURATION_SELECTOR,
-                }
-            ),
+            data_schema=self._drink_options_schema(),
+        )
+
+    def _drink_options_schema(self) -> vol.Schema:
+        """Build the drink_options form schema (factored for re-show on error)."""
+        options = self._entry.options
+        data = self._entry.data
+        # Default the multi-select to the current allowed_profiles.  Preserves
+        # the pre-selection when drink_new_profile injected a freshly-created
+        # profile UUID and returned here.
+        current_allowed = self._data.get(
+            "allowed_profiles",
+            options.get("allowed_profiles", data.get("allowed_profiles", ["default"])),
+        )
+        return vol.Schema(
+            {
+                vol.Required(
+                    "cooldown_window", default=options.get("cooldown_window", data.get("cooldown_window", 0))
+                ): _COOLDOWN_SELECTOR,
+                # Anti-drift dose buffer (mirrors medicine pill_limit). Optional
+                # so existing drinks gain the 5-min default on next options save.
+                vol.Optional(
+                    "dose_buffer_minutes",
+                    default=options.get(
+                        "dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)
+                    ),
+                ): _DOSE_BUFFER_SELECTOR,
+                vol.Required(
+                    "dose_strength", default=options.get("dose_strength", data.get("dose_strength", 0))
+                ): _DOSE_STRENGTH_SELECTOR,
+                vol.Required(
+                    "drinking_duration", default=options.get("drinking_duration", data.get("drinking_duration", 15))
+                ): _DRINKING_DURATION_SELECTOR,
+                # M2M allowed_profiles (re-editable).  The __new__ sentinel
+                # lets the admin create a new profile inline.
+                vol.Required("allowed_profiles", default=current_allowed): sel.SelectSelector(
+                    sel.SelectSelectorConfig(
+                        options=[
+                            *[{"value": p["value"], "label": p["label"]} for p in _get_profile_choices(self.hass)],
+                            {"value": "__new__", "label": "+ New profile…"},
+                        ],
+                        multiple=True,
+                        mode=sel.SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Optional(
+                    "shared_drink", default=options.get("shared_drink", data.get("shared_drink", False))
+                ): _SHARED_DRINK_SELECTOR,
+            }
+        )
+
+    # ------------------------------------------------------------------
+    # Granular drink options flow — New Profile (inline creation)
+    # ------------------------------------------------------------------
+    async def async_step_drink_new_profile(self, user_input=None):
+        """Create a new Drink Settings profile inline, then return to drink_options.
+
+        Mirrors the config-flow counterpart: renders a single ``profile_name``
+        text field, validates non-empty + no duplicates, creates the profile
+        via ``_ensure_drink_settings_entry(profile_name=)``, merges the returned
+        UUID into ``self._data["allowed_profiles"]`` (replacing the ``__new__``
+        sentinel), and re-shows ``async_step_drink_options`` with it pre-selected.
+        """
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            profile_name = (user_input.get("profile_name") or "").strip()
+            if not profile_name:
+                errors["profile_name"] = "name_required"
+            else:
+                existing_labels = {c["label"].lower() for c in _get_profile_choices(self.hass)}
+                if profile_name.lower() in existing_labels:
+                    errors["profile_name"] = "name_exists"
+                else:
+                    from .__init__ import _ensure_drink_settings_entry
+
+                    new_uuid = await _ensure_drink_settings_entry(self.hass, profile_name=profile_name)
+                    # Merge the new UUID into the current allowed_profiles
+                    # selection, replacing the __new__ sentinel.
+                    current = list(self._data.get("allowed_profiles", []))
+                    if "__new__" in current:
+                        current.remove("__new__")
+                    if new_uuid not in current:
+                        current.append(new_uuid)
+                    self._data["allowed_profiles"] = current
+                    return await self.async_step_drink_options()
+        return self.async_show_form(
+            step_id="drink_new_profile",
+            data_schema=vol.Schema({vol.Required("profile_name"): _PROFILE_NAME_SELECTOR}),
+            errors=errors,
         )

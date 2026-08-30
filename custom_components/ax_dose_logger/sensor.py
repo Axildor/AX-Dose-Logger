@@ -14,21 +14,26 @@ from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from .sensors.adherence import PillAdherenceSensor
 from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.concentration import PillConcentrationSensor
+from .sensors.daily_remaining import PillDailyRemainingSensor
 from .sensors.days_left import (
     DrinkDaysLeftSensor,
     PillDaysLeftSensor,
 )
 from .sensors.days_since_first_dose import PillDaysSinceFirstDoseSensor
+from .sensors.dose_status import PillDoseStatusSensor
 from .sensors.drink_avg_doses import DrinkAvgDosesSensor
 from .sensors.drink_cooldown import DrinkCooldownSensor
 from .sensors.drink_last_dose import DrinkLastDoseSensor
 from .sensors.drink_master import DrinkMasterSensor
 from .sensors.drink_master_avg import DrinkMasterAvgDosesSensor
 from .sensors.drink_master_daily_amount import DrinkMasterDailyAmountSensor
+from .sensors.drink_master_daily_remaining import DrinkMasterDailyRemainingSensor
 from .sensors.drink_master_last_dose import DrinkMasterLastDoseSensor
 from .sensors.drink_master_sleep_disruption import (
     DrinkMasterEstimatedLowTimeSensor,
+    DrinkMasterEstimatedNoneTimeSensor,
     DrinkMasterLowHoursUntilSensor,
+    DrinkMasterNextBandSensor,
     DrinkMasterSleepDisruptionSensor,
 )
 from .sensors.drink_total import DrinkTotalSensor
@@ -80,6 +85,11 @@ async def _setup_medicine_sensors(
     daily_limit = float(entry.options.get("daily_limit", entry.data.get("daily_limit", 0)))
     if daily_limit > 0:
         entities.append(Pill24hLimitExceededSensor(entry, coordinator))
+        # Daily Remaining — daily_limit − amount_24h as a standalone entity
+        # (promoted from the daily-amount sensor's `remaining` attribute).
+        # Same guard as the limit-exceeded binary sensor: no dead entity
+        # when no limit is configured.
+        entities.append(PillDailyRemainingSensor(entry, coordinator))
     entities.append(PillLastDoseSensor(entry, coordinator))
     entities.append(PillLimitSensor(entry, coordinator))
     entities.append(PillConcentrationSensor(entry, coordinator))
@@ -94,6 +104,10 @@ async def _setup_medicine_sensors(
         entities.append(PillSteadyStateSensor(entry, coordinator))
         entities.append(PillOverdueSensor(entry, coordinator))
     entities.append(PillStrengthSensor(entry, coordinator))
+    # Dose Status enum sensor — single-source-of-truth state for automations
+    # + the card (not_due/due/overdue/limit_reached/limit_24h/ok). Created
+    # for ALL tracking types: As-Needed meds report ok/limit_reached/limit_24h.
+    entities.append(PillDoseStatusSensor(entry, coordinator))
     entities.append(PillDaysSinceFirstDoseSensor(entry, coordinator))
     # Days-left inventory-burn indicator.  Scheduled medications show
     # "Days left" (config-derived doses/day); As-Needed medications show
@@ -156,40 +170,53 @@ async def _setup_drink_settings_sensors(
     entry: AxDoseLoggerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Drink Settings singleton — instantiate the Master Tracker sensors.
+    """Drink Settings entry (a profile) -- instantiate THIS profile's Master Tracker sensors.
 
     The master coordinators are created in ``async_setup_entry`` (in
-    ``__init__.py``) and stored in ``hass.data[DOMAIN]["_drink_masters"]``.
-    The Master Tracker devices use stable identifiers (not entry_id) so
-    they survive Drink Settings entry recreation.
+    ``__init__.py``) and stored in ``hass.data[DOMAIN]["_drink_masters"]``
+    keyed by ``(profile_id, substance)``.  The Master Tracker devices use
+    profile-scoped stable identifiers (the immutable profile_id, not the
+    entry_id) so they survive Drink Settings entry recreation and each
+    profile gets distinct devices.
 
-    Per substance, two sensor types are created on the Master Tracker device:
-      * ``DrinkMasterSensor`` — global PK body mass (mg/g).
-      * ``DrinkMasterAvgDosesSensor`` ×4 — rolling avg daily drink count over
-        7/14/30/365-day windows, aggregating *every* drink of that substance
-        across all granular drink devices (reads the master coordinator's
-        aggregated dose_history, which is the union of all granular drinks).
+    Per substance, the master PK sensor + last-dose + sleep-disruption +
+    estimated-low-time + low-hours-until + daily-amount + 4 avg-doses sensors
+    are created on this profile's Master Tracker device, reading the
+    profile's master coordinator (which aggregates only the doses routed to
+    this profile).
     """
-    masters: dict[str, DrinkMasterCoordinator] = hass.data[DOMAIN].get("_drink_masters", {})
+    from .const import DEFAULT_PROFILE_ID
+
+    masters: dict[tuple[str, str], DrinkMasterCoordinator] = hass.data[DOMAIN].get("_drink_masters", {})
+    # Resolve the immutable profile_id + mutable display name for this entry.
+    if entry.unique_id == "drink_settings":
+        profile_id = DEFAULT_PROFILE_ID
+    else:
+        profile_id = entry.data.get("profile_id", DEFAULT_PROFILE_ID)
+    profile_name = entry.data.get("profile_name")
     entities = []
-    if DRINK_TYPE_CAFFEINE in masters:
-        master = masters[DRINK_TYPE_CAFFEINE]
-        entities.append(DrinkMasterSensor(entry, master))
-        entities.append(DrinkMasterLastDoseSensor(entry, master))
-        entities.append(DrinkMasterSleepDisruptionSensor(entry, master))
-        entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master))
-        entities.append(DrinkMasterLowHoursUntilSensor(entry, master))
-        entities.append(DrinkMasterDailyAmountSensor(entry, master))
+    for substance in (DRINK_TYPE_CAFFEINE, DRINK_TYPE_ALCOHOL):
+        master = masters.get((profile_id, substance))
+        if master is None:
+            continue
+        entities.append(DrinkMasterSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterLastDoseSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterSleepDisruptionSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterNextBandSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterEstimatedNoneTimeSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterLowHoursUntilSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterDailyAmountSensor(entry, master, profile_id, profile_name))
+        # Daily Remaining — per-substance limit − amount_24h as a standalone
+        # entity (promoted from the daily-amount sensor's `remaining`
+        # attribute). Created only when the per-substance limit > 0
+        # (caffeine's 400 mg default always qualifies; alcohol is skipped
+        # unless a limit is configured) — no dead entity when no limit is set.
+        limit_key = "caffeine_daily_limit_mg" if substance == DRINK_TYPE_CAFFEINE else "alcohol_daily_limit_g"
+        default_limit = 400.0 if substance == DRINK_TYPE_CAFFEINE else 0.0
+        limit_val = float(entry.options.get(limit_key, entry.data.get(limit_key, default_limit)))
+        if limit_val > 0:
+            entities.append(DrinkMasterDailyRemainingSensor(entry, master, profile_id, profile_name))
         for window in (7, 14, 30, 365):
-            entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
-    if DRINK_TYPE_ALCOHOL in masters:
-        master = masters[DRINK_TYPE_ALCOHOL]
-        entities.append(DrinkMasterSensor(entry, master))
-        entities.append(DrinkMasterLastDoseSensor(entry, master))
-        entities.append(DrinkMasterSleepDisruptionSensor(entry, master))
-        entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master))
-        entities.append(DrinkMasterLowHoursUntilSensor(entry, master))
-        entities.append(DrinkMasterDailyAmountSensor(entry, master))
-        for window in (7, 14, 30, 365):
-            entities.append(DrinkMasterAvgDosesSensor(entry, master, window))
+            entities.append(DrinkMasterAvgDosesSensor(entry, master, window, profile_id, profile_name))
     async_add_entities(entities)

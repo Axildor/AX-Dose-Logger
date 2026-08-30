@@ -1,8 +1,32 @@
 #!/usr/bin/env bash
+# Local CI-parity gate. Run before every push — this mirrors what GitHub CI
+# runs (.github/workflows/lint.yml + .github/workflows/validate.yml).
+#
+# 1. Ruff format + check (lint.yml, pinned ruff==0.15.7 in requirements.txt)
+# 2. hassfest validation (validate.yml, ghcr.io/home-assistant/hassfest)
+#
+# hassfest runs via Docker when available; otherwise it falls back to a local
+# checkout of the validator from HA core (dev branch) at /tmp/hassfest-repo
+# (see scripts/setup for how it is provisioned). Skipped with a warning when
+# neither is available — CI still enforces it.
 
 set -e
 
 cd "$(dirname "$0")/.."
 
+echo "==> Ruff format"
 ruff format .
+
+echo "==> Ruff check"
 ruff check . --fix
+
+echo "==> Hassfest validation"
+INTEGRATION_PATH="$(pwd)/custom_components/ax_dose_logger"
+if command -v docker >/dev/null 2>&1; then
+    docker run --rm -v "$(pwd):/github/workspace" ghcr.io/home-assistant/hassfest
+elif [ -d /tmp/hassfest-repo/script ]; then
+    (cd /tmp/hassfest-repo && python3 -m script.hassfest --integration-path "$INTEGRATION_PATH")
+else
+    echo "WARNING: no docker and no /tmp/hassfest-repo — skipping hassfest. CI will still run it." >&2
+    echo "         Provision it with: scripts/setup" >&2
+fi

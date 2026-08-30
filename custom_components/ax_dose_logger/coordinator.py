@@ -23,8 +23,15 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import LOGGER, PK_DEFAULTS, RELEASE_INSTANT
+from .const import LOGGER, PK_DEFAULTS, RELEASE_INSTANT, RETENTION_DAYS
 from .pk_model import PKModel, PKParams, PKResult
+from .retention import (
+    prune_dose_pairs,
+    prune_metric_dict,
+    prune_timestamps,
+    retention_cutoff,
+    retention_cutoff_date,
+)
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -46,9 +53,11 @@ class AxDoseLoggerCoordinatorData:
     via inter-sensor dispatcher signals.
 
     ``metric_values`` stores daily-locked effectiveness metric values.
-    Format: { metric_key: { "date": "YYYY-MM-DD", "value": float } }
-    Only metrics logged today are kept; stale entries from previous days
-    are filtered out on load and cleared at midnight.
+    Format (v2 date-keyed): { metric_key: { "YYYY-MM-DD": float, ... } }
+    Historical days are retained up to the entry's ``retention_days`` for
+    the 365-day medical export; the midnight-rollover clear was removed so
+    a new day simply gets a new date key (today's slider reads ``unknown``
+    until set).  Only the retention cutoff drops old days.
     """
 
     dose_history: list[tuple[datetime, float]] = field(default_factory=list)
@@ -58,6 +67,12 @@ class AxDoseLoggerCoordinatorData:
     # Adherence-specific state (does not affect dose_history)
     adherence_overrides: list[datetime] = field(default_factory=list)
     adherence_reset_time: datetime | None = None
+    # Averages reset anchor (does not affect dose_history / PK / stock /
+    # adherence).  Set by the "Reset Averages" tool; average sensors clamp
+    # their effective window start to max(history_start_date, avg_reset_time)
+    # so pre-reset doses stop counting toward the rolling averages without
+    # deleting any dose data.
+    avg_reset_time: datetime | None = None
     # Skipped-dose slots (does not affect dose_history / PK / stock).
     # Consumed ONLY by the overdue + next_dose sensors so a deliberate
     # skip clears the overdue alarm and advances the schedule without
@@ -65,7 +80,9 @@ class AxDoseLoggerCoordinatorData:
     # concentration, total, last_dose, days_left, pill_limit, or avg_doses.
     # Mirrors the ``adherence_overrides`` pattern with opposite consumers.
     skipped_slots: list[datetime] = field(default_factory=list)
-    # Daily-locked metric values: { metric_key: { "date": "YYYY-MM-DD", "value": float } }
+    # Daily-locked metric values (v2 date-keyed):
+    # { metric_key: { "YYYY-MM-DD": float, ... } }
+    # Historical days retained up to retention_days; midnight no longer clears.
     metric_values: dict[str, dict] = field(default_factory=dict)
 
 
@@ -97,13 +114,43 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         )
         self._entry = entry
         self._store = store
-        self._last_midnight_check: datetime | None = None
+
+    # ------------------------------------------------------------------
+    # Retention window
+    # ------------------------------------------------------------------
+    def _retention_days(self) -> int:
+        """Return this entry's retention window in days (default 365).
+
+        Reads ``retention_days`` from options/data with the
+        :data:`RETENTION_DAYS` fallback so a never-configured entry still
+        gets the 365-day default without requiring a config-flow migration.
+        """
+        val = self._entry.options.get(
+            "retention_days",
+            self._entry.data.get("retention_days", RETENTION_DAYS),
+        )
+        try:
+            return max(1, int(val))
+        except TypeError, ValueError:
+            return RETENTION_DAYS
 
     # ------------------------------------------------------------------
     # Setup — load dose history and metrics from store on first refresh
     # ------------------------------------------------------------------
     async def _async_setup(self) -> None:
-        """Load dose history and metric values from the store into the coordinator."""
+        """Load dose history, skipped slots, adherence overrides, and metric
+        values from the store, pruning each to the entry's retention window.
+
+        Pruning on load frees RAM for installations that previously ran
+        unbounded (pre-retention), and the same retention cutoff is applied
+        again on save to keep the ``.storage`` JSON bounded.  The 1-min
+        ``_recompute_data`` tick never prunes, so a 365-day sensor reading
+        the list mid-window still sees the full window.
+        """
+        now = dt_util.now()
+        cutoff = retention_cutoff(now, self._retention_days())
+        cutoff_date = retention_cutoff_date(now, self._retention_days())
+
         dose_history: list[tuple[datetime, float]] = []
         stored = self._store.get_history(self._entry.entry_id)
         if stored:
@@ -115,16 +162,22 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
                         dose_history.append((dt, float(strength_val)))
                 except ValueError, TypeError, IndexError:
                     continue
+        dose_history = prune_dose_pairs(dose_history, cutoff)
+        # Sort-on-load: legacy stores may contain backdated doses written
+        # before ordering was enforced; keep the chronological invariant so
+        # ``[-1]`` is always the most recent dose.
+        dose_history.sort(key=lambda dose: dose[0])
 
         last_dose = dose_history[-1][0] if dose_history else None
 
-        # Load metric values and filter to today only
+        # Load retained daily metric values (v2 date-keyed shape) and prune
+        # to the retention window.  Historical days are kept across midnight
+        # rollovers (the prior daily-discard clear is removed in
+        # ``_recompute_data``); only the retention cutoff drops old days.
         raw_metrics = self._store.get_metrics(self._entry.entry_id)
-        today = dt_util.now().date().isoformat()
         metric_values: dict[str, dict] = {}
-        for key, entry in raw_metrics.items():
-            if isinstance(entry, dict) and entry.get("date") == today:
-                metric_values[key] = entry
+        if isinstance(raw_metrics, dict):
+            metric_values = prune_metric_dict(raw_metrics, cutoff_date)
 
         # Load skipped-dose slots (persists deliberate skips across restarts
         # so a reboot does not re-ring the overdue alarm for an explicitly
@@ -135,18 +188,53 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             dt = dt_util.parse_datetime(ts_str)
             if dt:
                 skipped_slots.append(dt)
+        skipped_slots = prune_timestamps(skipped_slots, cutoff)
+
+        # Load adherence overrides + reset time.  Forward-only: a pre-fix
+        # installation has no adherence store, so an empty dict yields
+        # empty overrides and a None reset anchor — no retroactive
+        # adherence credit for past missed slots.
+        raw_adherence = self._store.get_adherence(self._entry.entry_id)
+        adherence_overrides: list[datetime] = []
+        adherence_reset_time: datetime | None = None
+        if isinstance(raw_adherence, dict):
+            for ts_str in raw_adherence.get("overrides", []) or []:
+                dt = dt_util.parse_datetime(ts_str)
+                if dt:
+                    adherence_overrides.append(dt)
+            adherence_overrides = prune_timestamps(adherence_overrides, cutoff)
+            reset_str = raw_adherence.get("reset_time")
+            if isinstance(reset_str, str):
+                adherence_reset_time = dt_util.parse_datetime(reset_str)
+
+        # Averages reset anchor (Reset Averages tool).  Forward-only: a
+        # pre-fix installation has no averages store, so the anchor loads
+        # as None — averages keep their full history until explicitly reset.
+        raw_averages = self._store.get_averages_reset(self._entry.entry_id)
+        avg_reset_time: datetime | None = None
+        if isinstance(raw_averages, dict):
+            avg_reset_str = raw_averages.get("reset_time")
+            if isinstance(avg_reset_str, str):
+                avg_reset_time = dt_util.parse_datetime(avg_reset_str)
 
         self.data = AxDoseLoggerCoordinatorData(
             dose_history=dose_history,
             last_dose_time=last_dose,
+            adherence_overrides=adherence_overrides,
+            adherence_reset_time=adherence_reset_time,
+            avg_reset_time=avg_reset_time,
             skipped_slots=skipped_slots,
             metric_values=metric_values,
         )
         LOGGER.debug(
-            "AxDoseLoggerCoordinator setup for %s: %d doses loaded, %d metrics for today",
+            "AxDoseLoggerCoordinator setup for %s: %d doses, %d skipped, "
+            "%d adherence overrides, %d metric-date keys (retention=%dd)",
             self._entry.entry_id,
             len(dose_history),
-            len(metric_values),
+            len(skipped_slots),
+            len(adherence_overrides),
+            sum(len(v) for v in metric_values.values() if isinstance(v, dict)),
+            self._retention_days(),
         )
 
     # ------------------------------------------------------------------
@@ -162,8 +250,11 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         (mutated by the ``async_*`` API methods), so this method only
         recomputes the derived fields (concentration, PK result).
 
-        On midnight rollover, metric_values are cleared to reset all
-        daily-locked sliders to ``unknown``.
+        On midnight rollover, the PK concentration + derived fields are
+        recomputed; metric_values are now RETAINED across midnight (v2
+        date-keyed shape) so historical PRO days survive for the 365-day
+        export — today's slider reads ``unknown`` until set because today's
+        date key is absent, matching the prior UX without the data loss.
         """
         data = self.data
         now = dt_util.now()
@@ -187,21 +278,12 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             pk_result = None
             concentration = 0.0
 
-        # Midnight rollover detection — entities that need day-boundary
-        # recalculation check ``data.midnight_rolled`` in their
-        # ``_handle_coordinator_update``.
-        midnight_rolled = self._check_midnight(now)
-
-        # On midnight rollover, clear all daily-locked metric values
-        # so sliders reset to ``unknown`` for the new day.
-        metric_values = data.metric_values
-        if midnight_rolled:
-            metric_values = {}
-            LOGGER.debug(
-                "Midnight rollover: cleared metric values for %s",
-                self._entry.entry_id,
-            )
-
+        # Metrics are RETAINED across midnight (v2 date-keyed shape).  A new
+        # day simply gets a new date key when the user sets it; today's slider
+        # reads ``unknown`` until set because today's key is absent — the same
+        # UX as the prior daily-discard clear, but historical days survive for
+        # the 365-day medical export.  Old days are dropped only by the
+        # retention cutoff at save time.
         return AxDoseLoggerCoordinatorData(
             dose_history=data.dose_history,
             last_dose_time=data.last_dose_time,
@@ -209,8 +291,9 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             pk_result=pk_result,
             adherence_overrides=data.adherence_overrides,
             adherence_reset_time=data.adherence_reset_time,
+            avg_reset_time=data.avg_reset_time,
             skipped_slots=data.skipped_slots,
-            metric_values=metric_values,
+            metric_values=data.metric_values,
         )
 
     def _push_update(self) -> None:
@@ -226,18 +309,20 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
     # Periodic refresh — called every 1 minute by the coordinator timer
     # ------------------------------------------------------------------
     async def _async_update_data(self) -> AxDoseLoggerCoordinatorData:
-        """Recompute derived state (PK concentration) on every tick."""
-        return self._recompute_data()
+        """Recompute derived state (PK concentration) on every tick - offloaded to the executor (CPU-bound).
 
-    def _check_midnight(self, now: datetime) -> bool:
-        """Return True if midnight has passed since the last check."""
-        if self._last_midnight_check is None:
-            self._last_midnight_check = now
-            return False
-        rolled = now.date() > self._last_midnight_check.date()
-        if rolled:
-            self._last_midnight_check = now
-        return rolled
+        ``_recompute_data`` is synchronous, CPU-bound work (N=len(dose_history)
+        Bateman evaluations per tick).  For a long-running medication with 100+
+        logged doses this is pure-Python math that would block the HA event
+        loop on every 1-min tick, causing latency spikes for ALL automations
+        and entity updates.  HA best practice is to offload CPU-bound work to
+        the executor thread pool so the event loop stays free during the
+        computation (same pattern as ``DrinkMasterCoordinator``).  It is
+        effectively read-only (it reads ``self.data``, constructs a new
+        dataclass, and returns it - no mutation of shared state), so running
+        it in a thread is safe.
+        """
+        return await self.hass.async_add_executor_job(self._recompute_data)
 
     # ------------------------------------------------------------------
     # PK parameter helper
@@ -283,11 +368,14 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
 
         strength = float(self._entry.options.get("strength", self._entry.data.get("strength", 0)))
         self.data.dose_history.append((timestamp, strength))
-        self.data.last_dose_time = timestamp
+        # Sort-on-insert: the service accepts an explicit (possibly backdated)
+        # ``timestamp``, so keep dose_history chronologically ordered and set
+        # ``last_dose_time`` to the true most-recent dose -- never blindly to
+        # the inserted timestamp.
+        self.data.dose_history.sort(key=lambda dose: dose[0])
+        self.data.last_dose_time = self.data.dose_history[-1][0]
         self._save()
 
-        # Fire legacy signal so not-yet-migrated sensors still work
-        async_dispatcher_send(self.hass, f"pill_taken_{self._entry.entry_id}", timestamp)
         # Fire HA bus event for frontend / automations
         self.hass.bus.async_fire(
             "ax_dose_logger_dose_taken",
@@ -300,12 +388,16 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         """Remove the most recent dose and trigger an immediate refresh."""
         if not self.data.dose_history:
             return
-        self.data.dose_history.pop()
-        self.data.last_dose_time = self.data.dose_history[-1][0] if self.data.dose_history else None
+        history = self.data.dose_history
+        # Pop the max-timestamp entry (not blindly the last element) so
+        # undoing after a backdated insert removes the true latest dose.
+        max_idx = max(range(len(history)), key=lambda i: history[i][0])
+        history.pop(max_idx)
+        # Re-sort so the chronological invariant holds for legacy unsorted data.
+        history.sort(key=lambda dose: dose[0])
+        self.data.last_dose_time = history[-1][0] if history else None
         self._save()
 
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_undone_{self._entry.entry_id}")
         self.hass.bus.async_fire(
             "ax_dose_logger_dose_undone",
             {"entry_id": self._entry.entry_id},
@@ -319,31 +411,55 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self.data.last_dose_time = None
         self.data.adherence_overrides.clear()
         self.data.adherence_reset_time = None
+        self.data.avg_reset_time = None
         self.data.skipped_slots.clear()
         self._save()
         self._save_skipped()
-
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_reset_{self._entry.entry_id}")
+        self._save_adherence()
+        # A full history wipe makes the averages anchor meaningless — clear
+        # it so the averages re-anchor to the (now empty) history cleanly.
+        self._store.schedule_save_averages_reset(self._entry.entry_id, None)
 
         self._push_update()
 
     async def async_adherence_reset(self) -> None:
-        """Clear adherence-specific state only (no dose history impact)."""
+        """Clear adherence-specific state only (no dose history impact).
+
+        Persists the cleared overrides + new reset anchor so a HA restart
+        no longer silently resurrects pre-reset overrides (pre-fix the
+        reset was lost on every restart because adherence state was not
+        persisted at all — see Gap B in the retention plan).
+        """
         self.data.adherence_overrides.clear()
         self.data.adherence_reset_time = dt_util.now()
+        self._save_adherence()
 
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_adherence_reset_{self._entry.entry_id}")
+        self._push_update()
+
+    async def async_averages_reset(self) -> None:
+        """Reset the rolling averages only (no dose history impact).
+
+        Sets a persisted reset anchor; the average sensors clamp their
+        effective window start to max(history_start_date, avg_reset_time)
+        so pre-reset doses stop counting toward the 7/14/30/365-day
+        averages.  Total Doses, Amount in Body (PK), stock, and Adherence %
+        are untouched — no dose data is deleted.
+        """
+        self.data.avg_reset_time = dt_util.now()
+        self._store.schedule_save_averages_reset(self._entry.entry_id, self.data.avg_reset_time.isoformat())
 
         self._push_update()
 
     async def async_adherence_override(self) -> None:
-        """Mark the most recent missed adherence slot as covered."""
-        self.data.adherence_overrides.append(dt_util.now())
+        """Mark the most recent missed adherence slot as covered.
 
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_adherence_override_{self._entry.entry_id}")
+        Persists the override so it survives HA restarts (pre-fix every
+        override was lost on restart, silently dropping the 365-day
+        adherence % after each reboot — see Gap B in the retention plan).
+        """
+        self.data.adherence_overrides.append(dt_util.now())
+        self._save_adherence()
+
         self.hass.bus.async_fire(
             "ax_dose_logger_adherence_override",
             {"entry_id": self._entry.entry_id},
@@ -394,26 +510,31 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         Enforces the one-set-per-day rule: if the metric has already been
         logged today and ``override`` is False, raises HomeAssistantError.
 
-        On success, updates the metric value in coordinator data,
-        schedules a debounced save, and pushes an update to all entities.
+        v2 date-keyed shape: ``metric_values[metric_key]`` is a
+        ``{"YYYY-MM-DD": float}`` map; today's date key is written (overwriting
+        any prior value for today).  Historical days are retained for the
+        365-day export window — only the retention cutoff drops old dates.
         """
         today = dt_util.now().date().isoformat()
-        existing = self.data.metric_values.get(metric_key)
+        dated = self.data.metric_values.get(metric_key)
+        if not isinstance(dated, dict):
+            dated = {}
+            self.data.metric_values[metric_key] = dated
 
-        if existing and existing.get("date") == today and not override:
+        if today in dated and not override:
             raise HomeAssistantError(
-                f"Metric '{metric_key}' already set to {existing['value']} today. Use override to change it."
+                f"Metric '{metric_key}' already set to {dated[today]} today. Use override to change it."
             )
 
-        self.data.metric_values[metric_key] = {"date": today, "value": float(value)}
+        dated[today] = float(value)
         self._save_metrics()
         self._push_update()
 
     def is_metric_logged_today(self, metric_key: str) -> bool:
         """Return True if the metric has been logged today."""
         today = dt_util.now().date().isoformat()
-        entry = self.data.metric_values.get(metric_key)
-        return entry is not None and entry.get("date") == today
+        dated = self.data.metric_values.get(metric_key)
+        return isinstance(dated, dict) and today in dated
 
     def get_metric_value(self, metric_key: str) -> float | None:
         """
@@ -422,9 +543,9 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         Returns None for unlogged metrics (entity state will be ``unknown``).
         """
         today = dt_util.now().date().isoformat()
-        entry = self.data.metric_values.get(metric_key)
-        if entry and entry.get("date") == today:
-            return float(entry["value"])
+        dated = self.data.metric_values.get(metric_key)
+        if isinstance(dated, dict) and today in dated:
+            return float(dated[today])
         return None
 
     # ------------------------------------------------------------------
@@ -438,20 +559,53 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
     # needed — the base ``DataUpdateCoordinator.async_shutdown`` suffices.
     @callback
     def _save(self) -> None:
-        """Serialize current dose history and schedule a debounced store save."""
-        serialized = [[ts.isoformat(), strength] for ts, strength in self.data.dose_history]
+        """Serialize current dose history and schedule a debounced store save.
+
+        Prunes the serialized copy to the retention window so the
+        ``.storage`` JSON stays bounded; the in-memory list is pruned on
+        load, and a 365-day sensor reading the list mid-window still sees
+        the full window because the tick never prunes.
+        """
+        cutoff = retention_cutoff(dt_util.now(), self._retention_days())
+        kept = prune_dose_pairs(self.data.dose_history, cutoff)
+        serialized = [[ts.isoformat(), strength] for ts, strength in kept]
         self._store.schedule_save_history(self._entry.entry_id, serialized)
 
     @callback
     def _save_metrics(self) -> None:
-        """Serialize current metric values and schedule a debounced store save."""
-        self._store.schedule_save_metrics(self._entry.entry_id, self.data.metric_values)
+        """Serialize current metric values and schedule a debounced store save.
+
+        Prunes the serialized copy to the retention window (date-keyed
+        v2 shape) so historical PRO days are retained up to the cutoff and
+        older days are dropped, keeping the JSON bounded.
+        """
+        cutoff_date = retention_cutoff_date(dt_util.now(), self._retention_days())
+        kept = prune_metric_dict(self.data.metric_values, cutoff_date)
+        self._store.schedule_save_metrics(self._entry.entry_id, kept)
 
     @callback
     def _save_skipped(self) -> None:
-        """Serialize skipped-dose slots and schedule a debounced store save."""
-        serialized = [ts.isoformat() for ts in self.data.skipped_slots]
+        """Serialize skipped-dose slots and schedule a debounced store save.
+
+        Prunes the serialized copy to the retention window.
+        """
+        cutoff = retention_cutoff(dt_util.now(), self._retention_days())
+        kept = prune_timestamps(self.data.skipped_slots, cutoff)
+        serialized = [ts.isoformat() for ts in kept]
         self._store.schedule_save_skipped(self._entry.entry_id, serialized)
+
+    @callback
+    def _save_adherence(self) -> None:
+        """Serialize adherence overrides + reset time and schedule a debounced save.
+
+        Prunes overrides to the retention window.  ``reset_time`` is a
+        single anchor (not a per-day value) and is persisted as-is.
+        """
+        cutoff = retention_cutoff(dt_util.now(), self._retention_days())
+        kept = prune_timestamps(self.data.adherence_overrides, cutoff)
+        serialized = [ts.isoformat() for ts in kept]
+        reset_iso = self.data.adherence_reset_time.isoformat() if self.data.adherence_reset_time is not None else None
+        self._store.schedule_save_adherence(self._entry.entry_id, serialized, reset_iso)
 
     # ------------------------------------------------------------------
     # Accessors for entities
@@ -465,3 +619,55 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
     def last_dose_time(self) -> datetime | None:
         """Timestamp of the most recent dose, or None."""
         return self.data.last_dose_time
+
+    # ------------------------------------------------------------------
+    # Graph sampling (recorder-independent Amount-in-Body line graph)
+    # ------------------------------------------------------------------
+    def sample_amount_curve(
+        self,
+        start: datetime,
+        end: datetime,
+        points: int,
+    ) -> list[tuple[datetime, float]]:
+        """Sample the PK body-mass curve at ``points`` evenly spaced instants.
+
+        The Amount-in-Body curve is a deterministic function of the dose
+        history (linear PK superposition), so recomputing it from the store
+        is exact — unlike the recorder's lossy same-value-discarding samples.
+        This makes the card's line graph independent of the recorder's
+        ``purge_keep_days`` (default 10 days) for any window the store
+        retains (365 days by default).
+
+        Called from the REST graph view via ``hass.async_add_executor_job``
+        (CPU-bound: ``points`` × ``len(dose_history)`` Bateman evaluations).
+        Read-only: never mutates ``self.data``.
+
+        Returns ``[(timestamp, value), ...]`` with ``points`` samples from
+        ``start`` to ``end`` inclusive. When elimination is disabled
+        (``half_life == 0``) or there is no dose history, returns ``[]`` —
+        the frontend falls back to the recorder fetch (or renders empty).
+        """
+        data = self.data
+        if not data or not data.dose_history:
+            return []
+        params = self._build_pk_params()
+        if params.half_life <= 0:
+            return []  # elimination disabled — no meaningful curve (matches the sensor's unknown)
+
+        # Only doses that can influence the window (all of them do for the
+        # superposition, but pruning pre-start doses whose contribution has
+        # fully decayed keeps the per-sample loop cheap). A dose older than
+        # ~10 half-lives contributes <0.1% — safe to drop.
+        decay_horizon = start - timedelta(hours=params.half_life * 10)
+        relevant = [(ts, s) for ts, s in data.dose_history if ts >= decay_horizon]
+        if not relevant:
+            return []
+
+        span = (end - start).total_seconds()
+        n = max(2, min(int(points), 400))
+        samples: list[tuple[datetime, float]] = []
+        for i in range(n):
+            t = start + timedelta(seconds=span * i / (n - 1))
+            result = PKModel.compute(params, relevant, t)
+            samples.append((t, result.body))
+        return samples

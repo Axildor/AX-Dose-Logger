@@ -4,9 +4,9 @@ import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 
-from ..const import TRACKING_CYCLIC
+from ..const import DOSE_BUFFER_DEFAULT_MIN, TRACKING_CYCLIC, get_pills_per_slot
 from ..entity import AxDoseLoggerSensorEntity
-from ..sliding_window import get_time_window, is_on_day
+from ..sliding_window import effective_dose_buffer_minutes, get_time_window, is_on_day
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
 _TIMESTAMPS_MAX_DAYS = 365
@@ -53,6 +53,13 @@ class PillLimitSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", 1))
         time_window = get_time_window(entry, self._tracking_type)
+        # Anti-drift dose buffer: relaxes the rolling window so gradual
+        # dose-timing drift is bounded (see effective_dose_buffer_minutes).
+        buffer_minutes = effective_dose_buffer_minutes(entry, time_window)
+        raw_buffer = entry.options.get(
+            "dose_buffer_minutes",
+            entry.data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN),
+        )
         timestamps = self._get_timestamps()
 
         # Cyclic OFF days: force pill_limit to 0 regardless of window
@@ -65,20 +72,31 @@ class PillLimitSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 "timestamps": [ts.isoformat() for ts in recent],
                 "time_window_hours": time_window,
                 "in_on_window": False,
+                "dose_buffer_minutes": raw_buffer,
+                "effective_buffer_minutes": buffer_minutes,
             }
             return
 
-        # Unified sliding window for ALL modes
-        cutoff = now - timedelta(hours=time_window)
+        # Unified sliding window for ALL modes. The cutoff is moved forward
+        # by the buffer so the oldest dose expires `buffer` minutes earlier
+        # than the strict window, re-anchoring doses taken a few minutes late.
+        cutoff = now - timedelta(hours=time_window) + timedelta(minutes=buffer_minutes)
         valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
         self._attr_native_value = max(0, max_pills - len(valid_timestamps))
 
         window_expires_at = None
         if max_pills > 0 and len(valid_timestamps) >= max_pills and valid_timestamps:
-            window_expires_at = (valid_timestamps[0] + timedelta(hours=time_window)).isoformat()
+            # The window expires `buffer` minutes earlier than the strict
+            # window (the dose falls out of the count at window - buffer).
+            window_expires_at = (
+                valid_timestamps[0] + timedelta(hours=time_window) - timedelta(minutes=buffer_minutes)
+            ).isoformat()
 
         self._attr_extra_state_attributes = {
             "timestamps": [ts.isoformat() for ts in valid_timestamps],
             "time_window_hours": time_window,
             "window_expires_at": window_expires_at,
+            "dose_buffer_minutes": raw_buffer,
+            "effective_buffer_minutes": buffer_minutes,
+            "pills_per_slot": get_pills_per_slot(entry),
         }

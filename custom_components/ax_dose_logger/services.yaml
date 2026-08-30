@@ -89,6 +89,10 @@ log_drink:
       required: false
       selector:
         datetime:
+    target_profile:
+      required: false
+      selector:
+        text:
 
 undo_drink:
   fields:
@@ -99,6 +103,14 @@ undo_drink:
           integration: ax_dose_logger
 
 reset_drink:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: ax_dose_logger
+
+averages_reset:
   fields:
     entry_id:
       required: true

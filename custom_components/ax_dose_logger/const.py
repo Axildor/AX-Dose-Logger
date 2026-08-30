@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "ax_dose_logger"
-CURRENT_VERSION = 15
+CURRENT_VERSION = 16
 
 # --- Tracking type constants ---
 TRACKING_REGULAR_INTERVAL = "regular_interval"
@@ -90,6 +90,63 @@ DRINK_MASTER_STORE_KEYS: dict[str, str] = {
     DRINK_TYPE_ALCOHOL: "ax_dose_logger_drink_master_alcohol",
 }
 
+# --- Multi-Profile (M2M Decoupled Topology) ---
+# A profile is a Drink Settings config entry representing one biological
+# subject (person). It owns two DrinkMasterCoordinator instances (caffeine +
+# alcohol) + their store files + Master Tracker devices + PK constants.
+# Profiles are identified by an IMMUTABLE id (the Drink Settings entry's own
+# HA-managed entry_id UUID for new profiles; the reserved literal "default"
+# for the legacy singleton). The user-entered profile_name is a mutable
+# display string only -- never used for routing, store keys, device ids, or
+# unique_ids. See plans/m2m-decoupled-topology-plan.md.
+#
+# Granular drink config entries are global inventory nodes (NOT children of
+# any profile). They store an `allowed_profiles` array of profile UUIDs that
+# may route PK payloads from this device. The log_drink service accepts a
+# `target_profile` UUID to route a dose to a specific profile's master while
+# decrementing the shared inventory. Deleting a profile scrubs its UUID from
+# every drink's allowed_profiles array (non-destructive -- drinks survive).
+DEFAULT_PROFILE_ID = "default"
+
+
+def drink_master_store_key(profile_id: str, substance: str) -> str:
+    """Return the .storage key for a profile's per-substance master store.
+
+    The legacy ``default`` profile keeps the original un-profiled keys
+    (``ax_dose_logger_drink_master_caffeine``) so existing single-user installs
+    read from the same files with zero migration. New profiles get a
+    profile-scoped key built from the immutable profile id (UUID, filesystem-safe).
+    """
+    if profile_id == DEFAULT_PROFILE_ID:
+        return DRINK_MASTER_STORE_KEYS[substance]
+    return f"ax_dose_logger_drink_master_{profile_id}_{substance}"
+
+
+def tracker_id_for(profile_id: str, substance: str) -> str:
+    """Return the Master Tracker device identifier for a profile + substance.
+
+    The ``default`` profile keeps the legacy tracker ids (``caffeine_tracker``)
+    so existing device-registry entries resolve to the same devices. New
+    profiles get a profile-scoped tracker id built from the immutable profile id.
+    """
+    if profile_id == DEFAULT_PROFILE_ID:
+        # Legacy un-profiled tracker ids (const.CAFFEINE_TRACKER_ID etc.).
+        return f"{substance}_tracker"
+    return f"{substance}_tracker_{profile_id}"
+
+
+def master_unique_id(profile_id: str, substance: str) -> str:
+    """Return the sensor unique_id for a Master Tracker PK sensor.
+
+    The ``default`` profile keeps the legacy unique_ids (``drink_master_caffeine``)
+    so existing entity-registry entries resolve to the same sensors. New profiles
+    get a profile-scoped unique_id built from the immutable profile id.
+    """
+    if profile_id == DEFAULT_PROFILE_ID:
+        return f"drink_master_{substance}"
+    return f"drink_master_{profile_id}_{substance}"
+
+
 # --- Global PK defaults (Drink Settings singleton) ---
 GLOBAL_PK_DEFAULTS: dict[str, float] = {
     "global_caffeine_half_life": 5.0,  # hours
@@ -132,6 +189,47 @@ DEFAULT_METRIC_ICON = "mdi:chart-line"
 # --- Daily-locked metric constants ---
 METRIC_STORE_KEY = "ax_dose_logger_metrics"  # Separate storage key for daily metric values
 
+# --- Retention window (days) for all persistent history stores ---
+# 365 = CMS/NCQA/PQA Proportion-of-Days-Covered adherence-measure floor (the
+# shortest window the rolling 365-day sensors need intact history for).
+# MIN/MAX bound the per-entry options-flow slider.
+# PK-safe at 365: caffeine (t1/2 ~5h) contributes <1% after 5 half-lives (~25h);
+# alcohol (zero-order incremental from persisted body_mass + last_decay) does
+# not recompute from history, so pruning old alcohol doses is a PK no-op.
+RETENTION_DAYS = 365
+MIN_RETENTION_DAYS = 30
+MAX_RETENTION_DAYS = 1095
+
+# --- Anti-drift dose buffer (anti-schedule-creep) ---
+# A small absolute buffer that relaxes the strict rolling-window dose-count
+# gate (pill_limit) and the drink cooldown gate so that gradual dose-timing
+# drift ("take yesterday 13:04 -> next day locked until 13:04 -> take 13:05
+# -> ...") is bounded instead of unbounded.
+#
+# Clinical basis: accepted on-time windows are ABSOLUTE (ISMP/PQA/NCQA +-2h
+# for most oral meds; levodopa +-15-30 min is the tightest). The buffer is
+# NOT a clinical dose-timing rule -- no guideline specifies "take next dose
+# X min early". It is derived from the mechanism's purpose: bound the
+# maximum tolerated lateness that still lets the next scheduled dose
+# re-anchor on time. 5 min re-anchors doses taken up to 4 min late; below
+# every clinical on-time window; early-dosing by 5 min on a 24h interval =
+# 0.35% early, clinically negligible for every class including NTI drugs.
+#
+# The 25%-of-window cap is a SAFETY guardrail so a misconfigured large buffer
+# cannot collapse a short interval (e.g. a 120-min buffer on an 8h window
+# would still be capped at 120 min). The cap is applied at read time by
+# effective_dose_buffer_minutes() in sliding_window.py.
+#
+# This is an AVAILABILITY relaxation only. It deliberately does NOT touch:
+#   * the 24h-strength safety limit (Pill24hLimitExceededSensor) -- a
+#     hepatotoxicity/GI-bleed warning that must never gain grace; or
+#   * adherence grading (uses its own adherence_grace_minutes) --
+#     availability != compliance.
+DOSE_BUFFER_DEFAULT_MIN = 5
+DOSE_BUFFER_MIN = 0
+DOSE_BUFFER_MAX = 120
+DOSE_BUFFER_CAP_FRACTION = 0.25
+
 PK_DEFAULTS: dict[str, float] = {
     "bioavailability": 100,
     "ir_fraction": 100,
@@ -142,6 +240,14 @@ PK_DEFAULTS: dict[str, float] = {
 }
 
 MAX_DOSES_PER_DAY = 18
+
+# Pills per time slot: how many pills a single scheduled slot prescribes
+# (e.g. 2 pills at 08:00 + 2 at 20:00 = 4/day). Default 1 keeps every
+# existing entry's behavior identical (no migration needed). Read via
+# get_pills_per_slot() so sensors/config share one fallback chain.
+PILLS_PER_SLOT_DEFAULT = 1
+PILLS_PER_SLOT_MIN = 1
+PILLS_PER_SLOT_MAX = 10
 
 DEFAULT_DOSE_TIMES: dict[int, list[str]] = {
     1: ["08:00"],
@@ -204,6 +310,22 @@ def parse_dose_time(value) -> tuple[int, int]:
         except ValueError, IndexError:
             return (8, 0)
     return (8, 0)
+
+
+def get_pills_per_slot(entry: ConfigEntry) -> int:
+    """
+    Read ``pills_per_slot`` from a config entry with the shared fallback chain.
+
+    ``options`` wins over ``data``; the default is 1 so every pre-existing
+    entry behaves exactly as before (a slot is covered by a single dose).
+    Values are clamped to ``[PILLS_PER_SLOT_MIN, PILLS_PER_SLOT_MAX]``.
+    """
+    raw = entry.options.get("pills_per_slot", entry.data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT))
+    try:
+        value = int(raw)
+    except TypeError, ValueError:
+        value = PILLS_PER_SLOT_DEFAULT
+    return max(PILLS_PER_SLOT_MIN, min(PILLS_PER_SLOT_MAX, value))
 
 
 def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:

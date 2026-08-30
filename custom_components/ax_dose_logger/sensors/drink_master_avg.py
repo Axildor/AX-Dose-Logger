@@ -20,6 +20,7 @@ from homeassistant.core import callback
 from ..const import (
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
+    master_unique_id,
 )
 from ..drink_coordinator import DrinkMasterCoordinator
 from ._tracker_info import tracker_device_info
@@ -27,12 +28,10 @@ from ._tracker_info import tracker_device_info
 # Sensor-specific keys per substance (common keys live in MASTER_TRACKERS).
 _SENSOR_INFO = {
     DRINK_TYPE_CAFFEINE: {
-        "unique_id_stem": "drink_master_avg_caffeine",
         "translation_key": "drink_master_avg_caffeine",
         "icon": "mdi:chart-bell-curve",
     },
     DRINK_TYPE_ALCOHOL: {
-        "unique_id_stem": "drink_master_avg_alcohol",
         "translation_key": "drink_master_avg_alcohol",
         "icon": "mdi:chart-bell-curve",
     },
@@ -57,21 +56,25 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         settings_entry,
         coordinator: DrinkMasterCoordinator,
         window_days: int,
+        profile_id: str,
+        profile_name: str | None,
     ) -> None:
         """Initialize the substance-aggregate avg-doses sensor."""
         info = _SENSOR_INFO[coordinator.substance]
         self._coordinator = coordinator
         self._substance = coordinator.substance
+        self._profile_id = profile_id
+        self._profile_name = profile_name
         self._window_days = window_days
         # Stable unique_id — survives Drink Settings entry recreation, mirrors
         # the master PK sensor's drink_master_{substance} pattern.
-        self._attr_unique_id = f"{info['unique_id_stem']}_{window_days}"
+        self._attr_unique_id = f"{master_unique_id(profile_id, self._substance)}_avg_{window_days}"
         self._attr_translation_key = info["translation_key"]
         self._attr_translation_placeholders = {"window": str(window_days)}
         self._attr_icon = info["icon"]
         # Stable device identifiers — standalone virtual Master Tracker device,
         # not tied to entry_id (see DrinkMasterSensor for the rationale).
-        self._attr_device_info = tracker_device_info(self._substance)
+        self._attr_device_info = tracker_device_info(profile_id, self._substance, profile_name=profile_name)
         self._history_start_date: datetime | None = None
         self._attr_extra_state_attributes = {
             "window_days": window_days,
@@ -106,7 +109,16 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         now = dt_util.now()
         if not self._history_start_date:
             self._history_start_date = now
-        days_since_start = (now - self._history_start_date).total_seconds() / 86400.0
+        # Averages reset anchor (Reset Averages tool): clamp the effective
+        # window start so pre-reset drinks (across ALL granular drinks of
+        # this substance) stop counting toward the aggregate average.  The
+        # raw history_start_date attribute is NOT modified — the frontend
+        # reads it for the days-since reveal logic.
+        avg_reset = self._coordinator.data.avg_reset_time if self._coordinator.data else None
+        effective_start = self._history_start_date
+        if avg_reset is not None and avg_reset > effective_start:
+            effective_start = avg_reset
+        days_since_start = (now - effective_start).total_seconds() / 86400.0
         days_since_start = max(1.0, days_since_start)
         actual_window_days = min(days_since_start, float(self._window_days))
 
@@ -123,6 +135,7 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
             "effective_window_days": round(actual_window_days, 1),
             "doses_in_window": len(valid_timestamps),
             "history_start_date": self._history_start_date.isoformat() if self._history_start_date else None,
+            "averages_reset_time": avg_reset.isoformat() if avg_reset else None,
             "substance": self._substance,
             "drink_master": True,
         }
