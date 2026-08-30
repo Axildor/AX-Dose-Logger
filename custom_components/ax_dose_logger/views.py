@@ -26,6 +26,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    DEVICE_CATEGORY_DRINKS,
+    DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
 )
 from .const import (
@@ -94,7 +96,7 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
                 # Master doses are stored as [iso, strength, t_dur_hours];
                 # the frontend bar graph only consumes [iso, strength].
                 payload = [[d[0], d[1]] for d in doses if len(d) >= 2]
-                _LOGGER.info(
+                _LOGGER.debug(
                     "ax_dose_logger history REST: master device_id=%s profile=%s substance=%s returned %d doses (store had %d)",
                     device_id,
                     profile_id,
@@ -112,7 +114,7 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
 
         # Get dose history from store
         history = store.get_history(entry_id)
-        _LOGGER.info(
+        _LOGGER.debug(
             "ax_dose_logger history REST: device_id=%s entry_id=%s returned %d doses",
             device_id,
             entry_id,
@@ -182,7 +184,12 @@ class AxDoseLoggerPredictLowView(HomeAssistantView):
             # drink's allowed_profiles; if not, return None (the card will
             # render "Low: -").
             target_profile = request.query.get("target_profile")
-            allowed_profiles = config_entry.data.get("allowed_profiles", ["default"])
+            # Options-first: the options flow writes allowed_profiles to
+            # entry.options; fall back to entry.data for pre-migration entries.
+            allowed_profiles = config_entry.options.get(
+                "allowed_profiles",
+                config_entry.data.get("allowed_profiles", ["default"]),
+            )
             if target_profile:
                 if target_profile not in allowed_profiles:
                     _LOGGER.info(
@@ -229,7 +236,7 @@ class AxDoseLoggerPredictLowView(HomeAssistantView):
                 drinking_duration_min / 60.0,
             )
             payload = {"low_time": low_time.isoformat() if low_time else None}
-            _LOGGER.info(
+            _LOGGER.debug(
                 "ax_dose_logger predict_low REST: entity=%s substance=%s strength=%s low_time=%s",
                 entity_id,
                 substance,
@@ -334,6 +341,19 @@ class AxDoseLoggerGraphView(HomeAssistantView):
         entry = hass.config_entries.async_get_entry(entry_id)
         coordinator = hass.data.get(DOMAIN, {}).get(entry_id, {}).get("coordinator")
         if entry is None or coordinator is None:
+            return self.json({"amount": [], "metrics": {}})
+
+        # Granular drink devices host a DrinkCoordinator, which has no
+        # sample_amount_curve method (the PK curve lives on the Master
+        # Tracker coordinators handled above).  Return an empty payload —
+        # the frontend already renders that gracefully.
+        if entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE) == DEVICE_CATEGORY_DRINKS:
+            _LOGGER.debug(
+                "ax_dose_logger graph REST: device_id=%s entry_id=%s is a granular "
+                "drink device; returning empty payload",
+                device_id,
+                entry_id,
+            )
             return self.json({"amount": [], "metrics": {}})
 
         now = dt_util.now()

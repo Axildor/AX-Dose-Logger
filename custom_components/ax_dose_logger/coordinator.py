@@ -114,7 +114,6 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         )
         self._entry = entry
         self._store = store
-        self._last_midnight_check: datetime | None = None
 
     # ------------------------------------------------------------------
     # Retention window
@@ -164,6 +163,10 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
                 except (ValueError, TypeError, IndexError):
                     continue
         dose_history = prune_dose_pairs(dose_history, cutoff)
+        # Sort-on-load: legacy stores may contain backdated doses written
+        # before ordering was enforced; keep the chronological invariant so
+        # ``[-1]`` is always the most recent dose.
+        dose_history.sort(key=lambda dose: dose[0])
 
         last_dose = dose_history[-1][0] if dose_history else None
 
@@ -275,11 +278,6 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             pk_result = None
             concentration = 0.0
 
-        # Midnight rollover detection — entities that need day-boundary
-        # recalculation check ``data.midnight_rolled`` in their
-        # ``_handle_coordinator_update``.
-        midnight_rolled = self._check_midnight(now)
-
         # Metrics are RETAINED across midnight (v2 date-keyed shape).  A new
         # day simply gets a new date key when the user sets it; today's slider
         # reads ``unknown`` until set because today's key is absent — the same
@@ -311,18 +309,20 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
     # Periodic refresh — called every 1 minute by the coordinator timer
     # ------------------------------------------------------------------
     async def _async_update_data(self) -> AxDoseLoggerCoordinatorData:
-        """Recompute derived state (PK concentration) on every tick."""
-        return self._recompute_data()
+        """Recompute derived state (PK concentration) on every tick - offloaded to the executor (CPU-bound).
 
-    def _check_midnight(self, now: datetime) -> bool:
-        """Return True if midnight has passed since the last check."""
-        if self._last_midnight_check is None:
-            self._last_midnight_check = now
-            return False
-        rolled = now.date() > self._last_midnight_check.date()
-        if rolled:
-            self._last_midnight_check = now
-        return rolled
+        ``_recompute_data`` is synchronous, CPU-bound work (N=len(dose_history)
+        Bateman evaluations per tick).  For a long-running medication with 100+
+        logged doses this is pure-Python math that would block the HA event
+        loop on every 1-min tick, causing latency spikes for ALL automations
+        and entity updates.  HA best practice is to offload CPU-bound work to
+        the executor thread pool so the event loop stays free during the
+        computation (same pattern as ``DrinkMasterCoordinator``).  It is
+        effectively read-only (it reads ``self.data``, constructs a new
+        dataclass, and returns it - no mutation of shared state), so running
+        it in a thread is safe.
+        """
+        return await self.hass.async_add_executor_job(self._recompute_data)
 
     # ------------------------------------------------------------------
     # PK parameter helper
@@ -368,11 +368,14 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
 
         strength = float(self._entry.options.get("strength", self._entry.data.get("strength", 0)))
         self.data.dose_history.append((timestamp, strength))
-        self.data.last_dose_time = timestamp
+        # Sort-on-insert: the service accepts an explicit (possibly backdated)
+        # ``timestamp``, so keep dose_history chronologically ordered and set
+        # ``last_dose_time`` to the true most-recent dose -- never blindly to
+        # the inserted timestamp.
+        self.data.dose_history.sort(key=lambda dose: dose[0])
+        self.data.last_dose_time = self.data.dose_history[-1][0]
         self._save()
 
-        # Fire legacy signal so not-yet-migrated sensors still work
-        async_dispatcher_send(self.hass, f"pill_taken_{self._entry.entry_id}", timestamp)
         # Fire HA bus event for frontend / automations
         self.hass.bus.async_fire(
             "ax_dose_logger_dose_taken",
@@ -385,12 +388,16 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         """Remove the most recent dose and trigger an immediate refresh."""
         if not self.data.dose_history:
             return
-        self.data.dose_history.pop()
-        self.data.last_dose_time = self.data.dose_history[-1][0] if self.data.dose_history else None
+        history = self.data.dose_history
+        # Pop the max-timestamp entry (not blindly the last element) so
+        # undoing after a backdated insert removes the true latest dose.
+        max_idx = max(range(len(history)), key=lambda i: history[i][0])
+        history.pop(max_idx)
+        # Re-sort so the chronological invariant holds for legacy unsorted data.
+        history.sort(key=lambda dose: dose[0])
+        self.data.last_dose_time = history[-1][0] if history else None
         self._save()
 
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_undone_{self._entry.entry_id}")
         self.hass.bus.async_fire(
             "ax_dose_logger_dose_undone",
             {"entry_id": self._entry.entry_id},
@@ -413,9 +420,6 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         # it so the averages re-anchor to the (now empty) history cleanly.
         self._store.schedule_save_averages_reset(self._entry.entry_id, None)
 
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_reset_{self._entry.entry_id}")
-
         self._push_update()
 
     async def async_adherence_reset(self) -> None:
@@ -429,9 +433,6 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self.data.adherence_overrides.clear()
         self.data.adherence_reset_time = dt_util.now()
         self._save_adherence()
-
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_adherence_reset_{self._entry.entry_id}")
 
         self._push_update()
 
@@ -449,9 +450,6 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
             self._entry.entry_id, self.data.avg_reset_time.isoformat()
         )
 
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_averages_reset_{self._entry.entry_id}")
-
         self._push_update()
 
     async def async_adherence_override(self) -> None:
@@ -464,8 +462,6 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
         self.data.adherence_overrides.append(dt_util.now())
         self._save_adherence()
 
-        # Fire legacy signal
-        async_dispatcher_send(self.hass, f"pill_adherence_override_{self._entry.entry_id}")
         self.hass.bus.async_fire(
             "ax_dose_logger_adherence_override",
             {"entry_id": self._entry.entry_id},

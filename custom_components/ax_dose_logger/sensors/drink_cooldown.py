@@ -64,6 +64,7 @@ class DrinkCooldownSensor(RestoreSensor):
             "within_cooldown": False,
             "substance": self._substance,
             "device_type": "drink",
+            "role": "cooldown",
         }
         self._attr_native_value = 1
 
@@ -74,7 +75,7 @@ class DrinkCooldownSensor(RestoreSensor):
         if last_state_obj is not None:
             try:
                 self._attr_native_value = int(float(last_state_obj.state))
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 self._attr_native_value = 1
             if last_state_obj.attributes:
                 self._attr_extra_state_attributes = {
@@ -84,6 +85,7 @@ class DrinkCooldownSensor(RestoreSensor):
                     "within_cooldown": bool(last_state_obj.attributes.get("within_cooldown", False)),
                     "substance": self._substance,
                     "device_type": "drink",
+                    "role": "cooldown",
                 }
         self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         self._handle_coordinator_update()
@@ -138,6 +140,7 @@ class DrinkCooldownSensor(RestoreSensor):
             "effective_buffer_minutes": buffer_minutes,
             "substance": self._substance,
             "device_type": "drink",
+            "role": "cooldown",
         }
         # Dynamic icon: cup when available, sand-empty when locked.
         self._attr_icon = "mdi:cup-water" if available else "mdi:timer-sand-empty"

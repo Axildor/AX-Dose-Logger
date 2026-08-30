@@ -57,6 +57,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
 )
 from ..coordinator import AxDoseLoggerCoordinator
 from ..drink_coordinator import DrinkCoordinator
@@ -156,17 +157,22 @@ class PillDaysLeftSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return 0.0
         try:
             return max(0.0, float(state.state))
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return 0.0
 
     def _doses_per_day_scheduled(self) -> float:
-        """Config-derived doses/day for scheduled tracking types."""
+        """Config-derived doses/day for scheduled tracking types.
+
+        Multiplies the slot count by ``pills_per_slot`` so stock projection
+        matches true consumption (e.g. 2 slots x 2 pills = 4 doses/day).
+        """
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
             return 1.0
+        pills_per_slot = float(get_pills_per_slot(entry))
         if self._tracking_type == TRACKING_TIME_OF_DAY:
             parsed = get_dose_times(entry)
-            return max(1.0, float(len(parsed)))
+            return max(1.0, float(len(parsed)) * pills_per_slot)
         if self._tracking_type == TRACKING_REGULAR_INTERVAL:
             hours = float(
                 entry.options.get(
@@ -174,7 +180,7 @@ class PillDaysLeftSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                     entry.data.get("hours_between_doses", 24.0),
                 )
             )
-            return max(1.0, 24.0 / hours) if hours > 0 else 1.0
+            return max(1.0, (24.0 / hours) * pills_per_slot) if hours > 0 else 1.0
         # Cyclic — project calendar days until depletion.  ON days consume
         # one dose; OFF days consume zero, so the cycle-average rate is
         # days_on / (days_on + days_off).  This matches the calendar-day
@@ -314,7 +320,7 @@ class DrinkDaysLeftSensor(RestoreSensor):
             return 0.0
         try:
             return max(0.0, float(state.state))
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return 0.0
 
     def _doses_per_day_avg(self) -> float | None:

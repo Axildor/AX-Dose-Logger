@@ -1,7 +1,7 @@
 import uuid
 from types import MappingProxyType
 
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigType
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
@@ -115,6 +115,47 @@ def _profile_name_of(entry: AxDoseLoggerConfigEntry) -> str | None:
     return entry.data.get("profile_name")
 
 
+def _build_drink_settings_entry(
+    profile_id: str,
+    profile_name: str | None,
+    unique_id: str,
+    title: str,
+) -> ConfigEntry:
+    """Build a Drink Settings ``ConfigEntry`` (audit D4 isolation helper).
+
+    The ONLY place in the integration that constructs ``ConfigEntry`` by hand.
+    The canonical HA pattern is to drive creation through a config flow
+    (``hass.config_entries.async_init`` + ``async_finish_flow``), but that is
+    a larger refactor; this helper isolates the constructor-kwargs contract in
+    one version-checked spot instead.  If a future HA core update changes the
+    ``ConfigEntry`` constructor signature, only this function needs updating.
+
+    Constructor-kwargs contract (pinned 2026-08-30, HA core):
+    ``data``, ``discovery_keys`` (MappingProxyType({})), ``domain``,
+    ``minor_version``, ``options``, ``source``, ``subentries_data``,
+    ``title``, ``unique_id``, ``version`` -- all keyword-only, all required.
+    """
+    return ConfigEntry(
+        data={
+            "device_category": DEVICE_CATEGORY_DRINK_SETTINGS,
+            "profile_id": profile_id,
+            "profile_name": profile_name,
+            **GLOBAL_PK_DEFAULTS,
+            "caffeine_daily_limit_mg": CAFFEINE_DEFAULT_LIMIT_MG,
+            "alcohol_daily_limit_g": ALCOHOL_DEFAULT_LIMIT_G,
+        },
+        discovery_keys=MappingProxyType({}),
+        domain=DOMAIN,
+        minor_version=1,
+        options={},
+        source="user",
+        subentries_data=None,
+        title=title,
+        unique_id=unique_id,
+        version=CURRENT_VERSION,
+    )
+
+
 async def _ensure_drink_settings_entry(hass: HomeAssistant, profile_name: str | None = None) -> str:
     """Programmatically create a Drink Settings config entry for a profile.
 
@@ -142,24 +183,11 @@ async def _ensure_drink_settings_entry(hass: HomeAssistant, profile_name: str | 
         for entry in hass.config_entries.async_entries(DOMAIN):
             if entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS:
                 return DEFAULT_PROFILE_ID
-        settings_entry = ConfigEntry(
-            data={
-                "device_category": DEVICE_CATEGORY_DRINK_SETTINGS,
-                "profile_id": DEFAULT_PROFILE_ID,
-                "profile_name": None,
-                **GLOBAL_PK_DEFAULTS,
-                "caffeine_daily_limit_mg": CAFFEINE_DEFAULT_LIMIT_MG,
-                "alcohol_daily_limit_g": ALCOHOL_DEFAULT_LIMIT_G,
-            },
-            discovery_keys=MappingProxyType({}),
-            domain=DOMAIN,
-            minor_version=1,
-            options={},
-            source="user",
-            subentries_data=None,
-            title="Drink Settings",
+        settings_entry = _build_drink_settings_entry(
+            profile_id=DEFAULT_PROFILE_ID,
+            profile_name=None,
             unique_id=_DRINK_SETTINGS_UNIQUE_ID,
-            version=CURRENT_VERSION,
+            title="Drink Settings",
         )
         # async_add awaits async_setup -> async_setup_entry -> _setup_drink_masters,
         # so the master coordinators exist in hass.data before this returns.
@@ -177,27 +205,14 @@ async def _ensure_drink_settings_entry(hass: HomeAssistant, profile_name: str | 
     # refresh raises ConfigEntryError outside SETUP_IN_PROGRESS).
     profile_id = uuid.uuid4().hex
     title = f"Drink Settings \u2014 {profile_name}"
-    settings_entry = ConfigEntry(
-        data={
-            "device_category": DEVICE_CATEGORY_DRINK_SETTINGS,
-            "profile_id": profile_id,
-            "profile_name": profile_name,
-            **GLOBAL_PK_DEFAULTS,
-            "caffeine_daily_limit_mg": CAFFEINE_DEFAULT_LIMIT_MG,
-            "alcohol_daily_limit_g": ALCOHOL_DEFAULT_LIMIT_G,
-        },
-        discovery_keys=MappingProxyType({}),
-        domain=DOMAIN,
-        minor_version=1,
-        options={},
-        source="user",
-        subentries_data=None,
-        title=title,
-        # unique_id is deliberately separate from profile_id: it only serves
-        # HA's config-entry dedup guard.  profile_id is the immutable
-        # routing/storage key consumed by store + sensor + coordinator code.
+    # unique_id is deliberately separate from profile_id: it only serves
+    # HA's config-entry dedup guard.  profile_id is the immutable
+    # routing/storage key consumed by store + sensor + coordinator code.
+    settings_entry = _build_drink_settings_entry(
+        profile_id=profile_id,
+        profile_name=profile_name,
         unique_id=f"drink_settings_named::{profile_name}",
-        version=CURRENT_VERSION,
+        title=title,
     )
     # async_add awaits async_setup -> async_setup_entry -> _setup_drink_masters
     # (coordinators keyed under profile_id) + async_forward_entry_setups
@@ -488,6 +503,25 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
     return True
 
 
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up domain-level, entry-independent pieces (audit D3).
+
+    Registers the three REST views ONCE at integration (domain) setup --
+    the standard HA pattern -- instead of per config entry in
+    ``async_setup_entry`` (HA ignores duplicate registrations, so the old
+    per-entry placement was merely cosmetic overhead).  HA calls this hook
+    before the first config entry is set up, so the endpoints are available
+    even before any entry finishes loading.
+
+    ``config`` is the (possibly empty) YAML block for the domain; this
+    integration is UI-only, so it is unused.
+    """
+    hass.http.register_view(AxDoseLoggerHistoryView())
+    hass.http.register_view(AxDoseLoggerPredictLowView())
+    hass.http.register_view(AxDoseLoggerGraphView())
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
@@ -520,11 +554,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
         hass.data[DOMAIN]["_store_load"] = hass.async_create_task(store.async_load())
     await hass.data[DOMAIN]["_store_load"]
 
-    # Register REST views (idempotent -- HA ignores duplicate registrations)
-    hass.http.register_view(AxDoseLoggerHistoryView())
-    hass.http.register_view(AxDoseLoggerPredictLowView())
-    hass.http.register_view(AxDoseLoggerGraphView())
-
     device_category = entry.data.get("device_category", DEVICE_CATEGORY_MEDICINE)
 
     if device_category == DEVICE_CATEGORY_DRINK_SETTINGS:
@@ -540,7 +569,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
         }
         async_setup_services(hass)
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
         return True
 
     if device_category == DEVICE_CATEGORY_DRINKS:
@@ -558,6 +587,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry)
         hass.data[DOMAIN][entry.entry_id] = {
             "entry_data": entry.data,
             "coordinator": coordinator,
+            # Snapshot of allowed_profiles for change detection in
+            # async_reload_entry (mirrors the medicine prev_structural
+            # pattern).  Changing allowed_profiles IS structural: it alters
+            # log_drink routing (target_profile validation), so a reload is
+            # required for the new set to take effect.
+            "prev_allowed_profiles": list(
+                entry.options.get(
+                    "allowed_profiles", entry.data.get("allowed_profiles", [])
+                )
+            ),
         }
         async_setup_services(hass)
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -621,10 +660,19 @@ async def async_reload_entry(hass: HomeAssistant, entry: AxDoseLoggerConfigEntry
         # Granular drink entries only have mutable cooldown/dose_strength/
         # drinking_duration -- no structural entity changes.  Coordinator
         # reads the new options on its next update cycle.
-        # NOTE: changing allowed_profiles IS structural (the multi-select in
-        # async_step_drink_options triggers a reload via the options-flow
-        # create_entry -> add_update_listener path, not here).  The reload
-        # re-runs async_setup_entry which re-reads allowed_profiles.
+        # NOTE: changing allowed_profiles IS structural (it alters log_drink
+        # routing / target_profile validation), so compare the prev/curr
+        # snapshot and reload the entry when it changed.  The reload re-runs
+        # async_setup_entry which re-reads allowed_profiles.
+        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+        prev_allowed = entry_data.get("prev_allowed_profiles", [])
+        curr_allowed = list(
+            entry.options.get(
+                "allowed_profiles", entry.data.get("allowed_profiles", [])
+            )
+        )
+        if prev_allowed != curr_allowed:
+            await hass.config_entries.async_reload(entry.entry_id)
         return
 
     # --- Medicine ---

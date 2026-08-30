@@ -240,6 +240,14 @@ PK_DEFAULTS: dict[str, float] = {
 
 MAX_DOSES_PER_DAY = 18
 
+# Pills per time slot: how many pills a single scheduled slot prescribes
+# (e.g. 2 pills at 08:00 + 2 at 20:00 = 4/day). Default 1 keeps every
+# existing entry's behavior identical (no migration needed). Read via
+# get_pills_per_slot() so sensors/config share one fallback chain.
+PILLS_PER_SLOT_DEFAULT = 1
+PILLS_PER_SLOT_MIN = 1
+PILLS_PER_SLOT_MAX = 10
+
 DEFAULT_DOSE_TIMES: dict[int, list[str]] = {
     1: ["08:00"],
     2: ["08:00", "20:00"],
@@ -298,9 +306,25 @@ def parse_dose_time(value) -> tuple[int, int]:
         try:
             parts = value.split(":")
             return (int(parts[0]), int(parts[1]))
-        except ValueError, IndexError:
+        except (ValueError, IndexError):
             return (8, 0)
     return (8, 0)
+
+
+def get_pills_per_slot(entry: ConfigEntry) -> int:
+    """
+    Read ``pills_per_slot`` from a config entry with the shared fallback chain.
+
+    ``options`` wins over ``data``; the default is 1 so every pre-existing
+    entry behaves exactly as before (a slot is covered by a single dose).
+    Values are clamped to ``[PILLS_PER_SLOT_MIN, PILLS_PER_SLOT_MAX]``.
+    """
+    raw = entry.options.get("pills_per_slot", entry.data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = PILLS_PER_SLOT_DEFAULT
+    return max(PILLS_PER_SLOT_MIN, min(PILLS_PER_SLOT_MAX, value))
 
 
 def get_dose_times(entry: ConfigEntry) -> list[tuple[int, int]]:

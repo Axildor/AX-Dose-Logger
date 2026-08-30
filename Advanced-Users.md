@@ -35,6 +35,7 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Dose Interval | 1–48 h | Minimum hours between consecutive doses | 8 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
+| Pills per Dose | 1–10 pills | Pills prescribed per dose time; reminders stay active until all are logged | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 8 |
 
 #### Time of Day
@@ -44,6 +45,7 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
 | Dose Time | Time picker | Time of day to take the medication | 08:00 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the window | 1 |
+| Pills per Dose | 1–10 pills | Pills prescribed per dose time; reminders stay active until all are logged | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 24 |
 
 #### As Needed (PRN)
@@ -222,7 +224,14 @@ Key entities and their attributes for template references:
 - `window_hours`: `24` (fixed rolling window)
 - `doses_in_window`: count of doses logged in the window
 - `daily_limit`: configured 24h limit (in the medication's unit), or `null` when set to `0` (no limit)
-- `remaining`: `daily_limit - amount`, or `null` when no limit is configured
+- `remaining`: `daily_limit - amount`, or `null` when no limit is configured. **Deprecated** — prefer the standalone *Daily Remaining* sensor below (kept so existing templates keep working).
+- `unit_of_measurement`: the medication's strength unit (mg/μg/g)
+
+**Daily Remaining** (`sensor.ibuprofen_daily_remaining`) — only created when a 24h Strength Limit is configured
+- State: `daily_limit − amount in last 24h` (in the medication's unit, 1 decimal). A negative value means the limit is already exceeded (overage). The standalone, automation-friendly form of the Amount in Last 24h sensor's `remaining` attribute.
+- `window_hours`: `24` (fixed rolling window)
+- `daily_limit`: configured 24h limit, or `null` when set to `0`
+- `amount_24h`: the current 24h intake sum (mirrors the Amount in Last 24h state)
 - `unit_of_measurement`: the medication's strength unit (mg/μg/g)
 
 **Dose Status** (`sensor.ibuprofen_dose_status`)
@@ -273,8 +282,18 @@ Key entities and their attributes for template references:
 - `body_mass`: raw current body-mass (mg caffeine / g alcohol)
 - `body_mass_unit`: unit string
 - `current_band`: the current band label
-- `next_band`: the next-lower band label
-- `minutes_until_next_band`: estimated decay time to the next-lower band
+- `next_band`: the next-lower band label. **Deprecated** — prefer the standalone *Next Band* sensor below (kept so existing templates keep working).
+- `minutes_until_next_band`: estimated decay time to the next-lower band. **Deprecated** — prefer the *Next Band* sensor's attribute of the same name.
+
+**Next Band** (Master Tracker — `sensor.caffeine_tracker_next_band`)
+- State: the next-lower disruption band label (`Low` / `Moderate` / `High`), or `unknown` when already in the lowest band (no next transition). Trigger automations on the upcoming transition (`state == "Low"`).
+- `current_band`: the current band label
+- `minutes_until_next_band`: estimated minutes until the body-mass crosses into the next-lower band (int; `null` when already in the lowest band)
+- `next_band_at`: ISO wall-clock time of the predicted crossing
+
+**Estimated None Time** (Master Tracker — `sensor.caffeine_tracker_estimated_none_time`)
+- State: TIMESTAMP — predicted wall-clock time the body-mass decays into the sleep-safe **None** band (the Low → None boundary: 11 mg caffeine / 1 g alcohol); `unknown` once at or below it. The longer-horizon companion to *Low - Timestamp*; ideal for time-trigger automations ("remind me when sleep-safe").
+- `none_threshold`: the Low → None boundary in the substance's unit
 
 ---
 
@@ -291,7 +310,8 @@ Each medication and drink shows up as a **Device** in Home Assistant. Replace `i
 | Last Dose | `sensor.ibuprofen_last_dose` | Timestamp of most recent dose | — |
 | Pills Safe to Take | `sensor.ibuprofen_pills_safe_to_take` | Remaining pills safe to take in the current window | `timestamps`, `time_window_hours`, `in_on_window` (Cyclic only), `window_expires_at` (when the limit resets; `null` if not at the limit) |
 | Amount in Body | `sensor.ibuprofen_amount_in_body` | Current drug amount in body (mg) — requires PK fields | `last_updated`, `gut_mass`, `ka`, `lag_time`, `dose_history` (IR); `gut_ir_mass`, `matrix_sr_mass`, `gut_sr_mass`, `ka`, `kr`, `lag_time`, `dose_history` (ER) |
-| Amount in Last 24h | `sensor.ibuprofen_amount_in_last_24h` | Total dose strength consumed in the last 24 hours (mg/μg/g) | `window_hours`, `doses_in_window`, `daily_limit` (`null` when 0), `remaining` (`null` when no limit), `unit_of_measurement` |
+| Amount in Last 24h | `sensor.ibuprofen_amount_in_last_24h` | Total dose strength consumed in the last 24 hours (mg/μg/g) | `window_hours`, `doses_in_window`, `daily_limit` (`null` when 0), `remaining` (deprecated — use Daily Remaining), `unit_of_measurement` |
+| Daily Remaining | `sensor.ibuprofen_daily_remaining` | Remaining daily allowance (`daily_limit − amount_24h`; negative = overage; only when `daily_limit > 0`) | `window_hours`, `daily_limit`, `amount_24h`, `unit_of_measurement` |
 | 24h Limit Exceeded | `binary_sensor.ibuprofen_24h_limit_exceeded` | On when 24h strength limit is/would be exceeded (only when `daily_limit > 0`) | `current_amount`, `daily_limit`, `next_dose_strength`, `remaining`, `already_exceeded`, `would_exceed`, `unit_of_measurement` |
 | Next Dose | `sensor.ibuprofen_next_dose` | Timestamp of next scheduled dose | `safe_to_take` (number of pills safe to take remaining now) |
 | 7-Day Average | `sensor.ibuprofen_avg_daily_doses_7_days` | Day-level dose coverage over 7 days (0.0–1.0) | `covered_days`, `scheduled_days`, `effective_window_days` |

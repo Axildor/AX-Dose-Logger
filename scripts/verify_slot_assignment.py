@@ -38,6 +38,19 @@ PRIOR_HISTORY = [
     dt(2026, 8, 7, 21, 0),
 ]
 
+# Prior history at 2 pills per slot: every prior slot fully covered
+# (used by the pills_per_slot regression cases below).
+PRIOR_HISTORY_PPS2 = [
+    dt(2026, 8, 6, 13, 0),
+    dt(2026, 8, 6, 13, 1),
+    dt(2026, 8, 6, 21, 0),
+    dt(2026, 8, 6, 21, 5),
+    dt(2026, 8, 7, 13, 0),
+    dt(2026, 8, 7, 13, 5),
+    dt(2026, 8, 7, 21, 0),
+    dt(2026, 8, 7, 21, 5),
+]
+
 
 def covered_map(assignments):
     return [(a.slot_time.strftime("%m-%d %H:%M"), a.covered) for a in assignments]
@@ -203,6 +216,145 @@ results.append(
         grace_hours=1,
         expected_actual=5,  # 4 prior + 08-08 13:00
         expected_expected=6,
+    )
+)
+
+# ─────────────────────────────────────────────────────────────────────
+# pills_per_slot regression (audit edge case: 4 pills/day, 2 slots).
+# With pills_per_slot=2 a slot is only covered after TWO doses inside
+# its window; a single dose leaves it uncovered (due/overdue persists).
+# ──────────────────────────────────────────────────────────────────────
+
+
+def pps_case(name, now, doses, pills_per_slot, expected_overdue_slot, expected_remaining=None):
+    """Overdue check with pills_per_slot + slot_remaining verification."""
+    early_grace = timedelta(minutes=240)
+    assignments = compute_slot_assignments(
+        PARSED,
+        doses,
+        now,
+        lookback_days=2,
+        future_days=0,
+        early_grace=early_grace,
+        lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+        pills_per_slot=pills_per_slot,
+    )
+    overdue = None
+    current = None
+    for a in assignments:
+        if a.slot_time > now:
+            break
+        current = a
+        if not a.covered:
+            overdue = a.slot_time
+    overdue_str = overdue.strftime("%m-%d %H:%M") if overdue else "None"
+    expected_str = expected_overdue_slot.strftime("%m-%d %H:%M") if expected_overdue_slot else "None"
+    remaining = max(0, pills_per_slot - current.assigned_count) if current else None
+    ok = overdue_str == expected_str and remaining == expected_remaining
+    print(
+        f"[{'PASS' if ok else 'FAIL'}] {name}: overdue={overdue_str} (want {expected_str}), "
+        f"slot_remaining={remaining} (want {expected_remaining})"
+    )
+    if not ok:
+        print(
+            "    assignments:",
+            [(a.slot_time.strftime("%m-%d %H:%M"), a.covered, a.assigned_count) for a in assignments],
+        )
+    return ok
+
+
+# Trace 1 (compliant user, 2 pills/slot): 08:00 slot has 1 of 2 pills ->
+# still uncovered (overdue anchors it) with 1 pill remaining. The old
+# binary model wrongly marked the slot covered after ONE pill.
+results.append(
+    pps_case(
+        "pps=2: 1 pill in 13:00 slot -> uncovered, 1 remaining",
+        now=dt(2026, 8, 8, 14, 0),
+        doses=[*PRIOR_HISTORY_PPS2, dt(2026, 8, 8, 13, 0)],
+        pills_per_slot=2,
+        expected_overdue_slot=dt(2026, 8, 8, 13, 0),
+        expected_remaining=1,
+    )
+)
+
+# Trace 1 continued: both pills taken -> slot covered, 0 remaining.
+results.append(
+    pps_case(
+        "pps=2: 2 pills in 13:00 slot -> covered, 0 remaining",
+        now=dt(2026, 8, 8, 14, 0),
+        doses=[*PRIOR_HISTORY_PPS2, dt(2026, 8, 8, 13, 0), dt(2026, 8, 8, 13, 5)],
+        pills_per_slot=2,
+        expected_overdue_slot=None,
+        expected_remaining=0,
+    )
+)
+
+# Trace 2 (prompt-following user, 1 pill/slot): default pps=1 keeps the
+# legacy behavior — one dose covers the slot (no regression).
+results.append(
+    pps_case(
+        "pps=1 (default): 1 pill covers the slot",
+        now=dt(2026, 8, 8, 14, 0),
+        doses=[*PRIOR_HISTORY, dt(2026, 8, 8, 13, 0)],
+        pills_per_slot=1,
+        expected_overdue_slot=None,
+        expected_remaining=0,
+    )
+)
+
+# Dose-stealing guard with pps=2: a single dose between slots belongs to
+# the EARLIER slot (greedy chronological), leaving 21:00 fully uncovered.
+results.append(
+    pps_case(
+        "pps=2: 17:30 dose -> late 13:00 (1/2), 21:00 uncovered",
+        now=dt(2026, 8, 8, 22, 0),
+        doses=[*PRIOR_HISTORY_PPS2, dt(2026, 8, 8, 17, 30)],
+        pills_per_slot=2,
+        expected_overdue_slot=dt(2026, 8, 8, 21, 0),
+        expected_remaining=2,
+    )
+)
+
+# Adherence with pps=2: expected = slots x 2; 1 pill in one slot = 1 actual.
+def adherence_pps_check(name, now, doses, pills_per_slot, grace_hours, expected_actual, expected_expected):
+    early_grace = timedelta(hours=grace_hours)
+    assignments = compute_slot_assignments(
+        PARSED,
+        doses,
+        now,
+        lookback_days=2,
+        future_days=0,
+        early_grace=early_grace,
+        lateness_mode=LATENESS_CAPPED,
+        lateness_cap=early_grace,
+        pills_per_slot=pills_per_slot,
+    )
+    actual = 0
+    expected = 0
+    for a in assignments:
+        if a.slot_time < dt(2026, 8, 6, 0, 0):
+            continue
+        if now < a.slot_time + early_grace:
+            continue
+        expected += pills_per_slot
+        actual += min(a.assigned_count, pills_per_slot)
+    ok = actual == expected_actual and expected == expected_expected
+    print(f"[{'PASS' if ok else 'FAIL'}] {name}: actual={actual}/{expected} (want {expected_actual}/{expected_expected})")
+    return ok
+
+
+# 4 prior slots fully covered (8 pills) + 1 pill in 08-08 13:00 ->
+# actual=9, expected=12 (6 slots x 2). The old model would show 5/6 = 83%
+# while the user is 75% pill-compliant.
+results.append(
+    adherence_pps_check(
+        "pps=2 adherence: 9/12 pills",
+        now=dt(2026, 8, 8, 23, 0),
+        doses=[*PRIOR_HISTORY_PPS2, dt(2026, 8, 8, 13, 5)],
+        pills_per_slot=2,
+        grace_hours=1,
+        expected_actual=9,
+        expected_expected=12,
     )
 )
 

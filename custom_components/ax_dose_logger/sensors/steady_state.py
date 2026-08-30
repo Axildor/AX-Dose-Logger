@@ -100,14 +100,14 @@ class PillSteadyStateSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             if "last_dose_timestamp" in last_state.attributes:
                 try:
                     self._last_dose_timestamp = dt_util.parse_datetime(last_state.attributes["last_dose_timestamp"])
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     pass
             # Restore _current_mass so update_state() produces correct
             # values before the first coordinator refresh completes.
             if "current_mass" in last_state.attributes:
                 try:
                     self._current_mass = float(last_state.attributes["current_mass"])
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     pass
 
     @callback

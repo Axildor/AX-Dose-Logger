@@ -368,7 +368,7 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
         ):
             try:
                 self._attr_native_value = float(last_state.state)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 # Non-numeric restored state — ignore; the coordinator push
                 # below recomputes the correct value immediately.
                 pass
@@ -426,5 +426,195 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
             "low_threshold": self._low_threshold,
             "low_threshold_unit": self._unit,
             "estimated_none_hours": estimated_none_hours,
+        }
+        self.async_write_ha_state()
+
+
+class DrinkMasterEstimatedNoneTimeSensor(RestoreSensor):
+    """Timestamp sensor — predicted wall-clock time the body-mass enters None.
+
+    Promoted from the ``estimated_none_time`` attribute of
+    :class:`DrinkMasterEstimatedLowTimeSensor` so automations (time triggers)
+    and dashboards can consume the sleep-safe moment directly.  The attribute
+    stays on the host sensor (deprecated, not removed) so existing user
+    templates keep working.
+
+    The None band is the asymptotic sleep-safe milestone: caffeine decays
+    exponentially toward zero; alcohol's None target is exactly 0 g which only
+    occurs once the liver has fully cleared the ethanol.  The state is an
+    ISO-8601 datetime; ``None`` (unknown) once the body-mass is at or below
+    the ``none_threshold`` (11 mg caffeine / 1 g alcohol).
+
+    Mirrors :class:`DrinkMasterEstimatedLowTimeSensor` exactly — same
+    peak-anchored gate, same TIMESTAMP device class, same restore pattern —
+    only the target threshold differs (``none_threshold`` instead of
+    ``low_threshold``).
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
+        """Initialize the Estimated None Time timestamp sensor."""
+        info = _SENSOR_INFO[coordinator.substance]
+        self._coordinator = coordinator
+        self._substance = coordinator.substance
+        self._profile_id = profile_id
+        self._profile_name = profile_name
+        self._none_threshold = info["none_threshold"]
+        self._attr_unique_id = f"{master_unique_id(profile_id, self._substance)}_estimated_none_time"
+        self._attr_translation_key = f"estimated_none_time_{self._substance}"
+        self._attr_icon = "mdi:bed-clock"
+        # Stable device identifiers — standalone virtual Master Tracker
+        # device, not tied to entry_id (mirrors the sibling sensors).
+        self._attr_device_info = tracker_device_info(profile_id, self._substance, profile_name=profile_name)
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "drink_master": True,  # Frontend filter marker
+            "role": "estimated_none_time",  # Frontend classifier (survives entity_id renames)
+            "none_threshold": self._none_threshold,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Restore last state, then subscribe to the master coordinator."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
+            # Timestamp sensors store ISO strings in the state; parse back to
+            # a datetime so HA's TIMESTAMP device class accepts it.
+            restored = dt_util.parse_datetime(last_state.state)
+            if restored is not None:
+                self._attr_native_value = restored
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+        # Push the current coordinator state immediately.
+        self._handle_coordinator_update()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Recompute the estimated None wall-clock time on updates.
+
+        Same peak-anchored gate as :class:`DrinkMasterEstimatedLowTimeSensor`:
+        the gate anchors on the **forecasted peak body mass** for caffeine
+        (``data.peak_body_mass``), not the instantaneous ``body_mass`` — at
+        the moment a caffeine dose is logged the current body mass is still
+        ~0 (absorption has not started).  For alcohol ``peak_body_mass ==
+        body_mass`` (instant absorption), so the gate is unchanged.
+        """
+        data = self._coordinator.data
+        if data is None:
+            return
+        mass = float(data.body_mass)
+        # Caffeine forecasts the peak; alcohol's peak == current body mass.
+        anchor_mass = float(data.peak_body_mass) if data.peak_body_mass else mass
+
+        estimated_none_time: datetime | None = None
+        if anchor_mass > self._none_threshold:
+            eta_none = self._coordinator.estimate_time_to_body_mass(self._none_threshold)
+            if eta_none is not None:
+                estimated_none_time = dt_util.now() + eta_none
+
+        # TIMESTAMP device class requires a datetime object (or None), not an
+        # ISO string — HA serializes the datetime to ISO for the state API.
+        self._attr_native_value = estimated_none_time
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "drink_master": True,
+            "role": "estimated_none_time",
+            "none_threshold": self._none_threshold,
+        }
+        self.async_write_ha_state()
+
+
+class DrinkMasterNextBandSensor(RestoreSensor):
+    """Categorical sensor — the next-lower sleep-disruption band.
+
+    Promoted from the ``next_band`` + ``minutes_until_next_band`` attributes
+    of :class:`DrinkMasterSleepDisruptionSensor` so automations can trigger on
+    the upcoming band transition (``state == "Low"``) and dashboards can show
+    a countdown.  The attributes stay on the host sensor (deprecated, not
+    removed) so existing user templates keep working.
+
+    State = the next-lower band label (e.g. ``Low`` when currently
+    ``Moderate``); ``None`` (unknown) when already in the lowest band — no
+    next transition exists.  Attributes carry the countdown:
+    ``minutes_until_next_band`` (int) + ``next_band_at`` (ISO wall-clock).
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    # Categorical string sensor — no state_class / native unit.
+
+    def __init__(self, settings_entry, coordinator: DrinkMasterCoordinator, profile_id: str, profile_name: str | None) -> None:
+        """Initialize the Next Band categorical sensor."""
+        info = _SENSOR_INFO[coordinator.substance]
+        self._coordinator = coordinator
+        self._substance = coordinator.substance
+        self._profile_id = profile_id
+        self._profile_name = profile_name
+        self._bands = info["bands"]
+        self._attr_unique_id = f"{master_unique_id(profile_id, self._substance)}_next_band"
+        self._attr_translation_key = f"next_band_{self._substance}"
+        self._attr_icon = "mdi:transition"
+        # Stable device identifiers — standalone virtual Master Tracker
+        # device, not tied to entry_id (mirrors the sibling sensors).
+        self._attr_device_info = tracker_device_info(profile_id, self._substance, profile_name=profile_name)
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "drink_master": True,  # Frontend filter marker
+            "role": "next_band",  # Frontend classifier (survives entity_id renames)
+            "current_band": None,
+            "minutes_until_next_band": None,
+            "next_band_at": None,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Restore last state, then subscribe to the master coordinator."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
+            # Restore the textual band; attributes are recomputed below.
+            self._attr_native_value = last_state.state
+        self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
+        # Push the current coordinator state immediately.
+        self._handle_coordinator_update()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Recompute the next band + countdown on updates.
+
+        Reuses the shared ``_classify`` helper + per-substance ``bands`` —
+        the boundary between the current band and the next-lower band is the
+        current band's upper bound (the next-lower band's
+        ``upper_bound_exclusive``).  ``estimate_time_to_body_mass`` anchors
+        at the forecasted peak internally, so the countdown is real the
+        instant a dose is logged.
+        """
+        data = self._coordinator.data
+        if data is None:
+            return
+        mass = float(data.body_mass)
+        idx, label = _classify(self._bands, mass)
+
+        next_band_label: str | None = None
+        minutes_until_next: int | None = None
+        next_band_at: str | None = None
+        if idx + 1 < len(self._bands):
+            next_band_label = self._bands[idx + 1][1]
+            next_boundary = self._bands[idx][0]
+            if next_boundary != math.inf:
+                eta = self._coordinator.estimate_time_to_body_mass(next_boundary)
+                if eta is not None:
+                    minutes_until_next = int(round(eta.total_seconds() / 60.0))
+                    next_band_at = (dt_util.now() + eta).isoformat()
+
+        self._attr_native_value = next_band_label
+        self._attr_extra_state_attributes = {
+            "substance": self._substance,
+            "drink_master": True,
+            "role": "next_band",
+            "current_band": label,
+            "minutes_until_next_band": minutes_until_next,
+            "next_band_at": next_band_at,
         }
         self.async_write_ha_state()

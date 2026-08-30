@@ -15,13 +15,15 @@
           "initial_stock": "Inventory",
           "hours_between_doses": "Dose Interval",
           "pill_limit": "Pill Limit",
+          "pills_per_slot": "Pills per Dose",
           "time_window_hours": "Time Window",
           "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "hours_between_doses": "Minimum hours between consecutive doses.",
-          "pill_limit": "Maximum pills you can take within the time window.",
+          "pill_limit": "Maximum pills you can take within the time window. Safety cap only — set it at or above Dose Interval × Pills per Dose so a compliant day never triggers it.",
+          "pills_per_slot": "How many pills each scheduled dose prescribes (e.g. 2 = take two pills at every dose time). Leave at 1 for single-pill doses.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
           "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class."
         }
@@ -33,13 +35,15 @@
           "initial_stock": "Inventory",
           "doses_per_day": "How Many Times per Day",
           "pill_limit": "Pill Limit",
+          "pills_per_slot": "Pills per Dose",
           "time_window_hours": "Time Window",
           "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
           "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. You'll set the exact times on the next screen.",
-          "pill_limit": "Maximum pills you can take within the time window.",
+          "pill_limit": "Maximum pills you can take within the time window. Set it at or above Doses per Day × Pills per Dose so a fully compliant day never triggers the limit.",
+          "pills_per_slot": "How many pills each scheduled dose consists of (e.g. 2 = take two pills at every dose time). Reminders stay active until all pills for the dose are logged.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 24 hours.",
           "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class."
         }
@@ -308,11 +312,13 @@
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
           "pill_limit": "Pill Limit",
+          "pills_per_slot": "Pills per Dose",
           "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
           "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. Save and re-enter options to change the number of time fields.",
+          "pills_per_slot": "How many pills each scheduled dose consists of (e.g. 2 = take two pills at every dose time). Reminders stay active until all pills for the dose are logged.",
           "dose_time_1": "Time for the first daily dose.",
           "dose_time_2": "Time for the second daily dose.",
           "dose_time_3": "Time for the third daily dose.",
@@ -354,11 +360,13 @@
           "cycle_anchor_date": "Cycle Start Date",
           "dose_time": "Dose Time",
           "pill_limit": "Pill Limit",
+          "pills_per_slot": "Pills per Dose",
           "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
           "hours_between_doses": "Minimum hours between consecutive doses.",
           "doses_per_day": "How many times per day you take this medication.",
+          "pills_per_slot": "How many pills each scheduled dose consists of (e.g. 2 = take two pills at every dose time). Reminders stay active until all pills for the dose are logged.",
           "time_window_hours": "Rolling window for the pill limit.",
           "days_on": "Number of active days in the cycle.",
           "days_off": "Number of rest days in the cycle.",
@@ -771,11 +779,32 @@
       "pill_daily_amount": {
         "name": "Amount in Last 24h"
       },
+      "pill_daily_remaining": {
+        "name": "Daily Remaining"
+      },
       "drink_master_daily_amount_caffeine": {
         "name": "Amount in Last 24h"
       },
       "drink_master_daily_amount_alcohol": {
         "name": "Amount in Last 24h"
+      },
+      "drink_master_daily_remaining_caffeine": {
+        "name": "Daily Remaining"
+      },
+      "drink_master_daily_remaining_alcohol": {
+        "name": "Daily Remaining"
+      },
+      "estimated_none_time_caffeine": {
+        "name": "Estimated None Time"
+      },
+      "estimated_none_time_alcohol": {
+        "name": "Estimated None Time"
+      },
+      "next_band_caffeine": {
+        "name": "Next Band"
+      },
+      "next_band_alcohol": {
+        "name": "Next Band"
       }
     },
     "button": {

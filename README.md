@@ -111,6 +111,7 @@ AX Dose Logger supports four ways to track a medication, depending on how you ta
 Accidentally taking too much is easy to do, especially with medications that have a wide dosing window. AX Dose Logger helps prevent that:
 
 - **Pill Limit Tracking** — You set how many pills are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so the limit recovers one at a time. On Cyclic OFF days, the limit drops to 0 automatically.
+- **Pills per Dose** — If your prescription is more than one pill per dose time (e.g. 2 pills at 8 AM and 2 at 8 PM), set **Pills per Dose** and reminders stay active until *all* pills for that dose are logged — one pill no longer clears the reminder. Adherence and "Days Left" account for the full daily quantity automatically. Available for Time of Day and Regular Interval medications.
 - **Anti-Drift Buffer** — A small configurable buffer (default 5 minutes) lets the next dose become available slightly before the strict window elapses, so taking each dose a few minutes late doesn't gradually push the next dose later every day ("schedule creep"). Capped at 25% of the window for safety. Adjustable per medication and per drink in the options.
 - **Overdose Warning** — When the pill limit hits 0, the Take button on the dedicated AX Dose Logger Card turns red and asks you to confirm before logging.
 
@@ -410,6 +411,17 @@ Each state also has an optional **action** input (e.g. `Action on Overdue` to fl
 Each medication and drink shows up as a **Device** in Home Assistant, exposing sensors, buttons, numbers, a calendar, and event-bus events you can use in any automation. The ready-made reminder blueprint above is the quickest starting point for push notifications.
 
 For custom automations — the full sensor/entity reference table, button and number entities, the calendar entity, the event-bus reference, and copy-pasteable YAML automation examples — see [Advanced Users](Advanced-Users.md).
+
+---
+
+## Fixes
+
+Recent reliability fixes you may have noticed:
+
+- **Master Tracker "Reset Averages" button** — the button entity is now created on Master Tracker devices as intended, so the averages reset works from the device as well as the card's Tools pane.
+- **Allowed Profiles edits** — changing which profiles may log a shared drink in the drink's options now takes effect immediately (the entry reloads automatically) instead of requiring the drink to be recreated.
+- **Graphs on granular drink devices** — opening the graphs pane for an individual drink no longer fails; it renders cleanly (the combined decay curve lives on the Master Tracker).
+- **Backdated doses** — logging a dose with a past timestamp no longer corrupts the "Last Dose" sensor or makes Undo remove the wrong entry; the true most-recent dose is always reported and undone.
 
 ---
 

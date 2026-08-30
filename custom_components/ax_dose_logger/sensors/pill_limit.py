@@ -4,7 +4,7 @@ import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 
-from ..const import DOSE_BUFFER_DEFAULT_MIN, TRACKING_CYCLIC
+from ..const import DOSE_BUFFER_DEFAULT_MIN, TRACKING_CYCLIC, get_pills_per_slot
 from ..entity import AxDoseLoggerSensorEntity
 from ..sliding_window import effective_dose_buffer_minutes, get_time_window, is_on_day
 
@@ -100,4 +100,5 @@ class PillLimitSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "window_expires_at": window_expires_at,
             "dose_buffer_minutes": raw_buffer,
             "effective_buffer_minutes": buffer_minutes,
+            "pills_per_slot": get_pills_per_slot(entry),
         }

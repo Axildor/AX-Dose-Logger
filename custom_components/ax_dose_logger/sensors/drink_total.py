@@ -47,6 +47,7 @@ class DrinkTotalSensor(RestoreSensor):
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "device_type": "drink",
+            "role": "total",
             "allowed_profiles": entry.data.get("allowed_profiles", ["default"]),
             "shared_drink": entry.options.get("shared_drink", entry.data.get("shared_drink", False)),
         }
@@ -76,6 +77,7 @@ class DrinkTotalSensor(RestoreSensor):
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "device_type": "drink",
+            "role": "total",
             "allowed_profiles": self._entry.data.get("allowed_profiles", ["default"]),
             "shared_drink": self._entry.options.get("shared_drink", self._entry.data.get("shared_drink", False)),
         }

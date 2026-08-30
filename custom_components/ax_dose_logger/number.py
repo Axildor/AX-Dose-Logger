@@ -134,8 +134,10 @@ class PillStockNumber(AxDoseLoggerEntity, RestoreNumber):
             if self._attr_native_value > 0:
                 self._attr_native_value -= 1
         elif current_count < self._last_dose_count:
-            # Dose undone — increment
-            self._attr_native_value += 1
+            # Dose undone — increment.  A drop of more than 1 is a history
+            # reset (N -> 0), not an undo: re-baseline without touching stock.
+            if self._last_dose_count - current_count == 1:
+                self._attr_native_value += 1
         self._last_dose_count = current_count
         self.async_write_ha_state()
 
@@ -356,8 +358,10 @@ class DrinkStockNumber(AxDoseLoggerEntity, RestoreNumber):
             if self._attr_native_value > 0:
                 self._attr_native_value -= 1
         elif current_count < self._last_dose_count:
-            # Drink undone — increment
-            self._attr_native_value += 1
+            # Drink undone — increment.  A drop of more than 1 is a history
+            # reset (N -> 0), not an undo: re-baseline without touching stock.
+            if self._last_dose_count - current_count == 1:
+                self._attr_native_value += 1
         self._last_dose_count = current_count
         self.async_write_ha_state()
 

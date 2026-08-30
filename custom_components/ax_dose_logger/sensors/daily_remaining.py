@@ -1,23 +1,20 @@
-"""Medicine device — 24-hour intake amount sensor.
+"""Medicine device — daily-limit remaining sensor.
 
-Sliding 24-hour window exposing the **total dose strength consumed in the
-last 24h**, in the medication's own ``strength_unit`` (mg/mcg/g).  The
-native value is directly comparable to a user-configured ``daily_limit``
-so automations and the card can warn before the next dose pushes intake
-over the 24h cap.
+Companion to :class:`PillDailyAmountSensor` exposing the **remaining daily
+allowance** as a standalone entity: ``daily_limit − amount_24h`` in the
+medication's own ``strength_unit`` (mg/mcg/g).  A negative value means the
+24h limit is already exceeded (overage shown as e.g. ``-50.0``).
 
-Reads ``AxDoseLoggerCoordinator.data.dose_history`` — a list of
-``(datetime, strength)`` 2-tuples.  The coordinator already pushes
-updates on every dose/undo/reset and recomputes every 1-min tick, so the
-window slides in real time (``should_poll = False`` via the
-``CoordinatorEntity`` base).
+Promoted from the ``remaining`` attribute of the Amount in Last 24h sensor so
+automations, dashboards, and history graphs can consume the value directly
+without template sensors.  The ``remaining`` attribute stays on the host
+sensor (deprecated, not removed) so existing user templates keep working.
 
-``daily_limit`` is an optional per-device config field (default ``0`` =
-no limit).  When set, the ``remaining`` attribute exposes
-``daily_limit - amount`` for "X mg of Y mg — Z left" dashboard text.
-``strength_unit`` + ``daily_limit`` are re-read on every coordinator
-update so options-flow edits propagate without a device reload (same
-pattern as :class:`PillStrengthSensor`).
+Created only when a ``daily_limit > 0`` is configured (same guard as
+:class:`Pill24hLimitExceededSensor`) — no dead entity when no limit is set.
+``strength_unit`` + ``daily_limit`` are re-read on every coordinator update
+so options-flow edits propagate without a device reload (same pattern as
+:class:`PillDailyAmountSensor`).
 """
 
 from datetime import timedelta
@@ -32,23 +29,23 @@ from homeassistant.core import callback
 
 from ..entity import AxDoseLoggerSensorEntity
 
-# Fixed 24-hour rolling window for this sensor.
+# Fixed 24-hour rolling window (mirrors PillDailyAmountSensor).
 _WINDOW_HOURS = 24
 
 
-class PillDailyAmountSensor(AxDoseLoggerSensorEntity, RestoreSensor):
-    """Total strength consumed in the last 24 hours (per medicine device)."""
+class PillDailyRemainingSensor(AxDoseLoggerSensorEntity, RestoreSensor):
+    """Remaining daily allowance (daily_limit − amount in last 24h)."""
 
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.WEIGHT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 1
-    _attr_icon = "mdi:calendar-clock"
+    _attr_icon = "mdi:progress-clock"
 
     def __init__(self, entry, coordinator):
         super().__init__(entry, coordinator)
-        self._attr_translation_key = "pill_daily_amount"
-        self._attr_unique_id = f"{entry.entry_id}_daily_amount"
+        self._attr_translation_key = "pill_daily_remaining"
+        self._attr_unique_id = f"{entry.entry_id}_daily_remaining"
         self._strength_unit = "mg"
         self._daily_limit = 0.0
         self._load_config()
@@ -76,32 +73,29 @@ class PillDailyAmountSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Re-read config + recompute the 24h sum on every coordinator push."""
+        """Re-read config + recompute the remaining allowance on every push."""
         self._load_config()
         self._update_state()
         self.async_write_ha_state()
 
     def _update_state(self) -> None:
-        """Sum dose strengths whose timestamp falls in the last 24h."""
+        """Compute daily_limit − amount_24h (negative = overage)."""
         now = dt_util.now()
         cutoff = now - timedelta(hours=_WINDOW_HOURS)
         amount = 0.0
-        doses_in_window = 0
         if self.coordinator.data and self.coordinator.data.dose_history:
             for ts, strength in self.coordinator.data.dose_history:
                 if ts >= cutoff:
                     amount += float(strength)
-                    doses_in_window += 1
-
-        self._attr_native_value = round(amount, 3)
 
         limit = self._daily_limit if self._daily_limit > 0 else None
         remaining = round(limit - amount, 3) if limit is not None else None
+        self._attr_native_value = remaining
+
         self._attr_extra_state_attributes = {
-            "role": "daily_amount",
+            "role": "daily_remaining",
             "window_hours": _WINDOW_HOURS,
-            "doses_in_window": doses_in_window,
             "daily_limit": limit,
-            "remaining": remaining,
+            "amount_24h": round(amount, 3),
             "unit_of_measurement": self._strength_unit,
         }

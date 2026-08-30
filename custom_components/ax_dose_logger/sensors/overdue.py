@@ -21,6 +21,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
     parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
@@ -61,7 +62,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if last_state and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 self._attr_native_value = int(float(last_state.state))
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 pass
 
     @callback
@@ -159,6 +160,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             future_days=0,
             early_grace=early_grace,
             lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+            pills_per_slot=get_pills_per_slot(entry),
         )
 
         # Latest uncovered slot at or before now → overdue anchor.
@@ -220,7 +222,7 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         try:
             anchor_date = date.fromisoformat(anchor_str)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             anchor_date = now.date()
 
         dose_hour, dose_minute = parse_dose_time(dose_time_str)

@@ -12,6 +12,7 @@ from .const import (
 from .data import AxDoseLoggerConfigEntry
 from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from .sensors.adherence import PillAdherenceSensor
+from .sensors.daily_remaining import PillDailyRemainingSensor
 from .sensors.avg_doses import PillAvgDosesSensor
 from .sensors.concentration import PillConcentrationSensor
 from .sensors.days_left import (
@@ -25,10 +26,13 @@ from .sensors.drink_last_dose import DrinkLastDoseSensor
 from .sensors.drink_master import DrinkMasterSensor
 from .sensors.drink_master_avg import DrinkMasterAvgDosesSensor
 from .sensors.drink_master_daily_amount import DrinkMasterDailyAmountSensor
+from .sensors.drink_master_daily_remaining import DrinkMasterDailyRemainingSensor
 from .sensors.drink_master_last_dose import DrinkMasterLastDoseSensor
 from .sensors.drink_master_sleep_disruption import (
     DrinkMasterEstimatedLowTimeSensor,
+    DrinkMasterEstimatedNoneTimeSensor,
     DrinkMasterLowHoursUntilSensor,
+    DrinkMasterNextBandSensor,
     DrinkMasterSleepDisruptionSensor,
 )
 from .sensors.drink_total import DrinkTotalSensor
@@ -81,6 +85,11 @@ async def _setup_medicine_sensors(
     daily_limit = float(entry.options.get("daily_limit", entry.data.get("daily_limit", 0)))
     if daily_limit > 0:
         entities.append(Pill24hLimitExceededSensor(entry, coordinator))
+        # Daily Remaining — daily_limit − amount_24h as a standalone entity
+        # (promoted from the daily-amount sensor's `remaining` attribute).
+        # Same guard as the limit-exceeded binary sensor: no dead entity
+        # when no limit is configured.
+        entities.append(PillDailyRemainingSensor(entry, coordinator))
     entities.append(PillLastDoseSensor(entry, coordinator))
     entities.append(PillLimitSensor(entry, coordinator))
     entities.append(PillConcentrationSensor(entry, coordinator))
@@ -193,9 +202,23 @@ async def _setup_drink_settings_sensors(
         entities.append(DrinkMasterSensor(entry, master, profile_id, profile_name))
         entities.append(DrinkMasterLastDoseSensor(entry, master, profile_id, profile_name))
         entities.append(DrinkMasterSleepDisruptionSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterNextBandSensor(entry, master, profile_id, profile_name))
         entities.append(DrinkMasterEstimatedLowTimeSensor(entry, master, profile_id, profile_name))
+        entities.append(DrinkMasterEstimatedNoneTimeSensor(entry, master, profile_id, profile_name))
         entities.append(DrinkMasterLowHoursUntilSensor(entry, master, profile_id, profile_name))
         entities.append(DrinkMasterDailyAmountSensor(entry, master, profile_id, profile_name))
+        # Daily Remaining — per-substance limit − amount_24h as a standalone
+        # entity (promoted from the daily-amount sensor's `remaining`
+        # attribute). Created only when the per-substance limit > 0
+        # (caffeine's 400 mg default always qualifies; alcohol is skipped
+        # unless a limit is configured) — no dead entity when no limit is set.
+        limit_key = "caffeine_daily_limit_mg" if substance == DRINK_TYPE_CAFFEINE else "alcohol_daily_limit_g"
+        default_limit = 400.0 if substance == DRINK_TYPE_CAFFEINE else 0.0
+        limit_val = float(
+            entry.options.get(limit_key, entry.data.get(limit_key, default_limit))
+        )
+        if limit_val > 0:
+            entities.append(DrinkMasterDailyRemainingSensor(entry, master, profile_id, profile_name))
         for window in (7, 14, 30, 365):
             entities.append(DrinkMasterAvgDosesSensor(entry, master, window, profile_id, profile_name))
     async_add_entities(entities)

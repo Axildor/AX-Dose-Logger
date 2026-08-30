@@ -22,18 +22,23 @@ LATENESS_CAPPED = "capped"
 
 @dataclass
 class SlotAssignment:
-    """One scheduled slot and the dose (if any) assigned to it.
+    """One scheduled slot and the dose(s) assigned to it.
 
-    ``covered`` is True when a dose was assigned to this slot.  ``next_slot_time``
-    is the immediately following slot in the timeline (crosses midnight into
-    the next day's first slot) and defines the lateness window upper bound
-    when ``lateness_mode == LATENESS_UNTIL_NEXT_SLOT``.
+    ``assigned_ts`` is the FIRST dose assigned to this slot (None when the
+    slot has no doses yet); ``assigned_count`` is how many doses it has
+    consumed.  ``covered`` is True when the slot has consumed
+    ``pills_per_slot`` doses (1 in the default single-pill-per-slot model).
+    ``next_slot_time`` is the immediately following slot in the timeline
+    (crosses midnight into the next day's first slot) and defines the
+    lateness window upper bound when ``lateness_mode ==
+    LATENESS_UNTIL_NEXT_SLOT``.
     """
 
     slot_time: datetime
     next_slot_time: datetime
     assigned_ts: datetime | None
     covered: bool
+    assigned_count: int = 1
 
 
 def get_next_dose_time(
@@ -93,6 +98,7 @@ def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pas
     early_grace: timedelta,
     lateness_mode: str,
     lateness_cap: timedelta | None = None,
+    pills_per_slot: int = 1,
 ) -> list[SlotAssignment]:
     """Assign each scheduled slot the earliest unassigned dose it covers.
 
@@ -141,6 +147,9 @@ def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pas
         msg = "lateness_cap is required when lateness_mode == LATENESS_CAPPED"
         raise ValueError(msg)
 
+    if pills_per_slot < 1:
+        pills_per_slot = 1
+
     # Build the slot timeline: for each calendar day in the window, one
     # slot per parsed time, in chronological order across the whole span.
     slot_times: list[datetime] = []
@@ -180,22 +189,33 @@ def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pas
         # late_bound belongs to the next slot, not this one.
 
         assigned_ts: datetime | None = None
+        assigned_count = 0
         # Advance past doses that fall before this window (too early for
         # this slot and any later slot — they belong to earlier slots
         # we've already processed, or pre-lookback noise).
         while dose_idx < len(sorted_doses) and sorted_doses[dose_idx] < window_start:
             dose_idx += 1
 
-        if dose_idx < len(sorted_doses) and sorted_doses[dose_idx] < late_bound:
-            assigned_ts = sorted_doses[dose_idx]
-            dose_idx += 1  # consume — one dose per slot
+        # Consume up to ``pills_per_slot`` doses for this slot (all within
+        # the same lateness window).  With the default pills_per_slot=1
+        # this is exactly the historical one-dose-per-slot behavior.
+        while (
+            assigned_count < pills_per_slot
+            and dose_idx < len(sorted_doses)
+            and sorted_doses[dose_idx] < late_bound
+        ):
+            if assigned_ts is None:
+                assigned_ts = sorted_doses[dose_idx]
+            assigned_count += 1
+            dose_idx += 1
 
         assignments.append(
             SlotAssignment(
                 slot_time=slot_time,
                 next_slot_time=next_slot_time,
                 assigned_ts=assigned_ts,
-                covered=assigned_ts is not None,
+                covered=assigned_count >= pills_per_slot,
+                assigned_count=assigned_count,
             )
         )
 

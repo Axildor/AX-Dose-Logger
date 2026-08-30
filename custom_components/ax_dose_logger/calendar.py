@@ -27,6 +27,7 @@ from .const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
     parse_dose_time,
 )
 from .coordinator import AxDoseLoggerCoordinator
@@ -135,8 +136,15 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
     def _generate_time_of_day_events(
         self, entry: ConfigEntry, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
-        """One or more events per day at the configured dose times."""
+        """One or more events per day at the configured dose times.
+
+        When ``pills_per_slot`` > 1 the description states the quantity so
+        the calendar matches the slot-coverage model (a dose is complete
+        only after all pills for the slot are logged).
+        """
         parsed_times = get_dose_times(entry)
+        pills_per_slot = get_pills_per_slot(entry)
+        summary = f"{self._med_name} Dose" if pills_per_slot <= 1 else f"{self._med_name} Dose x{pills_per_slot}"
 
         events: list[CalendarEvent] = []
         tz = dt_util.now().tzinfo
@@ -148,7 +156,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
                 if event_end > start_date and event_start < end_date:
                     events.append(
                         CalendarEvent(
-                            summary=f"{self._med_name} Dose",
+                            summary=summary,
                             start=event_start,
                             end=event_end,
                         )
@@ -274,7 +282,7 @@ class PillCalendarEntity(AxDoseLoggerEntity, CalendarEntity):
         current = start_date.date() - timedelta(days=1)
         end = end_date.date() + timedelta(days=1)
         while current <= end:
-            if is_on_day(entry, current, date.today()):  # ON day
+            if is_on_day(entry, current, dt_util.now().date()):  # ON day
                 event_start = datetime(
                     current.year,
                     current.month,

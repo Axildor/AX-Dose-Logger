@@ -286,8 +286,15 @@ class AxDoseLoggerStore:
         coexist without collision (M2M topology).
         """
         key = (profile_id, substance)
-        store = Store(self._hass, DRINK_MASTER_STORAGE_VERSION, store_key)
-        self._drink_master_stores[key] = store
+        # C7: reuse the existing Store instance across reloads.  Creating a
+        # fresh Store here would orphan any pending ``async_delay_save`` on
+        # the old instance, racing it against the new one writing the same
+        # storage file (lost writes when a dose is logged <5s before a
+        # reload).  The reused instance still (re)loads its persisted data.
+        store = self._drink_master_stores.get(key)
+        if store is None:
+            store = Store(self._hass, DRINK_MASTER_STORAGE_VERSION, store_key)
+            self._drink_master_stores[key] = store
         data = await store.async_load()
         if data:
             self._drink_master_data[key] = data

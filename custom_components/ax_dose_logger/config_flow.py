@@ -21,6 +21,9 @@ from .const import (
     DRINK_TYPES,
     GLOBAL_PK_DEFAULTS,
     MAX_DOSES_PER_DAY,
+    PILLS_PER_SLOT_DEFAULT,
+    PILLS_PER_SLOT_MAX,
+    PILLS_PER_SLOT_MIN,
     MAX_RETENTION_DAYS,
     MIN_RETENTION_DAYS,
     PK_DEFAULTS,
@@ -81,6 +84,13 @@ _HOURS_BETWEEN_SELECTOR = sel.NumberSelector(
 )
 _PILL_LIMIT_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=1, max=20, step=1, unit_of_measurement="pills", mode=sel.NumberSelectorMode.BOX)
+)
+# Pills per time slot: how many pills one scheduled slot prescribes
+# (e.g. 2 pills at 08:00 + 2 at 20:00 = 4/day). Default 1 = legacy behavior.
+_PILLS_PER_SLOT_SELECTOR = sel.NumberSelector(
+    sel.NumberSelectorConfig(
+        min=PILLS_PER_SLOT_MIN, max=PILLS_PER_SLOT_MAX, step=1, unit_of_measurement="pills", mode=sel.NumberSelectorMode.BOX
+    )
 )
 _TIME_WINDOW_SELECTOR = sel.NumberSelector(
     sel.NumberSelectorConfig(min=0.5, max=168, step=0.5, unit_of_measurement="h", mode=sel.NumberSelectorMode.BOX)
@@ -359,6 +369,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                     vol.Required("hours_between_doses", default=8): _HOURS_BETWEEN_SELECTOR,
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
+                    vol.Optional("pills_per_slot", default=PILLS_PER_SLOT_DEFAULT): _PILLS_PER_SLOT_SELECTOR,
                     vol.Required("time_window_hours", default=8): _TIME_WINDOW_SELECTOR,
                     vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
@@ -378,6 +389,7 @@ class AxDoseLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("initial_stock", default=30): _STOCK_SELECTOR,
                     vol.Required("doses_per_day", default=1): _DOSES_PER_DAY_SELECTOR,
                     vol.Required("pill_limit", default=1): _PILL_LIMIT_SELECTOR,
+                    vol.Optional("pills_per_slot", default=PILLS_PER_SLOT_DEFAULT): _PILLS_PER_SLOT_SELECTOR,
                     vol.Required("time_window_hours", default=24): _TIME_WINDOW_SELECTOR,
                     vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN): _DOSE_BUFFER_SELECTOR,
                 }
@@ -881,6 +893,15 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
+        # Pills per time slot (scheduled types only). Optional so existing
+        # entries keep the default of 1 with no migration.
+        if tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL):
+            main_schema[
+                vol.Optional(
+                    "pills_per_slot",
+                    default=options.get("pills_per_slot", data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT)),
+                )
+            ] = _PILLS_PER_SLOT_SELECTOR
         # Anti-drift dose buffer (anti-schedule-creep). Optional so existing
         # entries gain the 5-min default on next options save without a
         # migration step.
@@ -960,6 +981,16 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
+        # Pills per time slot (scheduled types only). Config-flow default
+        # since the entry's data/options don't yet carry fields for the new
+        # tracking type.
+        if new_tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL):
+            schema[
+                vol.Optional(
+                    "pills_per_slot",
+                    default=options.get("pills_per_slot", data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT)),
+                )
+            ] = _PILLS_PER_SLOT_SELECTOR
         # Anti-drift dose buffer (anti-schedule-creep). Config-flow default
         # since the entry's data/options don't yet carry fields for the new
         # tracking type.
@@ -1107,6 +1138,7 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                     "dose_time",
                     "time_window_hours",
                     "pill_limit",
+                    "pills_per_slot",
                     "dose_buffer_minutes",
                     "daily_limit",
                     "enable_calendar",

@@ -67,7 +67,7 @@ def is_on_day(entry: ConfigEntry, check_date: date, fallback_date: date | None =
 
     try:
         anchor_date = date.fromisoformat(anchor_str)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         anchor_date = fallback_date if fallback_date is not None else check_date
 
     cycle_length = days_on + days_off

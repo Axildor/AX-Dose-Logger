@@ -10,6 +10,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
     parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
@@ -119,7 +120,7 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
             try:
                 anchor_date = date.fromisoformat(anchor_str)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 anchor_date = now.date()
             dose_hour, dose_minute = parse_dose_time(dose_time_str)
 
@@ -221,6 +222,7 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             future_days=1,
             early_grace=early_grace,
             lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+            pills_per_slot=get_pills_per_slot(entry),
         )
 
         for a in assignments:

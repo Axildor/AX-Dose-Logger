@@ -135,6 +135,9 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         self._entry = entry
         self._store = store
         self._masters = master_coordinators
+        # E3: cached Drink Settings entry reference so ``_retention_days``
+        # doesn't scan all config entries on every save (see _retention_days).
+        self._settings_entry_cache: ConfigEntry | None = None
 
     async def _async_setup(self) -> None:
         """Load local dose history from the store on first refresh.
@@ -167,6 +170,10 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
             except (ValueError, TypeError, IndexError):
                 continue
         dose_history = prune_dose_triples(dose_history, cutoff)
+        # Sort-on-load: legacy stores may contain backdated doses written
+        # before ordering was enforced; keep the chronological invariant so
+        # ``[-1]`` is always the most recent dose.
+        dose_history.sort(key=lambda dose: dose[0])
         last_dose = dose_history[-1][0] if dose_history else None
         # Averages reset anchor (Reset Averages tool).  Forward-only: a
         # pre-fix installation has no averages store, so the anchor loads
@@ -216,12 +223,18 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
     # M2M routing helpers
     # ------------------------------------------------------------------
     def _allowed_profiles(self) -> list[str]:
-        """Return this drink's allowed_profiles array (mutable, from entry data).
+        """Return this drink's allowed_profiles array (mutable, options-first).
 
-        Defaults to ``[DEFAULT_PROFILE_ID]`` for pre-migration entries so
-        single-user installs route to the legacy default master unchanged.
+        The options flow writes ``allowed_profiles`` to ``entry.options``
+        (see ``async_step_drink_options``), so read options first and fall
+        back to ``entry.data`` for pre-migration entries that only carry it
+        in data.  Defaults to ``[DEFAULT_PROFILE_ID]`` for pre-migration
+        entries so single-user installs route to the legacy default master
+        unchanged.
         """
-        allowed = self._entry.data.get("allowed_profiles")
+        allowed = self._entry.options.get(
+            "allowed_profiles", self._entry.data.get("allowed_profiles")
+        )
         if not allowed:
             return [DEFAULT_PROFILE_ID]
         return list(allowed)
@@ -330,7 +343,12 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
 
         # 1) Local stats (always, regardless of PK routing).
         self.data.dose_history.append((timestamp, dose_strength, effective_profile))
-        self.data.last_dose_time = timestamp
+        # Sort-on-insert: the service accepts an explicit (possibly backdated)
+        # ``timestamp``, so keep dose_history chronologically ordered and set
+        # ``last_dose_time`` to the true most-recent dose -- never blindly to
+        # the inserted timestamp.
+        self.data.dose_history.sort(key=lambda dose: dose[0])
+        self.data.last_dose_time = self.data.dose_history[-1][0]
         self._save()
 
         # 2) Forward the PK payload to the effective profile's master.
@@ -351,7 +369,13 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
                 )
             else:
                 await master.async_add_dose(
-                    timestamp, dose_strength, drinking_duration_min / 60.0
+                    timestamp,
+                    dose_strength,
+                    drinking_duration_min / 60.0,
+                    # B1 provenance tagging: record which drink entry
+                    # contributed this dose so a per-drink reset can
+                    # surgically remove only its own master-side doses.
+                    source_entry_id=self._entry.entry_id,
                 )
 
         # 3) Bus event for automations (Fault 2 telemetry).
@@ -384,9 +408,15 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         """
         if not self.data.dose_history:
             return
-        removed = self.data.dose_history.pop()
+        history = self.data.dose_history
+        # Pop the max-timestamp entry (not blindly the last element) so
+        # undoing after a backdated insert removes the true latest drink.
+        max_idx = max(range(len(history)), key=lambda i: history[i][0])
+        removed = history.pop(max_idx)
         effective_profile = removed[2] if len(removed) > 2 else None
-        self.data.last_dose_time = self.data.dose_history[-1][0] if self.data.dose_history else None
+        # Re-sort so the chronological invariant holds for legacy unsorted data.
+        history.sort(key=lambda dose: dose[0])
+        self.data.last_dose_time = history[-1][0] if history else None
         self._save()
 
         drink_type = self._entry.data.get("drink_type")
@@ -403,7 +433,12 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
                 drink_type,
             )
         else:
-            await master.async_undo_dose()
+            # B1 surgical undo: remove exactly this one dose by provenance
+            # (newest-first match on source_entry_id) instead of popping the
+            # master's most-recent dose, which may belong to another drink.
+            # Legacy untagged doses fall back to pop-newest inside
+            # async_remove_doses (with a warning), so old stores still undo.
+            await master.async_remove_doses(self._entry.entry_id, 1)
 
         self.hass.bus.async_fire(
             "ax_dose_logger_drink_undone",
@@ -429,15 +464,17 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         (Fault 1) per dose: a missing master is logged + skipped.
         """
         drink_type = self._entry.data.get("drink_type")
-        # Build a per-profile undo-count so we call each master's
-        # async_undo_dose() the right number of times (each call pops the
-        # most recent dose from that master's aggregated history; undoing
-        # in reverse-chronological order matches the dose append order
-        # closely enough for the linear-PK superposition to remain valid --
-        # undo is an exact inverse of add for linear PK).
+        # Build a per-profile count of THIS drink's doses so each master can
+        # surgically remove exactly those doses (B1 provenance): each master
+        # dose tuple carries the contributing ``source_entry_id``, so
+        # ``async_remove_doses`` removes only this drink's entries
+        # (newest-first) and leaves other drinks' interleaved doses -- and
+        # their body-mass contributions -- intact.  Legacy untagged doses
+        # fall back to pop-newest inside ``async_remove_doses`` (with a
+        # warning), so pre-B1 stores never crash or under-reset.
         per_profile_counts: dict[str, int] = {}
-        for entry in self.data.dose_history:
-            eff = entry[2] if len(entry) > 2 else None
+        for dose in self.data.dose_history:
+            eff = dose[2] if len(dose) > 2 else None
             prof = eff or self._native_profile_id()
             per_profile_counts[prof] = per_profile_counts.get(prof, 0) + 1
 
@@ -456,8 +493,7 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
                     count,
                 )
                 continue
-            for _ in range(count):
-                await master.async_undo_dose()
+            await master.async_remove_doses(self._entry.entry_id, count)
 
         self.hass.bus.async_fire(
             "ax_dose_logger_drink_reset",
@@ -517,23 +553,38 @@ class DrinkCoordinator(DataUpdateCoordinator[DrinkCoordinatorData]):
         """Return the universal drinks retention window from Drink Settings.
 
         Granular drink entries do NOT carry their own ``retention_days`` (the
-        slider lives only in the Drink Settings singleton).  We look up the
-        singleton config entry on each call so a Drink Settings options-flow
-        change takes effect without restarting the granular coordinator.
+        slider lives only in the Drink Settings singleton).  E3: the resolved
+        singleton entry reference is cached and re-validated with a cheap
+        O(1) registry lookup instead of scanning every config entry on each
+        call (``_save`` invokes this on every debounced save).  The cached
+        entry's ``options`` are still read live, so a Drink Settings
+        options-flow change takes effect without restarting the granular
+        coordinator; a removed/replaced singleton forces exactly one re-scan.
         Falls back to :data:`RETENTION_DAYS` if the singleton is somehow
         absent or the key is missing.
         """
-        for entry in self.hass.config_entries.async_entries(DOMAIN):
-            if entry.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS:
-                val = entry.options.get(
-                    "retention_days",
-                    entry.data.get("retention_days", RETENTION_DAYS),
-                )
-                try:
-                    return max(1, int(val))
-                except (TypeError, ValueError):
-                    return RETENTION_DAYS
-        return RETENTION_DAYS
+        entry = getattr(self, "_settings_entry_cache", None)
+        if entry is not None and self.hass.config_entries.async_get_entry(entry.entry_id) is None:
+            # The cached singleton was removed (e.g. entry re-creation on
+            # reload) — force exactly one re-scan.
+            entry = None
+            self._settings_entry_cache = None
+        if entry is None:
+            for candidate in self.hass.config_entries.async_entries(DOMAIN):
+                if candidate.data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS:
+                    entry = candidate
+                    self._settings_entry_cache = candidate
+                    break
+        if entry is None:
+            return RETENTION_DAYS
+        val = entry.options.get(
+            "retention_days",
+            entry.data.get("retention_days", RETENTION_DAYS),
+        )
+        try:
+            return max(1, int(val))
+        except (TypeError, ValueError):
+            return RETENTION_DAYS
 
     # ------------------------------------------------------------------
     # Debounced store persistence (HA-native async_delay_save)
@@ -567,8 +618,12 @@ class DrinkMasterCoordinatorData:
     """Snapshot of derived state read by the master PK sensor."""
 
     # Aggregated dose history routed to this (profile, substance).
-    # Each entry: (datetime, dose_strength, t_dur_hours)
-    dose_history: list[tuple[datetime, float, float]] = field(default_factory=list)
+    # Each entry: (datetime, dose_strength, t_dur_hours, source_entry_id)
+    # where ``source_entry_id`` is the granular drink config entry that
+    # contributed the dose (B1 provenance tagging) so a per-drink reset can
+    # surgically remove only its own doses.  Legacy 3-element store rows
+    # load defensively with ``source_entry_id = None`` (unknown contributor).
+    dose_history: list[tuple[datetime, float, float, str | None]] = field(default_factory=list)
     last_dose_time: datetime | None = None
     # Current body mass (mg for caffeine / g for alcohol).
     body_mass: float = 0.0
@@ -577,6 +632,8 @@ class DrinkMasterCoordinatorData:
     # Names of granular drinks that have contributed doses (for attribute).
     # Resolved lazily from config entries via the device registry -- kept as
     # a set of entry_ids here and translated to names by the sensor.
+    # Per-dose provenance now also lives in ``dose_history``'s
+    # ``source_entry_id`` column (B1); this set remains for the attribute.
     contributing_entry_ids: set[str] = field(default_factory=set)
     # Forecasted peak body mass + the wall-clock time it occurs.  Used by
     # ``estimate_time_to_body_mass`` so the Estimated Low Time / Sleep
@@ -657,6 +714,16 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         self._cached_peak_time: datetime | None = None
         self._cached_peak_dose_count: int = -1
         self._cached_peak_last_dose_time: datetime | None = None
+        # E2: cached caffeine IR PKParams (derived from the constants above)
+        # + pre-discretized mini-bolus list, so repeated ``_compute_caffeine``
+        # calls (peak sweep ~24x/refresh, graph sampling up to 400 samples)
+        # don't re-derive them on every call.  The params are invalidated by
+        # ``update_global_constants``; the bolus list is keyed on a
+        # (dose count, last dose timestamp) fingerprint.
+        self._cached_caffeine_ir_params: PKParams | None = None
+        self._caffeine_bolus_cache: (
+            tuple[tuple[int, datetime], list[tuple[datetime, float]]] | None
+        ) = None
 
     # ------------------------------------------------------------------
     # Identity accessors (for sensors + views)
@@ -690,6 +757,8 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
                 data.get("global_alcohol_elimination_rate", GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]),
             )
         )
+        # E2: the cached IR PKParams derive from the constants above.
+        self._cached_caffeine_ir_params = None
 
     async def _async_setup(self) -> None:
         """Load aggregated dose history + body mass from the store.
@@ -702,16 +771,25 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         """
         cutoff = retention_cutoff(dt_util.now(), self._retention_days())
         stored = self._store.get_drink_master(self._profile_id, self._substance)
-        doses: list[tuple[datetime, float, float]] = []
+        doses: list[tuple[datetime, float, float, str | None]] = []
         for item in stored.get("doses", []):
             try:
-                ts_str, strength_val, t_dur_val = item
-                dt = dt_util.parse_datetime(ts_str)
+                dt = dt_util.parse_datetime(item[0])
                 if dt:
-                    doses.append((dt, float(strength_val), float(t_dur_val)))
+                    # Defensive 4th-element read (B1 provenance): legacy
+                    # 3-element store rows -> None (unknown contributor),
+                    # mirroring the M2M effective_profile_id pattern.
+                    source_entry_id = item[3] if len(item) > 3 else None
+                    if source_entry_id is not None and not isinstance(source_entry_id, str):
+                        source_entry_id = None
+                    doses.append((dt, float(item[1]), float(item[2]), source_entry_id))
             except (ValueError, TypeError, IndexError):
                 continue
         doses = prune_dose_triples(doses, cutoff)
+        # Sort-on-load: legacy stores may contain backdated doses written
+        # before ordering was enforced; keep the chronological invariant so
+        # ``[-1]`` is always the most recent dose.
+        doses.sort(key=lambda dose: dose[0])
         last_dose = doses[-1][0] if doses else None
         body_mass = float(stored.get("body_mass", 0.0))
         last_decay_str = stored.get("last_decay")
@@ -833,8 +911,16 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         approximation).  Each mini-bolus is absorbed via the standard IR
         Bateman equation (gut -> body, first-order).  Linear PK -> the total
         body mass is the exact superposition of all mini-boluses.
+
+        E2: the params derive only from the global PK constants, so they are
+        cached and re-derived only when ``update_global_constants`` changes
+        them (the ``getattr`` default keeps the standalone simulation
+        scripts, which bypass ``__init__``, working).
         """
-        return PKParams(
+        cached = getattr(self, "_cached_caffeine_ir_params", None)
+        if cached is not None:
+            return cached
+        params = PKParams(
             release_type=RELEASE_INSTANT,
             strength=0,  # per-dose strengths come from dose_history
             half_life=self._caffeine_half_life,
@@ -846,10 +932,12 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             lag_time=0,
             ir_hours_to_peak=0,
         )
+        self._cached_caffeine_ir_params = params
+        return params
 
     def _compute_caffeine(
         self,
-        dose_history: list[tuple[datetime, float, float]],
+        dose_history: list[tuple[datetime, float, float, str | None]],
         now: datetime,
     ) -> tuple[float, PKResult | None]:
         """Compute total caffeine body mass via discretized uniform input.
@@ -863,26 +951,58 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         if not dose_history:
             return 0.0, None
         params = self._build_caffeine_ir_params()
-        n = self._CAFFEINE_DISCRETIZATION_N
-        total_body = 0.0
-        total_gut = 0.0
-        for dose_time, strength, t_dur in dose_history:
-            mini_strength = strength / n
-            dt_step = max(t_dur, 1e-9) / n  # hours between mini-boluses
-            for i in range(n):
-                mini_time = dose_time + timedelta(hours=i * dt_step)
-                result = PKModel.compute(params, [(mini_time, mini_strength)], now)
-                total_body += result.body
-                total_gut += result.gut_ir
+        # E2: one batched superposition over the pre-discretized mini-bolus
+        # list instead of N x len(history) separate ``PKModel.compute`` calls
+        # (each of which previously re-derived a fresh single-bolus list).
+        # Linear PK -> the batched result is mathematically identical (same
+        # summation order).
+        boluses = self._caffeine_mini_boluses(dose_history)
+        result = PKModel.compute(params, boluses, now)
         pk_result = PKResult(
-            body=total_body,
-            gut_ir=total_gut,
+            body=result.body,
+            gut_ir=result.gut_ir,
             matrix_sr=0.0,
             gut_sr=0.0,
             ka=0.0,  # not meaningful in the aggregate; sensors don't expose it
             kr=0.0,
         )
-        return total_body, pk_result
+        return result.body, pk_result
+
+    def _caffeine_mini_boluses(
+        self,
+        dose_history: list[tuple[datetime, float, float, str | None]],
+    ) -> list[tuple[datetime, float]]:
+        """Return the pre-discretized mini-bolus list for ``dose_history`` (E2).
+
+        Each drink is split into N mini-boluses spread evenly across its
+        ``drinking_duration``.  The list is cached against a
+        ``(dose count, last dose timestamp)`` fingerprint -- the same
+        stationarity contract as the peak-forecast cache -- so the peak sweep
+        (~24 calls/refresh) and graph sampling (up to 400 calls) reuse it.
+
+        The cache is only written when ``dose_history`` IS the live shared
+        history (``self.data.dose_history``): the what-if throwaway list in
+        :meth:`predict_low_time_if_dose` is a different object, so a
+        hypothetical bolus list can never pollute the shared cache (C2
+        hygiene).  ``getattr`` defaults keep the standalone scripts (which
+        bypass ``__init__``) working.
+        """
+        n = self._CAFFEINE_DISCRETIZATION_N
+        fingerprint = (len(dose_history), dose_history[-1][0])
+        cached = getattr(self, "_caffeine_bolus_cache", None)
+        if cached is not None and cached[0] == fingerprint:
+            return cached[1]
+        boluses: list[tuple[datetime, float]] = []
+        # ``*_`` tolerates legacy 3-element dose tuples (provenance is
+        # irrelevant to the PK math).
+        for dose_time, strength, t_dur, *_ in dose_history:
+            mini_strength = strength / n
+            dt_step = max(t_dur, 1e-9) / n  # hours between mini-boluses
+            for i in range(n):
+                boluses.append((dose_time + timedelta(hours=i * dt_step), mini_strength))
+        if dose_history is getattr(self.data, "dose_history", None):
+            self._caffeine_bolus_cache = (fingerprint, boluses)
+        return boluses
 
     # ------------------------------------------------------------------
     # Caffeine peak forecast (absorption-aware Estimated Low Time anchor)
@@ -906,9 +1026,10 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
 
     def _forecast_caffeine_peak(
         self,
-        dose_history: list[tuple[datetime, float, float]],
+        dose_history: list[tuple[datetime, float, float, str | None]],
         now: datetime,
         current_mass: float,
+        cache: dict[str, object] | None = None,
     ) -> tuple[float, datetime]:
         """Return ``(peak_body_mass, peak_time)`` for the caffeine curve.
 
@@ -916,7 +1037,27 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         the peak is in the past, so ``(current_mass, now)`` is returned -- the
         downstream exponential-tail estimate is then mathematically identical
         to the prior current-mass-anchored behaviour (backward compatible).
+
+        ``cache`` selects the cache backend: ``None`` (default) uses the
+        shared instance fields (the 1-min tick path), while a dict isolates
+        the sweep in a caller-local cache -- the what-if path
+        (:meth:`predict_low_time_if_dose`) passes a throwaway dict so a
+        hypothetical peak can never leak into the shared cache (C2: the REST
+        view runs the what-if on the executor concurrently with the tick's
+        recompute, and two threads mutating the same fields is a data race).
         """
+
+        def _cache_get(key: str, default: object) -> object:
+            if cache is None:
+                return getattr(self, key, default)
+            return cache.get(key, default)
+
+        def _cache_set(key: str, value: object) -> None:
+            if cache is None:
+                setattr(self, key, value)
+            else:
+                cache[key] = value
+
         if not dose_history:
             return current_mass, now
 
@@ -930,28 +1071,30 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         # ``getattr`` defaults handle the standalone simulation scripts which
         # bypass ``__init__`` (via ``__new__``) and don't set the cache fields.
         last_dose_time = dose_history[-1][0]
+        cached_peak_time = _cache_get("_cached_peak_time", None)
         if (
-            len(dose_history) == getattr(self, "_cached_peak_dose_count", -1)
-            and last_dose_time == getattr(self, "_cached_peak_last_dose_time", None)
-            and getattr(self, "_cached_peak_time", None) is not None
-            and getattr(self, "_cached_peak_time", None) > now
+            len(dose_history) == _cache_get("_cached_peak_dose_count", -1)
+            and last_dose_time == _cache_get("_cached_peak_last_dose_time", None)
+            and cached_peak_time is not None
+            and cached_peak_time > now
         ):
-            return self._cached_peak_mass, self._cached_peak_time
+            return _cache_get("_cached_peak_mass", current_mass), cached_peak_time
 
         # Latest mini-bolus peak time = dose_time + drinking_duration + t_max.
         # The last mini-bolus is emitted at dose_time + (N-1)/N * t_dur; using
         # the full t_dur is a safe upper bound and keeps the window inclusive.
         t_max = self._caffeine_tmax
         peak_window_end = max(
-            dose_time + timedelta(hours=t_dur + t_max) for dose_time, _strength, t_dur in dose_history
+            dose_time + timedelta(hours=t_dur + t_max)
+            for dose_time, _strength, t_dur, *_ in dose_history
         )
         if peak_window_end <= now:
             # All doses absorbed -- the current mass is the post-peak value.
             # Cache this (cheap) result so subsequent ticks also hit the cache.
-            self._cached_peak_mass = current_mass
-            self._cached_peak_time = now
-            self._cached_peak_dose_count = len(dose_history)
-            self._cached_peak_last_dose_time = last_dose_time
+            _cache_set("_cached_peak_mass", current_mass)
+            _cache_set("_cached_peak_time", now)
+            _cache_set("_cached_peak_dose_count", len(dose_history))
+            _cache_set("_cached_peak_last_dose_time", last_dose_time)
             return current_mass, now
 
         # Sample the deterministic PK curve from `now` to `peak_window_end`.
@@ -972,10 +1115,10 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             peak_time = peak_window_end
         # Cache the sweep result so subsequent ticks during the absorption
         # window return immediately without re-sweeping.
-        self._cached_peak_mass = peak_mass
-        self._cached_peak_time = peak_time
-        self._cached_peak_dose_count = len(dose_history)
-        self._cached_peak_last_dose_time = last_dose_time
+        _cache_set("_cached_peak_mass", peak_mass)
+        _cache_set("_cached_peak_time", peak_time)
+        _cache_set("_cached_peak_dose_count", len(dose_history))
+        _cache_set("_cached_peak_last_dose_time", last_dose_time)
         return peak_mass, peak_time
 
     # ------------------------------------------------------------------
@@ -1016,10 +1159,22 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         timestamp: datetime,
         dose_strength: float,
         t_dur_hours: float,
+        source_entry_id: str | None = None,
     ) -> None:
-        """Add a dose from a granular drink to this profile's aggregated history."""
-        self.data.dose_history.append((timestamp, dose_strength, t_dur_hours))
-        self.data.last_dose_time = timestamp
+        """Add a dose from a granular drink to this profile's aggregated history.
+
+        ``source_entry_id`` (B1 provenance tagging) records which granular
+        drink config entry contributed the dose so a per-drink reset can
+        surgically remove only its own contributions via
+        ``async_remove_doses`` instead of popping the newest dose blindly.
+        """
+        self.data.dose_history.append(
+            (timestamp, dose_strength, t_dur_hours, source_entry_id)
+        )
+        # Sort-on-insert: a backdated drink log must not corrupt
+        # ``last_dose_time`` -- it always reflects the true most-recent dose.
+        self.data.dose_history.sort(key=lambda dose: dose[0])
+        self.data.last_dose_time = self.data.dose_history[-1][0]
 
         if self._substance == DRINK_TYPE_ALCOHOL:
             # Instant absorption for alcohol -- add to body immediately,
@@ -1033,13 +1188,88 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         """Undo the most recent aggregated dose."""
         if not self.data.dose_history:
             return
-        removed = self.data.dose_history.pop()
+        history = self.data.dose_history
+        # Pop the max-timestamp entry (not blindly the last element) so
+        # undoing after a backdated insert removes the true latest dose.
+        max_idx = max(range(len(history)), key=lambda i: history[i][0])
+        removed = history.pop(max_idx)
         removed_strength = removed[1]
-        self.data.last_dose_time = self.data.dose_history[-1][0] if self.data.dose_history else None
+        # Re-sort so the chronological invariant holds for legacy unsorted data.
+        history.sort(key=lambda dose: dose[0])
+        self.data.last_dose_time = history[-1][0] if history else None
         if self._substance == DRINK_TYPE_ALCOHOL:
             self.data.body_mass = max(0.0, self.data.body_mass - removed_strength)
         self._save()
         self._push_update()
+
+    async def async_remove_doses(self, source_entry_id: str | None, count: int) -> int:
+        """Surgically remove up to ``count`` doses contributed by ``source_entry_id``.
+
+        B1 surgical reset: unlike :meth:`async_undo_dose` (which pops the
+        master's most-recent dose regardless of contributor), this removes
+        only doses tagged with the calling drink's ``source_entry_id``,
+        newest-first, so interleaved drinks never destroy each other's PK
+        state.  For alcohol, each removed dose's strength is subtracted from
+        ``body_mass`` (mirroring ``async_undo_dose``).
+
+        Legacy fallback: doses written before provenance tagging have
+        ``source_entry_id = None`` and cannot be matched.  When fewer than
+        ``count`` tagged doses exist, the remainder is removed with the
+        pre-B1 pop-newest behavior (with a warning) so old stores never
+        crash or silently under-reset.
+
+        Returns the number of doses actually removed.
+        """
+        if count <= 0 or not self.data.dose_history:
+            return 0
+        history = self.data.dose_history
+        removed_total = 0
+
+        # Pass 1: newest-first, remove only doses tagged with this source.
+        matching = [
+            i
+            for i, dose in enumerate(history)
+            if len(dose) > 3 and dose[3] == source_entry_id
+        ]
+        matching.sort(key=lambda i: history[i][0], reverse=True)
+        for idx in matching[:count]:
+            removed = history.pop(idx)
+            if self._substance == DRINK_TYPE_ALCOHOL:
+                self.data.body_mass = max(0.0, self.data.body_mass - removed[1])
+            removed_total += 1
+
+        # Pass 2 (legacy fallback): the calling drink contributed more doses
+        # than the tagged rows can account for -- the remainder predates
+        # provenance tagging (3-element rows, source None).  Fall back to the
+        # pre-B1 behavior: pop the newest doses regardless of contributor.
+        remaining = count - removed_total
+        if remaining > 0:
+            LOGGER.warning(
+                "Master (profile=%s, %s): %d of %d doses from entry %s have no "
+                "provenance (legacy pre-B1 store rows); falling back to "
+                "pop-newest removal for the remainder.",
+                self._profile_id,
+                self._substance,
+                remaining,
+                count,
+                source_entry_id,
+            )
+            for _ in range(remaining):
+                if not history:
+                    break
+                max_idx = max(range(len(history)), key=lambda i: history[i][0])
+                removed = history.pop(max_idx)
+                if self._substance == DRINK_TYPE_ALCOHOL:
+                    self.data.body_mass = max(0.0, self.data.body_mass - removed[1])
+                removed_total += 1
+
+        if removed_total:
+            # Re-sort so the chronological invariant holds after the pops.
+            history.sort(key=lambda dose: dose[0])
+            self.data.last_dose_time = history[-1][0] if history else None
+            self._save()
+            self._push_update()
+        return removed_total
 
     async def async_reset(self) -> None:
         """Clear all aggregated history and body mass for this (profile, substance)."""
@@ -1113,7 +1343,11 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         cutoff = retention_cutoff(dt_util.now(), self._retention_days())
         kept = prune_dose_triples(self.data.dose_history, cutoff)
         serialized = {
-            "doses": [[ts.isoformat(), strength, t_dur] for ts, strength, t_dur in kept],
+            "doses": [
+                # 4-element form (B1): [iso, strength, t_dur, source_entry_id].
+                [d[0].isoformat(), d[1], d[2], d[3] if len(d) > 3 else None]
+                for d in kept
+            ],
             "body_mass": self.data.body_mass,
             "last_decay": self._last_decay.isoformat() if self._last_decay else None,
         }
@@ -1131,7 +1365,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         return self.data.body_mass
 
     @property
-    def dose_history(self) -> list[tuple[datetime, float, float]]:
+    def dose_history(self) -> list[tuple[datetime, float, float, str | None]]:
         return self.data.dose_history
 
     @property
@@ -1242,9 +1476,16 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             current_mass, _ = self._compute_caffeine(self.data.dose_history, now)
             hypothetical = [
                 *self.data.dose_history,
-                (now, float(dose_strength), float(t_dur_hours)),
+                (now, float(dose_strength), float(t_dur_hours), None),
             ]
-            peak_mass, peak_time = self._forecast_caffeine_peak(hypothetical, now, current_mass)
+            # C2: pass a throwaway cache dict so the hypothetical sweep never
+            # writes the shared ``_cached_peak_*`` instance fields -- the REST
+            # view runs this on the executor concurrently with the tick's
+            # recompute, and a cached hypothetical peak would corrupt the
+            # sensor's real forecast (data race).
+            peak_mass, peak_time = self._forecast_caffeine_peak(
+                hypothetical, now, current_mass, cache={}
+            )
             if peak_time is None or peak_mass <= target:
                 return None
             half_life = self._caffeine_half_life
@@ -1317,11 +1558,26 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         span = (end - start).total_seconds()
 
         if self._substance == DRINK_TYPE_CAFFEINE:
+            # E1: 10-half-life prune (mirrors the medicine
+            # ``sample_amount_curve``): doses older than ~10 half-lives
+            # before the window start contribute <0.1% — drop them so the
+            # per-sample recompute loop stays cheap on long histories.  The
+            # alcohol branch below needs the FULL history for the forward
+            # simulation — prune only the caffeine path.
+            decay_horizon = start - timedelta(hours=self._caffeine_half_life * 10)
+            relevant = [d for d in data.dose_history if d[0] >= decay_horizon]
+            if not relevant:
+                return []
+            # Hoist params + the pruned mini-bolus list out of the sample
+            # loop (E2): one bolus-list build for the whole curve instead of
+            # one per sample.
+            params = self._build_caffeine_ir_params()
+            boluses = self._caffeine_mini_boluses(relevant)
             samples: list[tuple[datetime, float]] = []
             for i in range(n):
                 t = start + timedelta(seconds=span * i / (n - 1))
-                mass, _ = self._compute_caffeine(data.dose_history, t)
-                samples.append((t, mass))
+                result = PKModel.compute(params, boluses, t)
+                samples.append((t, result.body))
             return samples
 
         if self._substance == DRINK_TYPE_ALCOHOL:
@@ -1329,7 +1585,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             if rate <= 0:
                 return []
             sample_times = [start + timedelta(seconds=span * i / (n - 1)) for i in range(n)]
-            doses = sorted((ts, s) for ts, s, _ in data.dose_history)
+            doses = sorted((dose[0], dose[1]) for dose in data.dose_history)
             # Segment-wise forward simulation: between events the body
             # decays linearly (exact for zero-order), doses add instantly,
             # and the clamp at 0 is applied at each segment boundary —

@@ -42,6 +42,7 @@ class DrinkLastDoseSensor(RestoreSensor):
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "device_type": "drink",
+            "role": "last_dose",
         }
 
     async def async_added_to_hass(self) -> None:
@@ -51,7 +52,7 @@ class DrinkLastDoseSensor(RestoreSensor):
         if last_state and last_state.native_value is not None:
             try:
                 self._attr_native_value = dt_util.parse_datetime(str(last_state.native_value))
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 self._attr_native_value = None
         self.async_on_remove(self._coordinator.async_add_listener(self._handle_coordinator_update))
         self._handle_coordinator_update()
@@ -66,5 +67,6 @@ class DrinkLastDoseSensor(RestoreSensor):
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "device_type": "drink",
+            "role": "last_dose",
         }
         self.async_write_ha_state()

@@ -45,6 +45,7 @@ from ..const import (
     TRACKING_REGULAR_INTERVAL,
     TRACKING_TIME_OF_DAY,
     get_dose_times,
+    get_pills_per_slot,
     parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
@@ -146,8 +147,13 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     def _update_state(self):
         now = dt_util.now()
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        if entry is None:
+            # The config entry can be gone while a point-in-time timer is
+            # still armed (entry removal race) — bail out instead of raising.
+            return
         dose_timestamps = self._get_dose_timestamps()
         schedule_timestamps = self._get_schedule_timestamps()
+        pills_per_slot = get_pills_per_slot(entry)
 
         # Gate 1 — pill-count lockout (includes Cyclic OFF days, where
         # compute_safe_to_take returns 0). Mirrors the card's isLockedOut.
@@ -196,6 +202,10 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 # not_due → due when the slot arrives
                 next_transition = next_dose_at
 
+        slot_remaining = None
+        if self._tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL):
+            slot_remaining = self._compute_slot_remaining(entry, now, schedule_timestamps, pills_per_slot)
+
         self._attr_native_value = status
         self._attr_extra_state_attributes = {
             "role": "dose_status",
@@ -206,6 +216,8 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "safe_count": safe_count,
             "amount_24h": round(amount_24h, 3),
             "daily_limit": daily_limit,
+            "pills_per_slot": pills_per_slot,
+            "slot_remaining": slot_remaining,
         }
 
         self._arm_status_timer(next_transition, now)
@@ -380,6 +392,68 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if is_day_covered(now.date(), timestamps):
             return None
         return dose_time_today
+
+    def _compute_slot_remaining(self, entry, now, schedule_timestamps, pills_per_slot):
+        """Pills still owed in the current (most recently reached) slot.
+
+        Time of Day: the latest slot at/before ``now`` from the shared
+        slot-assignment model; remaining = pills_per_slot - assigned_count.
+        Regular Interval: the latest chained deadline; remaining counts
+        doses taken since that deadline.  Returns ``None`` when there is
+        no active slot (nothing reached yet, or everything in the current
+        slot is already covered).
+        """
+        if pills_per_slot <= 1:
+            return None  # single-pill model: nothing meaningful to expose
+
+        if self._tracking_type == TRACKING_TIME_OF_DAY:
+            parsed_times = get_dose_times(entry)
+            if not parsed_times:
+                return None
+            min_gap_minutes = 24 * 60
+            for i in range(len(parsed_times)):
+                for j in range(i + 1, len(parsed_times)):
+                    gap = (parsed_times[j][0] * 60 + parsed_times[j][1]) - (
+                        parsed_times[i][0] * 60 + parsed_times[i][1]
+                    )
+                    min_gap_minutes = min(min_gap_minutes, gap)
+            early_grace = timedelta(minutes=max(30, min_gap_minutes // 2))
+            assignments = compute_slot_assignments(
+                parsed_times,
+                schedule_timestamps,
+                now,
+                lookback_days=2,
+                future_days=0,
+                early_grace=early_grace,
+                lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+                pills_per_slot=pills_per_slot,
+            )
+            current = None
+            for a in assignments:
+                if a.slot_time > now:
+                    break
+                current = a
+            if current is None:
+                return None
+            return max(0, pills_per_slot - current.assigned_count)
+
+        if self._tracking_type == TRACKING_REGULAR_INTERVAL:
+            hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
+            if not schedule_timestamps or hours_between <= 0:
+                return None
+            interval = timedelta(hours=hours_between)
+            anchor = max(schedule_timestamps)
+            elapsed = now - anchor
+            if elapsed <= timedelta(0):
+                return None
+            n = int(elapsed.total_seconds() // interval.total_seconds())
+            if n <= 0:
+                return None
+            slot_start = anchor + n * interval
+            taken_in_slot = sum(1 for ts in schedule_timestamps if slot_start <= ts < slot_start + interval)
+            return max(0, pills_per_slot - taken_in_slot)
+
+        return None
 
     # ── Latency boundary + timers ───────────────────────────────────────
 

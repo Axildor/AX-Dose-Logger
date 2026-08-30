@@ -31,6 +31,7 @@ from homeassistant.helpers import selector, service
 
 from .const import DOMAIN
 from .coordinator import AxDoseLoggerCoordinator
+from .drink_coordinator import DrinkCoordinator
 
 # Service names
 SERVICE_TAKE_DOSE: Final = "take_dose"
@@ -84,16 +85,20 @@ SERVICE_SET_METRIC_SCHEMA = vol.Schema(
 )
 
 
-def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordinator:
+def _get_coordinator(hass: HomeAssistant, entry_id: str) -> AxDoseLoggerCoordinator | DrinkCoordinator:
     """
     Retrieve the coordinator for the given config entry.
 
     Raises ``HomeAssistantError`` (via ``service.async_get_config_entry``)
-    if the entry_id is invalid or not loaded.
+    if the entry_id is invalid or not loaded, or if the entry is a Drink
+    Settings entry (which hosts no coordinator of its own).
     """
     # Validate the entry exists and belongs to our domain
     service.async_get_config_entry(hass, DOMAIN, entry_id)
-    return hass.data[DOMAIN][entry_id]["coordinator"]
+    coordinator = hass.data.get(DOMAIN, {}).get(entry_id, {}).get("coordinator")
+    if coordinator is None:
+        raise HomeAssistantError("This config entry has no coordinator")
+    return coordinator
 
 
 def _get_coordinator_for_entity(hass: HomeAssistant, entity_id: str) -> tuple[AxDoseLoggerCoordinator, str]:
