@@ -1,20 +1,29 @@
 """
-Custom REST endpoint exposing dose history to the frontend.
+Custom REST endpoints exposing history data to the frontend.
 
-Provides /api/ax_dose_logger/history/{device_id} which returns the
-authoritative, pruned dose_history array from AxDoseLoggerStore.
+* /api/ax_dose_logger/history/{device_id} — the authoritative, pruned
+  dose_history array from AxDoseLoggerStore (bar-graph source).
 
-For Master Tracker devices (Caffeine Tracker / Alcohol Tracker) the endpoint
-returns the aggregated master ``dose_history`` (every drink of that substance
-across all granular drink devices) so the frontend's 14-day bar graph renders
-correctly.  The per-substance store lives in ``store.get_drink_master()``.
+  For Master Tracker devices (Caffeine Tracker / Alcohol Tracker) the endpoint
+  returns the aggregated master ``dose_history`` (every drink of that substance
+  across all granular drink devices) so the frontend's 14-day bar graph renders
+  correctly.  The per-substance store lives in ``store.get_drink_master()``.
+
+* /api/ax_dose_logger/graph/{device_id} — recorder-independent graph payload
+  for the card's Amount-in-Body line graph + Effectiveness graphs.  The PK
+  curve is recomputed from the integration's own dose-history store (365-day
+  default retention) so the graphs are NOT truncated by the HA recorder's
+  ``purge_keep_days`` default of 10 days.
 """
+
+from datetime import timedelta
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -23,6 +32,18 @@ from .const import (
     LOGGER as _LOGGER,
 )
 from .sensors._tracker_info import tracker_substance
+
+# Point-budget bounds for the graph endpoint (see the plan:
+# plans/recorder-independent-graphs-plan.md).  At the chart's ~284 px width
+# more than ~1 point per 1.2 px is invisible, so 240 is visually lossless
+# while being cheaper to render than the old 800-node recorder fetches.
+_GRAPH_POINTS_DEFAULT = 240
+_GRAPH_POINTS_MIN = 40
+_GRAPH_POINTS_MAX = 400
+# Window bounds (hours).  The store retains 365 days by default; cap the
+# request window at that so a bogus query can't force a 1095-day sweep.
+_GRAPH_HOURS_MIN = 1
+_GRAPH_HOURS_MAX = 1095 * 24
 
 
 class AxDoseLoggerHistoryView(HomeAssistantView):
@@ -223,3 +244,124 @@ class AxDoseLoggerPredictLowView(HomeAssistantView):
                 err,
             )
             return self.json({"low_time": None})
+
+
+class AxDoseLoggerGraphView(HomeAssistantView):
+    """Recorder-independent graph payload for the card's Graphs pane.
+
+    URL: /api/ax_dose_logger/graph/{device_id}?hours=720&points=240
+    Method: GET
+    Auth: Bearer token (requires_auth = True)
+    Response: JSON
+        {
+          "amount":  [[iso_timestamp, value], ...],   # evenly sampled PK curve
+          "metrics": { metric_key: { "YYYY-MM-DD": value, ... }, ... }
+        }
+
+    The Amount-in-Body curve is recomputed from the integration's own
+    dose-history store (365-day default retention) instead of the HA
+    recorder, whose ``purge_keep_days`` default of 10 days silently
+    truncated the card's long timeframes.  Effectiveness metrics come from
+    the date-keyed metrics store (also 365-day retention).
+
+    For Master Tracker devices the amount series is the aggregated
+    (profile, substance) body-mass curve; ``metrics`` is empty
+    (effectiveness is medicine-only).
+    """
+
+    url = "/api/ax_dose_logger/graph/{device_id}"
+    name = "api:ax_dose_logger:graph"
+    requires_auth = True
+
+    async def get(self, request: web.Request, device_id: str) -> web.Response:
+        """Return the graph payload for the given device."""
+        hass = request.app["hass"]
+
+        # --- Query params (clamped; bogus values fall back to defaults) ---
+        try:
+            hours = int(float(request.query.get("hours", "720")))
+        except (TypeError, ValueError):
+            hours = 720
+        hours = max(_GRAPH_HOURS_MIN, min(hours, _GRAPH_HOURS_MAX))
+        try:
+            points = int(float(request.query.get("points", str(_GRAPH_POINTS_DEFAULT))))
+        except (TypeError, ValueError):
+            points = _GRAPH_POINTS_DEFAULT
+        points = max(_GRAPH_POINTS_MIN, min(points, _GRAPH_POINTS_MAX))
+
+        store = hass.data.get(DOMAIN, {}).get("_store")
+        if not store:
+            return self.json({"amount": [], "metrics": {}})
+
+        # --- Device resolution (mirrors the history view) ---
+        device_reg = dr.async_get(hass)
+        device = device_reg.async_get(device_id)
+        if not device or not device.config_entries:
+            return self.json({"amount": [], "metrics": {}})
+
+        # Master Tracker devices: sample the aggregated (profile, substance)
+        # body-mass curve from the master coordinator.
+        for identifier in device.identifiers:
+            if identifier[0] != DOMAIN:
+                continue
+            resolved = tracker_substance(identifier[1])
+            if resolved is not None:
+                profile_id, substance = resolved
+                masters = hass.data.get(DOMAIN, {}).get("_drink_masters", {})
+                coordinator = masters.get((profile_id, substance))
+                if coordinator is None:
+                    return self.json({"amount": [], "metrics": {}})
+                now = dt_util.now()
+                start = now - timedelta(hours=hours)
+                samples = await hass.async_add_executor_job(
+                    coordinator.sample_body_mass_curve, start, now, points
+                )
+                payload = [[ts.isoformat(), round(v, 2)] for ts, v in samples]
+                _LOGGER.debug(
+                    "ax_dose_logger graph REST: master device_id=%s profile=%s substance=%s "
+                    "hours=%d points=%d returned %d samples",
+                    device_id,
+                    profile_id,
+                    substance,
+                    hours,
+                    points,
+                    len(payload),
+                )
+                return self.json({"amount": payload, "metrics": {}})
+
+        # Medicine / granular drink device: resolve the config entry.
+        entry_id = next(iter(device.config_entries))
+        entry = hass.config_entries.async_get_entry(entry_id)
+        coordinator = hass.data.get(DOMAIN, {}).get(entry_id, {}).get("coordinator")
+        if entry is None or coordinator is None:
+            return self.json({"amount": [], "metrics": {}})
+
+        now = dt_util.now()
+        start = now - timedelta(hours=hours)
+
+        # PK curve sampling is CPU-bound (points × len(history) Bateman
+        # evaluations) — offload to the executor like predict_low.
+        samples = await hass.async_add_executor_job(
+            coordinator.sample_amount_curve, start, now, points
+        )
+        amount = [[ts.isoformat(), round(v, 2)] for ts, v in samples]
+
+        # Effectiveness metrics: date-keyed map straight from the
+        # coordinator (already pruned to the retention window; cheap copy).
+        metrics = {
+            key: dict(dated)
+            for key, dated in (coordinator.data.metric_values or {}).items()
+            if isinstance(dated, dict)
+        }
+
+        _LOGGER.debug(
+            "ax_dose_logger graph REST: device_id=%s entry_id=%s hours=%d points=%d "
+            "returned %d samples, %d metric keys",
+            device_id,
+            entry_id,
+            hours,
+            points,
+            len(amount),
+            len(metrics),
+        )
+        return self.json({"amount": amount, "metrics": metrics})

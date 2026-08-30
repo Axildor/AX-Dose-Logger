@@ -1274,3 +1274,80 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             return now + timedelta(hours=hours)
 
         return None
+
+    # ------------------------------------------------------------------
+    # Graph sampling (recorder-independent body-mass line graph)
+    # ------------------------------------------------------------------
+    def sample_body_mass_curve(
+        self,
+        start: datetime,
+        end: datetime,
+        points: int,
+    ) -> list[tuple[datetime, float]]:
+        """Sample the master body-mass curve at ``points`` evenly spaced instants.
+
+        Serves the card's Amount-in-Body line graph for Master Tracker
+        devices from the integration's own store instead of the HA recorder
+        (whose ``purge_keep_days`` default of 10 days silently truncates
+        long timeframes).
+
+        Called from the REST graph view via ``hass.async_add_executor_job``
+        (CPU-bound for caffeine). Read-only: never mutates ``self.data``.
+
+        - **Caffeine**: exact per-sample recompute via ``_compute_caffeine``
+          (linear PK superposition — deterministic, same as the 1-min tick).
+        - **Alcohol**: exact segment-wise forward simulation of the
+          zero-order model (linear decay, clamp at 0, instant dose
+          additions) walked between the union of dose times and sample
+          times — no approximation, identical to the live 1-min tick model.
+          Seeding at 0 before the oldest retained dose is exact: any mass
+          from doses older than the retention window has already fully
+          eliminated (365 days × the elimination rate dwarfs any dose), so
+          no residual offset exists — the curve ends exactly at the live
+          sensor value.
+
+        Returns ``[(timestamp, value), ...]`` with ``points`` samples from
+        ``start`` to ``end`` inclusive, or ``[]`` when there is no history.
+        """
+        data = self.data
+        if not data or not data.dose_history:
+            return []
+
+        n = max(2, min(int(points), 400))
+        span = (end - start).total_seconds()
+
+        if self._substance == DRINK_TYPE_CAFFEINE:
+            samples: list[tuple[datetime, float]] = []
+            for i in range(n):
+                t = start + timedelta(seconds=span * i / (n - 1))
+                mass, _ = self._compute_caffeine(data.dose_history, t)
+                samples.append((t, mass))
+            return samples
+
+        if self._substance == DRINK_TYPE_ALCOHOL:
+            rate = self._alcohol_elimination_rate
+            if rate <= 0:
+                return []
+            sample_times = [start + timedelta(seconds=span * i / (n - 1)) for i in range(n)]
+            doses = sorted((ts, s) for ts, s, _ in data.dose_history)
+            # Segment-wise forward simulation: between events the body
+            # decays linearly (exact for zero-order), doses add instantly,
+            # and the clamp at 0 is applied at each segment boundary —
+            # mathematically identical to the live incremental model.
+            t_sim = min(doses[0][0], start)
+            body = 0.0
+            di = 0
+            samples = []
+            for t in sample_times:
+                while di < len(doses) and doses[di][0] <= t:
+                    t_d, s_d = doses[di]
+                    body = max(0.0, body - rate * (t_d - t_sim).total_seconds() / 3600.0)
+                    body += s_d
+                    t_sim = t_d
+                    di += 1
+                body = max(0.0, body - rate * (t - t_sim).total_seconds() / 3600.0)
+                t_sim = t
+                samples.append((t, body))
+            return samples
+
+        return []

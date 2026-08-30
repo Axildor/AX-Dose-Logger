@@ -629,3 +629,55 @@ class AxDoseLoggerCoordinator(DataUpdateCoordinator[AxDoseLoggerCoordinatorData]
     def last_dose_time(self) -> datetime | None:
         """Timestamp of the most recent dose, or None."""
         return self.data.last_dose_time
+
+    # ------------------------------------------------------------------
+    # Graph sampling (recorder-independent Amount-in-Body line graph)
+    # ------------------------------------------------------------------
+    def sample_amount_curve(
+        self,
+        start: datetime,
+        end: datetime,
+        points: int,
+    ) -> list[tuple[datetime, float]]:
+        """Sample the PK body-mass curve at ``points`` evenly spaced instants.
+
+        The Amount-in-Body curve is a deterministic function of the dose
+        history (linear PK superposition), so recomputing it from the store
+        is exact — unlike the recorder's lossy same-value-discarding samples.
+        This makes the card's line graph independent of the recorder's
+        ``purge_keep_days`` (default 10 days) for any window the store
+        retains (365 days by default).
+
+        Called from the REST graph view via ``hass.async_add_executor_job``
+        (CPU-bound: ``points`` × ``len(dose_history)`` Bateman evaluations).
+        Read-only: never mutates ``self.data``.
+
+        Returns ``[(timestamp, value), ...]`` with ``points`` samples from
+        ``start`` to ``end`` inclusive. When elimination is disabled
+        (``half_life == 0``) or there is no dose history, returns ``[]`` —
+        the frontend falls back to the recorder fetch (or renders empty).
+        """
+        data = self.data
+        if not data or not data.dose_history:
+            return []
+        params = self._build_pk_params()
+        if params.half_life <= 0:
+            return []  # elimination disabled — no meaningful curve (matches the sensor's unknown)
+
+        # Only doses that can influence the window (all of them do for the
+        # superposition, but pruning pre-start doses whose contribution has
+        # fully decayed keeps the per-sample loop cheap). A dose older than
+        # ~10 half-lives contributes <0.1% — safe to drop.
+        decay_horizon = start - timedelta(hours=params.half_life * 10)
+        relevant = [(ts, s) for ts, s in data.dose_history if ts >= decay_horizon]
+        if not relevant:
+            return []
+
+        span = (end - start).total_seconds()
+        n = max(2, min(int(points), 400))
+        samples: list[tuple[datetime, float]] = []
+        for i in range(n):
+            t = start + timedelta(seconds=span * i / (n - 1))
+            result = PKModel.compute(params, relevant, t)
+            samples.append((t, result.body))
+        return samples

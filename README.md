@@ -357,6 +357,8 @@ Once installed, add it to your dashboard via the visual editor and pick your med
 
 **Graphs pane** — daily-dose bar graph with timescale selector + amount-in-body line graph with timeframe selector:
 
+> **Full-history graphs, independent of the recorder.** The amount-in-body line graph and effectiveness graphs are served from the integration's own 365-day store — the PK curve is recomputed exactly from your dose history — so they are **not** truncated by Home Assistant's recorder default (`purge_keep_days: 10`). Long timeframes render smoothly too: the backend samples the curve at a fixed point budget instead of streaming raw recorder states.
+
 <!-- SCREENSHOT: Card showing the Graphs pane — daily-dose bar graph with timescale selector + amount-in-body line graph with timeframe selector -->
 ![Graphs pane](screenshots/graphs-pane.png)
 
