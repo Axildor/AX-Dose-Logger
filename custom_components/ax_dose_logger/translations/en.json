@@ -2,15 +2,15 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a Device",
+        "title": "Add a Medication or Drink",
         "description": "Choose what to track: a medication on a schedule, a drink (caffeine/alcohol), or open Drink Settings to edit global metabolic constants.",
         "data": {
-          "device_category": "Device Category"
+          "device_category": "What do you want to track?"
         }
       },
       "regular_interval": {
         "title": "Regular Interval",
-        "description": "Set up dosing at fixed intervals — e.g. every 8 hours.",
+        "description": "Dosing at a fixed interval — e.g. every 8 hours. The next dose time is anchored to your last dose and continues around the clock, including overnight. For doses at fixed clock times (e.g. 08:00 and 20:00 daily), use Time of Day instead.",
         "data": {
           "initial_stock": "Inventory",
           "hours_between_doses": "Dose Interval",
@@ -21,8 +21,8 @@
         },
         "data_description": {
           "initial_stock": "Number of pills currently available.",
-          "hours_between_doses": "Minimum hours between consecutive doses.",
-          "pill_limit": "Maximum pills you can take within the time window. Safety cap only — set it at or above Dose Interval × Pills per Dose so a compliant day never triggers it.",
+          "hours_between_doses": "Hours between scheduled doses. The next dose becomes due this many hours after your last dose, and the schedule continues around the clock — including overnight (e.g. a dose at 22:00 schedules the next at 06:00). If you take this medication at fixed clock times instead, choose Time of Day.",
+          "pill_limit": "Maximum pills you can take within the time window. Safety cap only — set it at or above the number of doses that fit in the Time Window × Pills per Dose (e.g. an 8-hour window with 1 pill per dose → 1).",
           "pills_per_slot": "How many pills each scheduled dose prescribes (e.g. 2 = take two pills at every dose time). Leave at 1 for single-pill doses.",
           "time_window_hours": "Rolling window for the pill limit, e.g. max 2 pills in 8 hours.",
           "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class."
@@ -33,7 +33,7 @@
         "description": "Set up dosing at specific times each day — e.g. twice daily at 8 AM and 8 PM.",
         "data": {
           "initial_stock": "Inventory",
-          "doses_per_day": "How Many Times per Day",
+          "doses_per_day": "Doses per Day",
           "pill_limit": "Pill Limit",
           "pills_per_slot": "Pills per Dose",
           "time_window_hours": "Time Window",
@@ -93,8 +93,8 @@
         }
       },
       "as_needed": {
-        "title": "As Needed",
-        "description": "Set up on-demand dosing with a safety limit. Calendar and adherence tracking are not available for as-needed medications.",
+        "title": "As Needed (PRN)",
+        "description": "Set up on-demand (PRN) dosing with a safety limit. Calendar and adherence tracking are not available for PRN medications.",
         "data": {
           "initial_stock": "Inventory",
           "pill_limit": "Pill Limit",
@@ -109,7 +109,7 @@
         }
       },
       "cyclic": {
-        "title": "Cyclic/Calendar Pattern",
+        "title": "Cyclic Schedule",
         "description": "Set up a cycling schedule — e.g. 5 days on, 2 days off.",
         "data": {
           "initial_stock": "Inventory",
@@ -138,22 +138,22 @@
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
-          "daily_limit": "24h Strength Limit",
+          "daily_limit": "Maximum Daily Dose (24h)",
           "half_life": "Elimination Half-Life",
           "hours_to_peak": "Time to Peak Concentration",
           "bioavailability": "Bioavailability",
           "ir_hours_to_peak": "Immediate Release Time to Peak",
-          "ir_fraction": "Initial Release"
+          "ir_fraction": "Immediate-Release Fraction"
         },
         "data_description": {
-          "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
+          "strength": "Amount of active ingredient per dose, in the unit chosen below. Set to 0 if not tracking concentration.",
           "strength_unit": "Unit for the dose strength value. Also sets the unit shown on the Amount in Body sensor and the card.",
-          "daily_limit": "Maximum total active-ingredient strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure.",
+          "daily_limit": "Maximum total active-ingredient strength allowed in the last 24 hours (the maximum daily dose), in this medication's unit (mg/mcg/g). Set 0 for no limit. Editable later via Configure.",
           "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
           "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
           "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
           "ir_hours_to_peak": "Time for the immediate-release fraction to reach peak concentration [IR Tmax]. Search for the Tmax of the standard/instant version of the drug. Default is 1.0h.",
-          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once."
+          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the immediate-release mg by the total pill mg. Only for extended-release medications. Default 100% means all at once."
         },
         "sections": {
           "advanced_pk": {
@@ -185,17 +185,17 @@
         "data_description": {
           "tracked_symptoms": "Select which metrics to track alongside your doses.",
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for as-needed medications.",
-          "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
-          "adherence_grace_minutes": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on)."
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for PRN medications.",
+          "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for PRN medications.",
+          "adherence_grace_minutes": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Clinical convention allows ±2 hours for most oral medications; the 60-minute default is deliberately stricter. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on)."
         }
       },
       "user_medicine": {
         "title": "Add a Medication",
-        "description": "*This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.*\n\nName your medication and choose a tracking mode. Your choice determines which schedule settings appear next.",
+        "description": "*This tool is for informational and home automation purposes only and is not a certified medical device. Always follow your doctor's advice and the instructions on your prescription.*\n\nName your medication and choose a dosing schedule. Your choice determines which schedule settings appear next.",
         "data": {
           "medication_name": "Medication Name",
-          "tracking_type": "Tracking Type",
+          "tracking_type": "Dosing Schedule",
           "release_type": "Release Type"
         }
       },
@@ -278,11 +278,11 @@
     "step": {
       "init": {
         "title": "Schedule & Dosing",
-        "description": "Adjust the schedule and safety limits. Pharmacokinetic and effectiveness settings are on the next pages.\n\nChanges apply automatically on the next refresh cycle (within about a minute) — no need to reload the device.\n\nTo change how this medication is tracked (e.g. from Regular Interval to Cyclic), pick a different Tracking Type below. You'll be asked to configure the new schedule on the next page; dose history and effectiveness logs are preserved.",
+        "description": "Adjust the schedule and safety limits. Pharmacokinetic and effectiveness settings are on the next pages.\n\nChanges apply automatically on the next refresh cycle (within about a minute) — no need to reload the device.\n\nTo change how this medication is tracked (e.g. from Regular Interval to Cyclic), pick a different Dosing Schedule below. You'll be asked to configure the new schedule on the next page; dose history and effectiveness logs are preserved.",
         "data": {
-          "tracking_type": "Tracking Type",
+          "tracking_type": "Dosing Schedule",
           "hours_between_doses": "Dose Interval",
-          "doses_per_day": "How Many Times per Day",
+          "doses_per_day": "Doses per Day",
           "dose_time_1": "Dose Time 1",
           "dose_time_2": "Dose Time 2",
           "dose_time_3": "Dose Time 3",
@@ -311,7 +311,7 @@
           "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
-          "hours_between_doses": "Minimum hours between consecutive doses.",
+          "hours_between_doses": "Hours between scheduled doses. The next dose becomes due this many hours after your last dose, and the schedule continues around the clock — including overnight (e.g. a dose at 22:00 schedules the next at 06:00). If you take this medication at fixed clock times instead, choose Time of Day.",
           "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. Save and re-enter options to change the number of time fields.",
           "pills_per_slot": "How many pills each scheduled dose consists of (e.g. 2 = take two pills at every dose time). Reminders stay active until all pills for the dose are logged.",
           "dose_time_1": "Time for the first daily dose.",
@@ -344,11 +344,11 @@
       },
       "schedule": {
         "title": "New Schedule",
-        "description": "You changed the tracking type. Configure the schedule for the new type below. Dose history and effectiveness logs are preserved — only the schedule changes.",
+        "description": "You changed the dosing schedule. Configure the schedule for the new type below. Dose history and effectiveness logs are preserved — only the schedule changes.",
         "data": {
-          "tracking_type": "Tracking Type",
+          "tracking_type": "Dosing Schedule",
           "hours_between_doses": "Dose Interval",
-          "doses_per_day": "How Many Times per Day",
+          "doses_per_day": "Doses per Day",
           "time_window_hours": "Time Window",
           "days_on": "Days On",
           "days_off": "Days Off",
@@ -359,7 +359,7 @@
           "dose_buffer_minutes": "Dose Buffer"
         },
         "data_description": {
-          "hours_between_doses": "Minimum hours between consecutive doses.",
+          "hours_between_doses": "Hours between scheduled doses. The next dose becomes due this many hours after your last dose, and the schedule continues around the clock — including overnight (e.g. a dose at 22:00 schedules the next at 06:00). If you take this medication at fixed clock times instead, choose Time of Day.",
           "doses_per_day": "How many times per day you take this medication.",
           "pills_per_slot": "How many pills each scheduled dose consists of (e.g. 2 = take two pills at every dose time). Reminders stay active until all pills for the dose are logged.",
           "time_window_hours": "Rolling window for the pill limit.",
@@ -401,22 +401,22 @@
         "data": {
           "strength": "Dose Strength",
           "strength_unit": "Dose Strength Unit",
-          "daily_limit": "24h Strength Limit",
+          "daily_limit": "Maximum Daily Dose (24h)",
           "half_life": "Elimination Half-Life",
           "hours_to_peak": "Time to Peak Concentration",
           "bioavailability": "Bioavailability",
           "ir_hours_to_peak": "Immediate Release Time to Peak",
-          "ir_fraction": "Initial Release"
+          "ir_fraction": "Immediate-Release Fraction"
         },
         "data_description": {
-          "strength": "Amount of medication per dose in mg. Set to 0 if not tracking concentration.",
+          "strength": "Amount of active ingredient per dose, in the unit chosen below. Set to 0 if not tracking concentration.",
           "strength_unit": "Unit for the dose strength value. Also sets the unit shown on the Amount in Body sensor and the card.",
-          "daily_limit": "Maximum total active-ingredient strength allowed in the last 24 hours, in this medication's unit (mg/mcg/g). Used by the Amount in Last 24h sensor to show remaining headroom. Set 0 for no limit (the sensor still shows the 24h total).",
+          "daily_limit": "Maximum total active-ingredient strength allowed in the last 24 hours (the maximum daily dose), in this medication's unit (mg/mcg/g). Used by the Amount in Last 24h sensor to show remaining headroom. Set 0 for no limit (the sensor still shows the 24h total).",
           "half_life": "Time for the body to eliminate half the drug [t1/2]. Set to 0 if not tracking concentration.",
           "hours_to_peak": "Hours after taking until concentration peaks [Tmax]. Set to 0 for immediate-release medications.",
           "bioavailability": "Percentage of the dose that reaches systemic circulation. Default 100% means no loss. For paracetamol, use 85%.",
           "ir_hours_to_peak": "Time for the immediate-release fraction to reach peak concentration [IR Tmax]. Search for the Tmax of the standard/instant version of the drug. Default is 1.0h.",
-          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the instant-release mg by the total pill mg. Only for sustained-release medications. Default 100% means all at once."
+          "ir_fraction": "Percentage of the dose released immediately. If your label shows a milligram split, divide the immediate-release mg by the total pill mg. Only for extended-release medications. Default 100% means all at once."
         },
         "sections": {
           "advanced_pk": {
@@ -449,9 +449,9 @@
         "data_description": {
           "tracked_symptoms": "Select which metrics to track alongside your doses.",
           "custom_metrics": "Separate multiple with commas, e.g. brain fog, joint stiffness. A 1–10 slider is created for each.",
-          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for as-needed medications.",
-          "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for as-needed medications.",
-          "adherence_grace_minutes": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on).",
+          "enable_calendar": "Show expected dose times on the Home Assistant calendar. Disabling removes the calendar entity. Not available for PRN medications.",
+          "enable_adherence": "Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. Off by default for PRN medications.",
+          "adherence_grace_minutes": "How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Clinical convention allows ±2 hours for most oral medications; the 60-minute default is deliberately stricter. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on).",
           "retention_days": "How many days of dose, skip, adherence, and effectiveness-metric history to keep locally for the rolling sensors and a future medical-export feature. 365 days matches the CMS/NCQA Proportion-of-Days-Covered adherence-measure floor. Older entries are pruned from the local store; the HA recorder is not used. Range 30–1095."
         }
       },
@@ -517,16 +517,16 @@
   "selector": {
     "tracking_type": {
       "options": {
-        "regular_interval": "Regular Interval — fixed hours between doses",
-        "time_of_day": "Time of Day — one or more times daily at set times",
-        "as_needed": "As Needed — on-demand with a safety limit",
-        "cyclic": "Cyclic — on/off day patterns"
+        "regular_interval": "Regular Interval — every N hours around the clock (e.g. every 8 h)",
+        "time_of_day": "Time of Day — fixed clock times each day (e.g. 08:00 and 20:00)",
+        "as_needed": "As Needed (PRN) — on-demand with a safety limit",
+        "cyclic": "Cyclic — on/off day patterns (e.g. 5 days on, 2 days off)"
       }
     },
     "release_type": {
       "options": {
-        "instant_release": "Instant Release — most drugs, don't change if unsure",
-        "sustained_release": "Sustained Release — extended-release or bi-layer tablets"
+        "instant_release": "Immediate Release (IR) — most medications; leave this if unsure",
+        "sustained_release": "Extended Release (ER/XR) — sustained-release, extended-release, or bilayer tablets"
       }
     },
     "tracked_symptoms": {

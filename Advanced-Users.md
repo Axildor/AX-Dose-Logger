@@ -21,8 +21,8 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
 | Medication Name | Text | Display name for the device | My Medication |
-| Tracking Type | Dropdown | Choose a tracking mode (descriptions shown inline) | Regular Interval |
-| Release Type | Dropdown | **Instant Release** for standard pills, **Sustained Release** for extended-release formulations | Instant Release |
+| Dosing Schedule | Dropdown | Choose a tracking mode (descriptions shown inline) | Regular Interval |
+| Release Type | Dropdown | **Immediate Release (IR)** for standard pills, **Extended Release (ER/XR)** for sustained-release formulations | Immediate Release (IR) |
 
 > The medication name, tracking type, and release type can't be changed after creation. To switch, remove the entry and create a new one. *(The tracking type can be changed later via Configure — see [Reconfiguring](#reconfiguring-after-setup).)*
 
@@ -33,7 +33,7 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Field | Range | Description | Default |
 |-------|-------|-------------|---------|
 | Inventory | 0–9999 pills | Number of pills currently available | 30 |
-| Dose Interval | 1–48 h | Minimum hours between consecutive doses | 8 |
+| Dose Interval | 1–48 h | Hours between scheduled doses. The next dose becomes due this many hours after your last dose, and the schedule continues around the clock — including overnight (e.g. a dose at 22:00 schedules the next at 06:00). For fixed clock times, use Time of Day instead. | 8 |
 | Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
 | Pills per Dose | 1–10 pills | Pills prescribed per dose time; reminders stay active until all are logged | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 8 |
@@ -56,7 +56,7 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 2 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 8 |
 
-#### Cyclic / Calendar Pattern
+#### Cyclic Schedule
 
 | Field | Range | Description | Default |
 |-------|-------|-------------|---------|
@@ -76,18 +76,18 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 
 | Field | Range | Description | Default |
 |-------|------|-------------|---------|
-| Dose Strength | 0–9999 mg | Amount of medication per dose. Set to 0 if not tracking concentration. | 0 |
+| Dose Strength | 0–9999 (unit) | Amount of active ingredient per dose, in the unit chosen below. Set to 0 if not tracking concentration. | 0 |
 | Elimination Half-Life | 0–168 h | Time for the body to eliminate half the drug. Set to 0 if not tracking concentration. | 0 |
 | Time to Peak Concentration | 0–72 h | Hours after taking until concentration peaks. Set to 0 for immediate-release medications. | 0 |
 | Bioavailability | 0–100 % | Fraction of the dose that reaches systemic circulation. For example, ibuprofen ≈ 87%, while some drugs are closer to 50%. | 100 |
 | Lag Time | 0–1440 min | Minutes before the medication begins releasing. Leave at 0 if unsure — most drugs start releasing immediately. Typical values: 15–30 min for enteric-coated tablets, 60+ min for colon-targeted delivery. | 0 |
-| 24h Strength Limit | 0–∞ (medication unit) | Optional daily intake cap. `0` = no limit. When set, the Amount in Last 24h sensor exposes a `remaining` attribute, and a **24h Limit Exceeded** binary sensor is created that turns on when the limit is already exceeded or the next dose would push you over it. | 0 |
+| Maximum Daily Dose (24h) | 0–∞ (medication unit) | Optional daily intake cap. `0` = no limit. When set, the Amount in Last 24h sensor exposes a `remaining` attribute, and a **24h Limit Exceeded** binary sensor is created that turns on when the limit is already exceeded or the next dose would push you over it. | 0 |
 
-**Sustained Release fields** (only shown when Release Type is Sustained Release):
+**Extended Release fields** (only shown when Release Type is Extended Release (ER/XR)):
 
 | Field | Range | Description | Default |
 |-------|------|-------------|---------|
-| Initial Release | 0–100 % | Percentage of the dose released immediately (IR fraction). For Paracetamol (Panadol/Tylenol) ER 665 mg, this is 31%. | 100 |
+| Immediate-Release Fraction | 0–100 % | Percentage of the dose released immediately (IR fraction). For Paracetamol (Panadol/Tylenol) ER 665 mg, this is 31%. | 100 |
 | Sustained Release Duration | 0–72 h | Duration of the zero-order (constant-rate) release phase. Leave at 0 for matrix tablets (e.g. Paracetamol ER) — they are polymer sponges, not mechanical pumps. | 0 |
 | Release Half-Life | 0–168 h | Half-life of the first-order release from the SR matrix (the polymer sponge's physical dissolution time). For Paracetamol (Panadol/Tylenol) ER 665 mg, this is 3.0 h. | 0 |
 
@@ -99,15 +99,15 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 |-------|------|-------------|---------|
 | Tracked Symptoms | Multi-select | Check which symptoms to track (Pain, Mood, Nausea, Fatigue). Each gets a daily-locked 0–10 slider. | None |
 | Custom Symptoms | Text | Separate multiple with commas (e.g. brain fog, joint stiffness). A daily-locked 0–10 slider is created for each. | — |
-| Calendar Entity | Toggle | Show expected dose times on the HA calendar. Not available for As Needed. | Off |
-| Track Dose Adherence | Toggle | Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. | On (Off for As Needed) |
-| On-Time Window | 1–1440 min | How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on). | 60 |
+| Calendar Entity | Toggle | Show expected dose times on the HA calendar. Not available for PRN medications. | Off |
+| Track Dose Adherence | Toggle | Show how consistently you take doses on time. Creates 7, 14, 30, and 365-day adherence sensors. | On (Off for PRN medications) |
+| On-Time Window | 1–1440 min | How early or late a dose can be and still count as on-time. For example, 60 minutes means ±60 minutes around the scheduled time. Clinical convention allows ±2 hours for most oral medications; the 60-minute default is deliberately stricter. Also controls when the card transitions to the overdue warning state — at half this value, the card begins showing the overdue indicator. Applies to all scheduled medications (whether or not adherence tracking is on). | 60 |
 
 ### Reconfiguring After Setup
 
 Click **Configure** on the integration entry to change settings without recreating the medication. The reconfiguration flow has 3 steps:
 
-**Step 1: Schedule & Dosing** — A **Tracking Type** dropdown at the top lets you change how the medication is scheduled (e.g. from Regular Interval to Cyclic, or to As Needed). If you change it, an extra **New Schedule** step appears to collect the new type's schedule fields. If you keep the same type, the current schedule fields are shown inline. Dose history and effectiveness logs are preserved across the change.
+**Step 1: Schedule & Dosing** — A **Dosing Schedule** dropdown at the top lets you change how the medication is scheduled (e.g. from Regular Interval to Cyclic, or to PRN). If you change it, an extra **New Schedule** step appears to collect the new type's schedule fields. If you keep the same type, the current schedule fields are shown inline. Dose history and effectiveness logs are preserved across the change.
 
 **Step 2: Pharmacokinetics** (same as Step 3 above)
 
@@ -115,7 +115,7 @@ Click **Configure** on the integration entry to change settings without recreati
 
 > **Note:** The medication name and release type can't be changed after creation. The tracking type *can* be changed from the Configure dialog.
 
-> **Changes apply automatically.** After saving, schedule, dosing, and PK changes propagate to all sensors within about a minute, or instantly when you log your next dose. No device reload is needed. The exceptions are: enabling/disabling the Calendar, Adherence, or tracked symptoms (which add or remove entities), **setting or clearing the 24h Strength Limit** (which adds or removes the 24h Limit Exceeded binary sensor), and **changing the Tracking Type** (which reloads the device to recreate its sensors). In all cases your dose history and effectiveness logs are preserved.
+> **Changes apply automatically.** After saving, schedule, dosing, and PK changes propagate to all sensors within about a minute, or instantly when you log your next dose. No device reload is needed. The exceptions are: enabling/disabling the Calendar, Adherence, or tracked symptoms (which add or remove entities), **setting or clearing the Maximum Daily Dose (24h)** (which adds or removes the 24h Limit Exceeded binary sensor), and **changing the Dosing Schedule** (which reloads the device to recreate its sensors). In all cases your dose history and effectiveness logs are preserved.
 
 ---
 
@@ -205,12 +205,12 @@ Key entities and their attributes for template references:
 
 **Amount in Body** (`sensor.ibuprofen_amount_in_body`)
 - State: current drug amount in mg (float, 1 decimal)
-- *Instant Release attributes:*
+- *Immediate Release (IR) attributes:*
   - `gut_mass`: drug remaining in gut compartment (mg)
   - `ka`: absorption rate constant (h⁻¹)
   - `lag_time`: configured lag time (min)
   - `dose_history`: list of `[timestamp, strength]` pairs
-- *Sustained Release attributes:*
+- *Extended Release (ER/XR) attributes:*
   - `gut_ir_mass`: drug in IR gut compartment (mg)
   - `matrix_sr_mass`: drug remaining in SR matrix (mg)
   - `gut_sr_mass`: drug in SR gut compartment (mg)
@@ -227,7 +227,7 @@ Key entities and their attributes for template references:
 - `remaining`: `daily_limit - amount`, or `null` when no limit is configured. **Deprecated** — prefer the standalone *Daily Remaining* sensor below (kept so existing templates keep working).
 - `unit_of_measurement`: the medication's strength unit (mg/μg/g)
 
-**Daily Remaining** (`sensor.ibuprofen_daily_remaining`) — only created when a 24h Strength Limit is configured
+**Daily Remaining** (`sensor.ibuprofen_daily_remaining`) — only created when a Maximum Daily Dose (24h) is configured
 - State: `daily_limit − amount in last 24h` (in the medication's unit, 1 decimal). A negative value means the limit is already exceeded (overage). The standalone, automation-friendly form of the Amount in Last 24h sensor's `remaining` attribute.
 - `window_hours`: `24` (fixed rolling window)
 - `daily_limit`: configured 24h limit, or `null` when set to `0`
