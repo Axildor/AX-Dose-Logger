@@ -17,6 +17,7 @@ from .const import (
     DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
     DOSE_BUFFER_DEFAULT_MIN,
+    DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
     DRINK_TYPES,
     GLOBAL_PK_DEFAULTS,
@@ -1284,7 +1285,10 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     # ------------------------------------------------------------------
-    # Granular drink options flow — cooldown + dose_strength + drinking_duration
+    # Granular drink options flow — substance-native strength fields
+    # (caffeine_mg / volume_ml + abv_percent) + cooldown + drinking_duration.
+    # dose_strength is recomputed silently on save, mirroring the initial
+    # config flow (Widmark mass for alcohol, caffeine_mg for caffeine).
     # ------------------------------------------------------------------
     async def async_step_drink_options(self, user_input=None):
         """Edit a granular drink's mutable settings (name/drink_type immutable).
@@ -1293,6 +1297,10 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         profile access post-setup.  Changing it is a structural reload (the
         coordinator caches the array at setup).  ``shared_drink`` is the
         frontend flag for the "Who is logging this?" popup.
+
+        Strength is edited via the substance-native fields (caffeine_mg for
+        caffeine; volume_ml + abv_percent for alcohol) and ``dose_strength``
+        is recomputed silently on save — the raw Widmark mass is never shown.
         """
         if user_input is not None:
             self._data.update(user_input)
@@ -1308,6 +1316,10 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
                     errors={"allowed_profiles": "select_profile"},
                     last_step=False,
                 )
+            # Recompute dose_strength from the substance-native fields
+            # (mirrors the initial config flow) and strip the raw payload
+            # keys so they are not persisted in entry.options.
+            self._recompute_drink_strength()
             return self.async_create_entry(title="", data=self._data)
 
         return self.async_show_form(
@@ -1315,10 +1327,38 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=self._drink_options_schema(),
         )
 
+    def _recompute_drink_strength(self) -> None:
+        """Recompute ``dose_strength`` from the native fields in ``self._data``.
+
+        Caffeine: ``dose_strength = caffeine_mg``.
+        Alcohol (Widmark): ``dose_strength = volume_ml × abv_percent/100 × 0.789``.
+
+        The raw payload keys (``caffeine_mg`` / ``volume_ml`` / ``abv_percent``)
+        are removed from ``self._data`` afterwards so only ``dose_strength``
+        is persisted — except for alcohol, where ``volume_ml`` + ``abv_percent``
+        are kept in options for round-trip pre-fill on the next edit.
+        """
+        drink_type = self._entry.data.get("drink_type")
+        if drink_type == DRINK_TYPE_CAFFEINE:
+            self._data["dose_strength"] = float(self._data.pop("caffeine_mg", 0))
+        elif drink_type == DRINK_TYPE_ALCOHOL:
+            volume_ml = float(self._data.get("volume_ml", 330))
+            abv_percent = float(self._data.get("abv_percent", 5.0))
+            self._data["dose_strength"] = round(volume_ml * (abv_percent / 100.0) * _ETHANOL_DENSITY, 2)
+            # Keep volume_ml + abv_percent in options for round-trip editing;
+            # the coordinators ignore them (they read dose_strength only).
+
     def _drink_options_schema(self) -> vol.Schema:
-        """Build the drink_options form schema (factored for re-show on error)."""
+        """Build the drink_options form schema (factored for re-show on error).
+
+        Substance-aware: caffeine drinks edit ``caffeine_mg``; alcohol drinks
+        edit ``volume_ml`` + ``abv_percent`` (Widmark mass is recomputed on
+        save and never shown).  Falls back to derived defaults for legacy
+        entries that only carry ``dose_strength``.
+        """
         options = self._entry.options
         data = self._entry.data
+        drink_type = data.get("drink_type")
         # Default the multi-select to the current allowed_profiles.  Preserves
         # the pre-selection when drink_new_profile injected a freshly-created
         # profile UUID and returned here.
@@ -1326,42 +1366,66 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             "allowed_profiles",
             options.get("allowed_profiles", data.get("allowed_profiles", ["default"])),
         )
-        return vol.Schema(
-            {
+        schema: dict = {
+            vol.Required(
+                "cooldown_window", default=options.get("cooldown_window", data.get("cooldown_window", 0))
+            ): _COOLDOWN_SELECTOR,
+            # Anti-drift dose buffer (mirrors medicine pill_limit). Optional
+            # so existing drinks gain the 5-min default on next options save.
+            vol.Optional(
+                "dose_buffer_minutes",
+                default=options.get("dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)),
+            ): _DOSE_BUFFER_SELECTOR,
+        }
+        if drink_type == DRINK_TYPE_CAFFEINE:
+            # Legacy entries stored only dose_strength (= caffeine_mg).
+            schema[
                 vol.Required(
-                    "cooldown_window", default=options.get("cooldown_window", data.get("cooldown_window", 0))
-                ): _COOLDOWN_SELECTOR,
-                # Anti-drift dose buffer (mirrors medicine pill_limit). Optional
-                # so existing drinks gain the 5-min default on next options save.
-                vol.Optional(
-                    "dose_buffer_minutes",
-                    default=options.get(
-                        "dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)
-                    ),
-                ): _DOSE_BUFFER_SELECTOR,
-                vol.Required(
-                    "dose_strength", default=options.get("dose_strength", data.get("dose_strength", 0))
-                ): _DOSE_STRENGTH_SELECTOR,
-                vol.Required(
-                    "drinking_duration", default=options.get("drinking_duration", data.get("drinking_duration", 15))
-                ): _DRINKING_DURATION_SELECTOR,
-                # M2M allowed_profiles (re-editable).  The __new__ sentinel
-                # lets the admin create a new profile inline.
-                vol.Required("allowed_profiles", default=current_allowed): sel.SelectSelector(
-                    sel.SelectSelectorConfig(
-                        options=[
-                            *[{"value": p["value"], "label": p["label"]} for p in _get_profile_choices(self.hass)],
-                            {"value": "__new__", "label": "+ New profile…"},
-                        ],
-                        multiple=True,
-                        mode=sel.SelectSelectorMode.LIST,
-                    )
-                ),
-                vol.Optional(
-                    "shared_drink", default=options.get("shared_drink", data.get("shared_drink", False))
-                ): _SHARED_DRINK_SELECTOR,
-            }
+                    "caffeine_mg",
+                    default=options.get("caffeine_mg", data.get("caffeine_mg", data.get("dose_strength", 90))),
+                )
+            ] = _CAFFEINE_MG_SELECTOR
+        elif drink_type == DRINK_TYPE_ALCOHOL:
+            # Legacy entries stored only dose_strength (Widmark mass).  Derive
+            # an approximate volume from the stored mass + ABV so the form
+            # pre-fills with values that reproduce the current dose_strength.
+            abv_default = options.get("abv_percent", data.get("abv_percent", 5.0))
+            volume_default = options.get("volume_ml", data.get("volume_ml"))
+            if volume_default is None:
+                stored_strength = data.get("dose_strength", 0)
+                volume_default = (
+                    round(float(stored_strength) / (float(abv_default) / 100.0) / _ETHANOL_DENSITY)
+                    if stored_strength
+                    else 330
+                )
+            schema[vol.Required("volume_ml", default=volume_default)] = _VOLUME_ML_SELECTOR
+            schema[vol.Required("abv_percent", default=abv_default)] = _ABV_SELECTOR
+        else:
+            # Unknown/legacy drink_type — keep the raw dose_strength field.
+            schema[
+                vol.Required("dose_strength", default=options.get("dose_strength", data.get("dose_strength", 0)))
+            ] = _DOSE_STRENGTH_SELECTOR
+        schema[
+            vol.Required(
+                "drinking_duration", default=options.get("drinking_duration", data.get("drinking_duration", 15))
+            )
+        ] = _DRINKING_DURATION_SELECTOR
+        # M2M allowed_profiles (re-editable).  The __new__ sentinel
+        # lets the admin create a new profile inline.
+        schema[vol.Required("allowed_profiles", default=current_allowed)] = sel.SelectSelector(
+            sel.SelectSelectorConfig(
+                options=[
+                    *[{"value": p["value"], "label": p["label"]} for p in _get_profile_choices(self.hass)],
+                    {"value": "__new__", "label": "+ New profile…"},
+                ],
+                multiple=True,
+                mode=sel.SelectSelectorMode.LIST,
+            )
         )
+        schema[vol.Optional("shared_drink", default=options.get("shared_drink", data.get("shared_drink", False)))] = (
+            _SHARED_DRINK_SELECTOR
+        )
+        return vol.Schema(schema)
 
     # ------------------------------------------------------------------
     # Granular drink options flow — New Profile (inline creation)

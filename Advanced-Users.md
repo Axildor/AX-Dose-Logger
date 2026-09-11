@@ -153,7 +153,7 @@ A **drink** (e.g. "Coca-Cola 33cl") is a global household asset, **not** owned b
 - Alice's personal morning coffee → Allowed Profiles = `[Alice]`.
 - A pure-inventory tracker (no PK) → Allowed Profiles = `[]` (empty — valid; tracks stock only).
 
-Reassign a drink's allowed profiles any time via the drink's **Configure** (options) flow.
+Reassign a drink's allowed profiles, strength, cooldown, and drinking duration any time via the drink's **Configure** (options) flow. Strength is edited with the same fields as at setup — **Caffeine (mg)** for caffeine drinks, **Volume (ml)** + **ABV (%)** for alcohol drinks (the ethanol grams are recomputed automatically; the raw Widmark mass is never shown).
 
 #### Logging a shared drink (split-routing)
 

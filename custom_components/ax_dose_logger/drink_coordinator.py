@@ -22,9 +22,12 @@ Two coordinator classes live here:
   first-order gut->body -> first-order elimination).  Full-history
   recompute on every tick (linear PK -> superposition valid).
 
-  Alcohol uses a zero-order elimination incremental simulation
-  (Michaelis-Menten saturated elimination is non-linear -> cannot use
-  superposition).  State (``body_mass`` + ``last_decay``) is persisted.
+  Alcohol uses a zero-order elimination model with a linear-ramp input:
+  each drink trickles in evenly over its ``drinking_duration`` (zero-order
+  absorption) while the body eliminates at a constant g/h rate, clamped at
+  0.  Body mass is a pure function of ``dose_history`` + ``now``
+  (history-replay, recomputed on every tick) -- no persisted incremental
+  state, so backdated doses and undo/reset are correct by construction.
 """
 
 from __future__ import annotations
@@ -695,8 +698,6 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         self._caffeine_half_life = GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]
         self._caffeine_tmax = GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]
         self._alcohol_elimination_rate = GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]
-        # Last decay timestamp -- used by alcohol zero-order simulation.
-        self._last_decay: datetime | None = None
         # Caffeine peak forecast cache -- the forecasted (peak_mass, peak_time)
         # is stationary between dose events (it doesn't move on a 1-min tick
         # unless a new dose arrives or the absorption window ends).  Caching it
@@ -757,9 +758,10 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
 
         Prunes the loaded dose list to the universal drinks retention window.
         PK-safe: caffeine (linear PK) contributes <1% after 5 half-lives
-        (~25h) so 365-day pruning is irrelevant; alcohol (incremental
-        zero-order from persisted ``body_mass`` + ``last_decay``) does not
-        recompute from history at all, so pruning is a no-op for it.
+        (~25h) so 365-day pruning is irrelevant; alcohol (history-replay)
+        eliminates fully well within the window (365 days x the elimination
+        rate dwarfs any dose), so replaying from pruned history seeded at 0
+        is exact.
         """
         cutoff = retention_cutoff(dt_util.now(), self._retention_days())
         stored = self._store.get_drink_master(self._profile_id, self._substance)
@@ -784,9 +786,11 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         doses.sort(key=lambda dose: dose[0])
         last_dose = doses[-1][0] if doses else None
         body_mass = float(stored.get("body_mass", 0.0))
-        last_decay_str = stored.get("last_decay")
-        last_decay = dt_util.parse_datetime(last_decay_str) if last_decay_str else None
-        self._last_decay = last_decay
+        # Legacy stores persist ``body_mass`` + ``last_decay`` from the old
+        # incremental alcohol model.  Both are ignored now: the recompute at
+        # the end of this method derives body mass from the dose history
+        # (history-replay), so old stores self-heal on first load -- no
+        # migration needed.
 
         # Rebuild contributing entry-id set from the doses (best-effort;
         # not stored per-dose -- see contributing_entry_ids note in dataclass).
@@ -853,10 +857,21 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             peak_body_mass, peak_time = self._forecast_caffeine_peak(data.dose_history, now, body_mass)
         else:
             body_mass, pk_result = self._compute_alcohol(data, now)
-            # Alcohol absorbs instantly -- the peak is the dose moment (now
-            # in the past) and the current body_mass is the post-peak value.
-            peak_body_mass = body_mass
-            peak_time = now
+            # Alcohol peak forecast: with the linear-ramp input the curve is
+            # piecewise linear, so its maximum over [now, last drink end]
+            # occurs at a segment boundary -- either now or the end of an
+            # active/future drink's ramp.  Evaluate the forward sim at those
+            # candidate times and take the max.  Post-drink (no active or
+            # future ramps) the peak is the current body mass at `now`.
+            candidates = [now]
+            for dose_time, _strength, t_dur, *_ in data.dose_history:
+                drink_end = dose_time + timedelta(hours=max(float(t_dur), 1e-9))
+                if drink_end > now:
+                    candidates.append(drink_end)
+            candidate_masses = self._alcohol_forward_sim(data.dose_history, candidates)
+            peak_idx = max(range(len(candidates)), key=lambda i: candidate_masses[i])
+            peak_body_mass = candidate_masses[peak_idx]
+            peak_time = candidates[peak_idx]
 
         return DrinkMasterCoordinatorData(
             dose_history=data.dose_history,
@@ -1113,23 +1128,90 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         return peak_mass, peak_time
 
     # ------------------------------------------------------------------
-    # Alcohol PK -- zero-order elimination incremental simulation
+    # Alcohol PK -- zero-order elimination + linear-ramp input (history-replay)
     # ------------------------------------------------------------------
-    def _compute_alcohol(self, data: DrinkMasterCoordinatorData, now: datetime) -> tuple[float, PKResult | None]:
-        """Zero-order elimination: body -= rate * elapsed; doses add instantly.
+    def _alcohol_forward_sim(
+        self,
+        dose_history: list[tuple[datetime, float, float, str | None]],
+        sample_times: list[datetime],
+    ) -> list[float]:
+        """Segment-wise forward simulation of the alcohol body-mass curve.
 
-        State (body_mass + last_decay) is persisted.  The 1-min tick advances
-        the elimination; async_add_dose adds instantly and recomputes.
+        Each dose trickles in evenly over its ``drinking_duration``
+        (zero-order input at ``strength / t_dur`` g/h) while the body
+        eliminates at a constant ``_alcohol_elimination_rate`` g/h, clamped
+        at 0.  The simulation walks the union of dose starts, dose ends, and
+        sample times, applying the exact linear arithmetic per segment --
+        mathematically identical to the live 1-min tick model and to
+        ``sample_body_mass_curve`` (both call this method).
+
+        Seeding at 0 before the oldest dose is exact: any mass from doses
+        older than the retention window has already fully eliminated (365
+        days x the elimination rate dwarfs any dose), so no residual offset
+        exists.
+
+        ``dose_history`` must be chronologically sorted (the coordinator
+        maintains that invariant).  Returns one body-mass value per sample
+        time, in the same order.  Sample times may lie in the future (peak
+        forecasting) -- the walk simply continues the ramps/decay forward.
         """
-        body = data.body_mass
-        last_decay = self._last_decay or data.last_dose_time
-        if last_decay is not None:
-            elapsed_hours = (now - last_decay).total_seconds() / 3600.0
-            if elapsed_hours > 0:
-                body -= self._alcohol_elimination_rate * elapsed_hours
-                if body < 0:
-                    body = 0.0
-        self._last_decay = now
+        rate = self._alcohol_elimination_rate
+        if rate <= 0 or not dose_history:
+            return [0.0] * len(sample_times)
+
+        # Event list: (time, value, is_bolus).  A ramping dose contributes
+        # two rate-delta events (start: +strength/duration, end:
+        # -strength/duration); overlapping drinks superpose their input
+        # rates (two sips in parallel simply add).  A zero-duration dose is
+        # a true instant bolus: a single +strength event applied directly
+        # to the body mass (a rate over a ~microsecond timedelta would
+        # round and over/under-add).
+        events: list[tuple[datetime, float, bool]] = []
+        for dose_time, strength, t_dur, *_ in dose_history:
+            dur = float(t_dur)
+            if dur <= 0:
+                events.append((dose_time, float(strength), True))
+            else:
+                events.append((dose_time, float(strength) / dur, False))
+                events.append((dose_time + timedelta(hours=dur), -float(strength) / dur, False))
+        events.sort(key=lambda e: e[0])
+
+        samples: list[float] = []
+        ei = 0
+        input_rate = 0.0
+        t_sim = min(events[0][0], sample_times[0]) if sample_times else events[0][0]
+        body = 0.0
+        for t in sample_times:
+            # Advance through every event at or before this sample time.
+            while ei < len(events) and events[ei][0] <= t:
+                t_e, value, is_bolus = events[ei]
+                dt_h = (t_e - t_sim).total_seconds() / 3600.0
+                if dt_h > 0:
+                    body = max(0.0, body + (input_rate - rate) * dt_h)
+                    t_sim = t_e
+                if is_bolus:
+                    body = max(0.0, body + value)
+                else:
+                    input_rate = max(0.0, input_rate + value)
+                ei += 1
+            dt_h = (t - t_sim).total_seconds() / 3600.0
+            if dt_h > 0:
+                body = max(0.0, body + (input_rate - rate) * dt_h)
+                t_sim = t
+            samples.append(body)
+        return samples
+
+    def _compute_alcohol(self, data: DrinkMasterCoordinatorData, now: datetime) -> tuple[float, PKResult | None]:
+        """Zero-order elimination + linear-ramp input, replayed from history.
+
+        Body mass is a pure function of ``dose_history`` + ``now`` -- no
+        persisted incremental state.  Each drink's strength enters evenly
+        across its ``drinking_duration`` (honoring the user's sip window)
+        while the body eliminates at a constant g/h rate.  The 1-min tick
+        recomputes from history; ``async_add_dose`` merely appends to the
+        history and triggers a recompute.
+        """
+        body = self._alcohol_forward_sim(data.dose_history, [now])[0]
         # No PKResult structure for alcohol (zero-order, not Bateman).
         # Expose a minimal PKResult for attribute consistency.
         pk_result = PKResult(
@@ -1165,10 +1247,10 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         self.data.dose_history.sort(key=lambda dose: dose[0])
         self.data.last_dose_time = self.data.dose_history[-1][0]
 
-        if self._substance == DRINK_TYPE_ALCOHOL:
-            # Instant absorption for alcohol -- add to body immediately,
-            # then let the next tick handle elimination.
-            self.data.body_mass += dose_strength
+        # No body_mass mutation here: alcohol body mass is a pure function
+        # of dose_history (history-replay) and is derived by the recompute
+        # triggered below -- the drink's strength ramps in over its
+        # drinking_duration, not instantly.
 
         self._save()
         self._push_update()
@@ -1182,12 +1264,11 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         # undoing after a backdated insert removes the true latest dose.
         max_idx = max(range(len(history)), key=lambda i: history[i][0])
         removed = history.pop(max_idx)
-        removed_strength = removed[1]
         # Re-sort so the chronological invariant holds for legacy unsorted data.
         history.sort(key=lambda dose: dose[0])
         self.data.last_dose_time = history[-1][0] if history else None
-        if self._substance == DRINK_TYPE_ALCOHOL:
-            self.data.body_mass = max(0.0, self.data.body_mass - removed_strength)
+        # No body_mass adjustment: alcohol body mass is derived from the
+        # remaining history by the recompute below (history-replay).
         self._save()
         self._push_update()
 
@@ -1198,8 +1279,9 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         master's most-recent dose regardless of contributor), this removes
         only doses tagged with the calling drink's ``source_entry_id``,
         newest-first, so interleaved drinks never destroy each other's PK
-        state.  For alcohol, each removed dose's strength is subtracted from
-        ``body_mass`` (mirroring ``async_undo_dose``).
+        state.  For alcohol, body mass is derived from the remaining
+        history by the recompute below (history-replay) -- no manual
+        subtraction needed.
 
         Legacy fallback: doses written before provenance tagging have
         ``source_entry_id = None`` and cannot be matched.  When fewer than
@@ -1218,9 +1300,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         matching = [i for i, dose in enumerate(history) if len(dose) > 3 and dose[3] == source_entry_id]
         matching.sort(key=lambda i: history[i][0], reverse=True)
         for idx in matching[:count]:
-            removed = history.pop(idx)
-            if self._substance == DRINK_TYPE_ALCOHOL:
-                self.data.body_mass = max(0.0, self.data.body_mass - removed[1])
+            history.pop(idx)
             removed_total += 1
 
         # Pass 2 (legacy fallback): the calling drink contributed more doses
@@ -1243,9 +1323,7 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
                 if not history:
                     break
                 max_idx = max(range(len(history)), key=lambda i: history[i][0])
-                removed = history.pop(max_idx)
-                if self._substance == DRINK_TYPE_ALCOHOL:
-                    self.data.body_mass = max(0.0, self.data.body_mass - removed[1])
+                history.pop(max_idx)
                 removed_total += 1
 
         if removed_total:
@@ -1261,7 +1339,6 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         self.data.dose_history.clear()
         self.data.last_dose_time = None
         self.data.body_mass = 0.0
-        self._last_decay = None
         self._save()
         self._push_update()
 
@@ -1317,13 +1394,12 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
     def _save(self) -> None:
         """Serialize current master state and schedule a debounced store save.
 
-        Prunes the persisted ``doses`` list to the retention window.  Note
-        that alcohol does NOT recompute body-mass from history (incremental
-        zero-order simulation from ``body_mass`` + ``last_decay``), so
-        pruning old alcohol doses is a PK no-op; caffeine (linear PK,
-        superposition) contributes <1% after 5 half-lives (~25h) so pruning
-        at 365 days is also PK-irrelevant.  See retention.py for the full
-        PK-safety rationale.
+        Prunes the persisted ``doses`` list to the retention window.  PK-safe
+        for both substances: caffeine (linear PK, superposition) contributes
+        <1% after 5 half-lives (~25h); alcohol (history-replay) eliminates
+        fully well within the window (365 days x the elimination rate dwarfs
+        any dose), so replaying from pruned history seeded at 0 is exact.
+        See retention.py for the full PK-safety rationale.
         """
         cutoff = retention_cutoff(dt_util.now(), self._retention_days())
         kept = prune_dose_triples(self.data.dose_history, cutoff)
@@ -1333,8 +1409,10 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
                 [d[0].isoformat(), d[1], d[2], d[3] if len(d) > 3 else None]
                 for d in kept
             ],
+            # Legacy key from the pre-history-replay incremental model --
+            # ignored on load (body mass is derived from history); kept so
+            # a downgrade to an older build still finds a sane value.
             "body_mass": self.data.body_mass,
-            "last_decay": self._last_decay.isoformat() if self._last_decay else None,
         }
         self._store.schedule_save_drink_master(self._profile_id, self._substance, serialized)
 
@@ -1373,14 +1451,16 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         (``peak_time <= now``) the formula reduces to the prior pure-tail
         exponential estimate -- backward compatible.
 
-        Alcohol uses zero-order elimination (linear):  t = (M - target) /
-        elimination_rate.  Alcohol absorbs instantly so the peak is the dose
-        moment (already past) and the current body_mass is the post-peak
-        value -- no peak forecast needed.
+        Alcohol uses zero-order elimination (linear) anchored at the
+        forecasted peak (see ``_recompute_data``): with the linear-ramp
+        input the peak occurs at the end of the last active drink's ramp
+        (or now, post-drink).  ``total_eta = time_to_peak + (peak_mass -
+        target) / rate``.  Post-peak the formula reduces to the prior
+        pure-tail linear estimate -- backward compatible.
 
         Returns ``None`` when the target is already met (``peak_body_mass <=
-        target`` for caffeine / ``body_mass <= target`` for alcohol) or when
-        the relevant PK constant is unavailable / zero.
+        target`` for both substances) or when the relevant PK constant is
+        unavailable / zero.
         """
         if self._substance == DRINK_TYPE_CAFFEINE:
             peak_mass = self.data.peak_body_mass
@@ -1402,16 +1482,21 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
                 return None
             return time_to_peak + timedelta(hours=decay_hours)
         if self._substance == DRINK_TYPE_ALCOHOL:
-            mass = self.data.body_mass
-            if mass <= target:
+            peak_mass = self.data.peak_body_mass
+            peak_time = self.data.peak_time
+            if peak_time is None or peak_mass <= target:
                 return None
             rate = self._alcohol_elimination_rate
             if not rate or rate <= 0:
                 return None
-            hours = (mass - target) / rate
-            if hours < 0:
+            now = dt_util.now()
+            time_to_peak = peak_time - now
+            if time_to_peak.total_seconds() < 0:
+                time_to_peak = timedelta(0)
+            decay_hours = (peak_mass - target) / rate
+            if decay_hours < 0:
                 return None
-            return timedelta(hours=hours)
+            return time_to_peak + timedelta(hours=decay_hours)
         return None
 
     # ------------------------------------------------------------------
@@ -1433,8 +1518,10 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         ``time_to_peak + ln(peak_mass / low_threshold) / ke`` formula as
         :meth:`estimate_time_to_body_mass`.
 
-        Alcohol: instant absorption means the post-dose body mass is
-        ``current_body + strength``; ETA is linear zero-order elimination.
+        Alcohol: the hypothetical dose ramps in over its ``t_dur``; the
+        post-dose peak is the max of the forward sim over [now, last drink
+        end] (evaluated via ``_alcohol_forward_sim``), then linear
+        zero-order elimination from that peak.
 
         Returns ``None`` when the post-dose peak/body never exceeds the Low
         threshold -- the drink would not lift the user above Low, so there is
@@ -1486,16 +1573,34 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             return now + time_to_peak + timedelta(hours=decay_hours)
 
         if self._substance == DRINK_TYPE_ALCOHOL:
-            post_mass = self.data.body_mass + float(dose_strength)
-            if post_mass <= target:
-                return None
             rate = self._alcohol_elimination_rate
             if not rate or rate <= 0:
                 return None
-            hours = (post_mass - target) / rate
-            if hours < 0:
+            # Hypothetical history: current doses + the new drink ramping in
+            # over its t_dur.  Peak candidates: now + each active/future
+            # drink end (piecewise-linear curve -> max at a boundary).
+            hypothetical = [
+                *self.data.dose_history,
+                (now, float(dose_strength), float(t_dur_hours), None),
+            ]
+            candidates = [now]
+            for dose_time, _strength, t_dur, *_ in hypothetical:
+                drink_end = dose_time + timedelta(hours=max(float(t_dur), 1e-9))
+                if drink_end > now:
+                    candidates.append(drink_end)
+            candidate_masses = self._alcohol_forward_sim(hypothetical, candidates)
+            peak_idx = max(range(len(candidates)), key=lambda i: candidate_masses[i])
+            peak_mass = candidate_masses[peak_idx]
+            peak_time = candidates[peak_idx]
+            if peak_mass <= target:
                 return None
-            return now + timedelta(hours=hours)
+            time_to_peak = peak_time - now
+            if time_to_peak.total_seconds() < 0:
+                time_to_peak = timedelta(0)
+            decay_hours = (peak_mass - target) / rate
+            if decay_hours < 0:
+                return None
+            return now + time_to_peak + timedelta(hours=decay_hours)
 
         return None
 
@@ -1521,14 +1626,15 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
         - **Caffeine**: exact per-sample recompute via ``_compute_caffeine``
           (linear PK superposition — deterministic, same as the 1-min tick).
         - **Alcohol**: exact segment-wise forward simulation of the
-          zero-order model (linear decay, clamp at 0, instant dose
-          additions) walked between the union of dose times and sample
-          times — no approximation, identical to the live 1-min tick model.
-          Seeding at 0 before the oldest retained dose is exact: any mass
-          from doses older than the retention window has already fully
-          eliminated (365 days × the elimination rate dwarfs any dose), so
-          no residual offset exists — the curve ends exactly at the live
-          sensor value.
+          zero-order model (linear-ramp input over each drink's
+          drinking_duration, linear decay, clamp at 0) walked between the
+          union of dose starts/ends and sample times — no approximation,
+          identical to the live 1-min tick model (both use
+          ``_alcohol_forward_sim``).  Seeding at 0 before the oldest
+          retained dose is exact: any mass from doses older than the
+          retention window has already fully eliminated (365 days × the
+          elimination rate dwarfs any dose), so no residual offset exists —
+          the curve ends exactly at the live sensor value.
 
         Returns ``[(timestamp, value), ...]`` with ``points`` samples from
         ``start`` to ``end`` inclusive, or ``[]`` when there is no history.
@@ -1564,29 +1670,12 @@ class DrinkMasterCoordinator(DataUpdateCoordinator[DrinkMasterCoordinatorData]):
             return samples
 
         if self._substance == DRINK_TYPE_ALCOHOL:
-            rate = self._alcohol_elimination_rate
-            if rate <= 0:
+            if self._alcohol_elimination_rate <= 0:
                 return []
             sample_times = [start + timedelta(seconds=span * i / (n - 1)) for i in range(n)]
-            doses = sorted((dose[0], dose[1]) for dose in data.dose_history)
-            # Segment-wise forward simulation: between events the body
-            # decays linearly (exact for zero-order), doses add instantly,
-            # and the clamp at 0 is applied at each segment boundary —
-            # mathematically identical to the live incremental model.
-            t_sim = min(doses[0][0], start)
-            body = 0.0
-            di = 0
-            samples = []
-            for t in sample_times:
-                while di < len(doses) and doses[di][0] <= t:
-                    t_d, s_d = doses[di]
-                    body = max(0.0, body - rate * (t_d - t_sim).total_seconds() / 3600.0)
-                    body += s_d
-                    t_sim = t_d
-                    di += 1
-                body = max(0.0, body - rate * (t - t_sim).total_seconds() / 3600.0)
-                t_sim = t
-                samples.append((t, body))
-            return samples
+            # Shared segment-wise forward sim (linear-ramp input + zero-order
+            # elimination) — identical math to the live 1-min tick model.
+            masses = self._alcohol_forward_sim(data.dose_history, sample_times)
+            return list(zip(sample_times, masses, strict=True))
 
         return []

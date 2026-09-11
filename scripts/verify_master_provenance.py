@@ -98,7 +98,6 @@ def _make_master(substance: str, stored: dict | None = None) -> dc.DrinkMasterCo
     master._caffeine_half_life = dc.GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]
     master._caffeine_tmax = dc.GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]
     master._alcohol_elimination_rate = dc.GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]
-    master._last_decay = None
     master.data = dc.DrinkMasterCoordinatorData()
     if stored is not None:
         # Mimic the _async_setup load path (defensive legacy read).
@@ -165,7 +164,13 @@ def test_surgical_reset_interleaved() -> None:
 
 
 def test_surgical_reset_alcohol_body_mass() -> None:
-    """Alcohol: removing A's doses subtracts only A's grams from body_mass."""
+    """Alcohol: removing A's doses leaves only B's grams in body_mass.
+
+    History-replay model: body mass is derived from the remaining dose
+    history by the recompute, so removing A's doses leaves exactly B's
+    contribution (B's 10 g ramped in over its 0.0 h duration, minus the
+    zero-order elimination since B's dose time).
+    """
     master = _make_master(DRINK_TYPE_ALCOHOL)
     plan = [
         (_ts(0), 14.0, "entryA"),
@@ -174,15 +179,28 @@ def test_surgical_reset_alcohol_body_mass() -> None:
     ]
     for ts, strength, source in plan:
         asyncio.run(master.async_add_dose(ts, strength, 0.0, source_entry_id=source))
-    expected_after = 10.0  # only B's grams remain
     removed = asyncio.run(master.async_remove_doses("entryA", 2))
     assert removed == 2, f"expected 2 removals, got {removed}"
+    # Derive body mass from the remaining history (B's dose only).  Advance
+    # the fixed clock past all dose times first: the history-replay model
+    # only counts doses at or before "now" (future doses have not entered
+    # the body yet).
+    global CLOCK
+    CLOCK = CLOCK + timedelta(minutes=30)
+    master.data = master._recompute_data()
+    # History-replay: B's 10 g (t_dur=0 -> instant ramp) entered at _ts(10)
+    # and has been eliminating at the global rate for the 20 minutes from
+    # _ts(10) to the advanced CLOCK (_ts(30)), so the replayed body mass is
+    # 10 - rate * (20/60).
+    rate = dc.GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]
+    expected_after = 10.0 - rate * (20.0 / 60.0)
     assert abs(master.data.body_mass - expected_after) < 1e-9, (
-        f"body_mass must be reduced only by A's grams: {master.data.body_mass}"
+        f"body_mass must reflect only B's grams (minus elimination since "
+        f"B's dose time): {master.data.body_mass} != {expected_after}"
     )
     assert len(master.data.dose_history) == 1
     assert master.data.dose_history[0][3] == "entryB"
-    print("PASS: alcohol body_mass reduced only by the removed drink's grams")
+    print("PASS: alcohol body_mass reflects only the remaining drink's grams")
 
 
 def test_legacy_3_element_load() -> None:
@@ -193,7 +211,6 @@ def test_legacy_3_element_load() -> None:
             [_ts(10).isoformat(), 80.0, 0.25],
         ],
         "body_mass": 0.0,
-        "last_decay": None,
     }
     master = _make_master(DRINK_TYPE_CAFFEINE, stored)
     assert len(master.data.dose_history) == 2
@@ -212,7 +229,6 @@ def test_legacy_fallback_pop_newest() -> None:
             [_ts(20).isoformat(), 70.0, 0.25],
         ],
         "body_mass": 0.0,
-        "last_decay": None,
     }
     master = _make_master(DRINK_TYPE_CAFFEINE, stored)
     # Reset "entryA" (which has no tagged doses): legacy fallback pops the

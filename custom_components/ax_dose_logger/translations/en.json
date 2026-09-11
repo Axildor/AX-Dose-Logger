@@ -479,10 +479,13 @@
       },
       "drink_options": {
         "title": "Drink Options",
-        "description": "Edit this drink's cooldown, dose strength, and drinking duration. Name and drink type are immutable.",
+        "description": "Edit this drink's strength, cooldown, and drinking duration. Name and drink type are immutable.",
         "data": {
           "cooldown_window": "Cooldown Window",
           "dose_buffer_minutes": "Dose Buffer",
+          "caffeine_mg": "Caffeine (mg)",
+          "volume_ml": "Volume (ml)",
+          "abv_percent": "ABV (%)",
           "dose_strength": "Dose Strength",
           "drinking_duration": "Time to Finish Drink",
           "allowed_profiles": "Allowed Profiles",
@@ -491,6 +494,9 @@
         "data_description": {
           "cooldown_window": "Optional lockout between drinks, in hours. Set to 0 to disable.",
           "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next drink becomes available so gradual timing creep is bounded. Capped at 25% of the cooldown window. 5 minutes is the safe default.",
+          "caffeine_mg": "Total caffeine in this drink, in milligrams.",
+          "volume_ml": "Volume of this drink in milliliters.",
+          "abv_percent": "Alcohol by volume percentage. Used with volume to calculate grams of ethanol.",
           "dose_strength": "Caffeine (mg) or ethanol (g) per drink. For alcohol this is the Widmark mass: volume × ABV × 0.789.",
           "drinking_duration": "Typical time to finish this drink, in minutes.",
           "allowed_profiles": "Re-assign which profiles may route PK payloads from this drink. Changing this reloads the drink so its sensors re-read the new set.",

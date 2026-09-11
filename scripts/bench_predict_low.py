@@ -42,7 +42,6 @@ def _make_master():
     master._caffeine_half_life = dc.GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]
     master._caffeine_tmax = dc.GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]
     master._alcohol_elimination_rate = dc.GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]
-    master._last_decay = None
     master.data = dc.DrinkMasterCoordinatorData()
     return master
 
