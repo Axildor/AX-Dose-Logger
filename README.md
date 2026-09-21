@@ -1,4 +1,4 @@
-<img width="724" height="667" alt="image" src="https://github.com/user-attachments/assets/607045e3-daba-46e8-86dd-7e1b64a0ec79" />[![GitHub Release](https://img.shields.io/github/v/release/Axildor/AX-Dose-Logger?style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/releases)
+(https://github.com/Axildor/AX-Dose-Logger/releases)
 [![HACS Status](https://img.shields.io/badge/HACS-Custom-orange.svg?style=flat-square)](https://github.com/hacs/integration)
 [![Lint Status](https://img.shields.io/github/actions/workflow/status/Axildor/AX-Dose-Logger/lint.yml?branch=main&label=Lint&style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/actions/workflows/lint.yml)
 [![Validate Status](https://img.shields.io/github/actions/workflow/status/Axildor/AX-Dose-Logger/validate.yml?branch=main&label=Validate&style=flat-square)](https://github.com/Axildor/AX-Dose-Logger/actions/workflows/validate.yml)
@@ -360,6 +360,8 @@ Once installed, add it to your dashboard via the visual editor and pick your med
 | **🔧 Tools** | Reset adherence percentage, Mark last missed dose as taken, Reset dose history, Undo last dose |
 
 **Daily pane** — medication name, Take Pill button with next-dose countdown, pills safe to take, last dose, inventory count, custom chips:
+
+<img width="524" height="467" alt="image" src="https://github.com/user-attachments/assets/607045e3-daba-46e8-86dd-7e1b64a0ec79" />[![GitHub Release](https://img.shields.io/github/v/release/Axildor/AX-Dose-Logger?style=flat-square)]
 
 <!-- SCREENSHOT: Card showing the Daily pane — medication name, Take Pill button with next-dose countdown, pills safe to take, last dose, inventory count, custom chips -->
 ![Daily pane](screenshots/daily-pane.png)
