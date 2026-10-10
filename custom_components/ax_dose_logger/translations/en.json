@@ -277,74 +277,18 @@
   "options": {
     "step": {
       "init": {
-        "title": "Schedule & Dosing",
-        "description": "Adjust the schedule and safety limits. Pharmacokinetic and effectiveness settings are on the next pages.\n\nChanges apply automatically on the next refresh cycle (within about a minute) — no need to reload the device.\n\nTo change how this medication is tracked (e.g. from Regular Interval to Cyclic), pick a different Dosing Schedule below. You'll be asked to configure the new schedule on the next page; dose history and effectiveness logs are preserved.",
+        "title": "Dosing Schedule",
+        "description": "Choose how this medication is tracked. The next page configures the schedule for the selected type; pharmacokinetic and effectiveness settings follow.\n\nChanging the type reconfigures the schedule only — dose history and effectiveness logs are preserved.",
         "data": {
-          "tracking_type": "Dosing Schedule",
-          "hours_between_doses": "Dose Interval",
-          "doses_per_day": "Doses per Day",
-          "dose_time_1": "Dose Time 1",
-          "dose_time_2": "Dose Time 2",
-          "dose_time_3": "Dose Time 3",
-          "dose_time_4": "Dose Time 4",
-          "dose_time_5": "Dose Time 5",
-          "dose_time_6": "Dose Time 6",
-          "dose_time_7": "Dose Time 7",
-          "dose_time_8": "Dose Time 8",
-          "dose_time_9": "Dose Time 9",
-          "dose_time_10": "Dose Time 10",
-          "dose_time_11": "Dose Time 11",
-          "dose_time_12": "Dose Time 12",
-          "dose_time_13": "Dose Time 13",
-          "dose_time_14": "Dose Time 14",
-          "dose_time_15": "Dose Time 15",
-          "dose_time_16": "Dose Time 16",
-          "dose_time_17": "Dose Time 17",
-          "dose_time_18": "Dose Time 18",
-          "time_window_hours": "Time Window",
-          "days_on": "Days On",
-          "days_off": "Days Off",
-          "cycle_anchor_date": "Cycle Start Date",
-          "dose_time": "Dose Time",
-          "pill_limit": "Pill Limit",
-          "pills_per_slot": "Pills per Dose",
-          "dose_buffer_minutes": "Dose Buffer"
+          "tracking_type": "Dosing Schedule"
         },
         "data_description": {
-          "hours_between_doses": "Hours between scheduled doses. The next dose becomes due this many hours after your last dose, and the schedule continues around the clock — including overnight (e.g. a dose at 22:00 schedules the next at 06:00). If you take this medication at fixed clock times instead, choose Time of Day.",
-          "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. Save and re-enter options to change the number of time fields.",
-          "pills_per_slot": "How many pills each scheduled dose consists of (e.g. 2 = take two pills at every dose time). Reminders stay active until all pills for the dose are logged.",
-          "dose_time_1": "Time for the first daily dose.",
-          "dose_time_2": "Time for the second daily dose.",
-          "dose_time_3": "Time for the third daily dose.",
-          "dose_time_4": "Time for the fourth daily dose.",
-          "dose_time_5": "Time for the fifth daily dose.",
-          "dose_time_6": "Time for the sixth daily dose.",
-          "dose_time_7": "Time for the seventh daily dose.",
-          "dose_time_8": "Time for the eighth daily dose.",
-          "dose_time_9": "Time for the ninth daily dose.",
-          "dose_time_10": "Time for the tenth daily dose.",
-          "dose_time_11": "Time for the eleventh daily dose.",
-          "dose_time_12": "Time for the twelfth daily dose.",
-          "dose_time_13": "Time for the thirteenth daily dose.",
-          "dose_time_14": "Time for the fourteenth daily dose.",
-          "dose_time_15": "Time for the fifteenth daily dose.",
-          "dose_time_16": "Time for the sixteenth daily dose.",
-          "dose_time_17": "Time for the seventeenth daily dose.",
-          "dose_time_18": "Time for the eighteenth daily dose.",
-          "time_window_hours": "Rolling window for the pill limit.",
-          "days_on": "Number of active days in the cycle.",
-          "days_off": "Number of rest days in the cycle.",
-          "cycle_anchor_date": "Start date of the on/off cycle.",
-          "dose_time": "Time of day to take on active days.",
-          "pill_limit": "Maximum pills you can take within the time window.",
-          "dose_buffer_minutes": "Anti-drift buffer: how many minutes early the next dose becomes available so gradual timing creep (taking each dose a few minutes late) is bounded instead of pushing the next dose later every day. Capped at 25% of the time window. 5 minutes is safe for every medication class.",
-          "tracking_type": "How this medication is scheduled."
+          "tracking_type": "How this medication is scheduled. Regular Interval doses every N hours around the clock; Time of Day doses at fixed clock times; Cyclic alternates on/off days; As Needed has no schedule."
         }
       },
       "schedule": {
-        "title": "New Schedule",
-        "description": "You changed the dosing schedule. Configure the schedule for the new type below. Dose history and effectiveness logs are preserved — only the schedule changes.",
+        "title": "Schedule & Dosing",
+        "description": "Configure the schedule and safety limits for the selected tracking type. Pharmacokinetic and effectiveness settings are on the next pages.\n\nChanges apply automatically on the next refresh cycle (within about a minute) — no need to reload the device.",
         "data": {
           "tracking_type": "Dosing Schedule",
           "hours_between_doses": "Dose Interval",
@@ -360,7 +304,7 @@
         },
         "data_description": {
           "hours_between_doses": "Hours between scheduled doses. The next dose becomes due this many hours after your last dose, and the schedule continues around the clock — including overnight (e.g. a dose at 22:00 schedules the next at 06:00). If you take this medication at fixed clock times instead, choose Time of Day.",
-          "doses_per_day": "How many times per day you take this medication.",
+          "doses_per_day": "How many times per day you take this medication. Each time is one entry, regardless of how many pills you take at once. The individual time fields follow on the next page.",
           "pills_per_slot": "How many pills each scheduled dose consists of (e.g. 2 = take two pills at every dose time). Reminders stay active until all pills for the dose are logged.",
           "time_window_hours": "Rolling window for the pill limit.",
           "days_on": "Number of active days in the cycle.",
@@ -708,8 +652,11 @@
       "overdue": {
         "name": "Overdue"
       },
-      "avg_daily_doses": {
-        "name": "Avg Daily Doses ({window} Days)"
+      "day_coverage": {
+        "name": "Day Coverage ({window} Days)"
+      },
+      "avg_doses_per_day": {
+        "name": "Avg Doses per Day ({window} Days)"
       },
       "days_to_steady_state": {
         "name": "Days to Steady State"

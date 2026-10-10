@@ -792,7 +792,12 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
     # Medicine options flow (legacy)
     # ------------------------------------------------------------------
     async def async_step_init(self, user_input=None):
-        """Step 1: Schedule and dosing parameters (medicine category).
+        """Step 1: Choose the tracking type (medicine category).
+
+        Tracking type is its own step so the schedule step that follows can
+        always present fields matching the *selected* type (previously the
+        type dropdown and the current type's schedule fields shared one
+        form, which mismatched whenever the type was changed).
 
         For Drink Settings / granular drink entries, dispatch to the
         appropriate single-step options flow instead of the medicine
@@ -804,46 +809,63 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             return await method(None)
         if user_input is not None:
             self._data.update(user_input)
-            new_tracking_type = user_input.get("tracking_type")
-            # For Time of Day (unchanged): collect dose_time_N into dose_times list.
-            # Normalize each TimeSelector datetime.time to "HH:MM".
-            if new_tracking_type == TRACKING_TIME_OF_DAY and new_tracking_type == self._original_tracking_type:
-                doses_per_day = int(user_input.get("doses_per_day", self._entry.data.get("doses_per_day", 1)))
-                dose_times = []
-                for i in range(doses_per_day):
-                    key = f"dose_time_{i + 1}"
-                    val = user_input.get(key)
-                    if val:
-                        dose_times.append(_time_to_str(val))
-                dose_times.sort()
-                self._data["dose_times"] = dose_times
-                # Remove individual dose_time_N keys
-                for i in range(doses_per_day):
-                    self._data.pop(f"dose_time_{i + 1}", None)
-            # For Cyclic (unchanged): normalize dose_time datetime.time to "HH:MM".
-            if new_tracking_type == TRACKING_CYCLIC and new_tracking_type == self._original_tracking_type:
-                self._data["dose_time"] = _time_to_str(self._data.get("dose_time"))
-            # If the tracking type changed, collect the new type's schedule
-            # fields in a dedicated step before continuing to PK.
-            if new_tracking_type != self._original_tracking_type:
-                return await self.async_step_schedule()
-            return await self.async_step_pk()
+            # Always route to the schedule step — it builds the schema for
+            # the type selected here (prefilled when unchanged, defaults
+            # when changed).
+            return await self.async_step_schedule()
 
         tracking_type = self._entry.data.get("tracking_type")
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    # Tracking type selector — allows changing the type post-setup.
+                    vol.Required("tracking_type", default=tracking_type): sel.SelectSelector(
+                        sel.SelectSelectorConfig(
+                            options=TRACKING_TYPES,
+                            mode=sel.SelectSelectorMode.DROPDOWN,
+                            translation_key="tracking_type",
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_schedule(self, user_input=None):
+        """Step 2: Schedule and dosing parameters for the selected tracking type.
+
+        Always shown after ``async_step_init`` (tracking type is its own
+        step).  The schema is built for the type selected in init; every
+        field prefills from entry options/data where it exists (the
+        unchanged-type case) and falls back to config-flow defaults where
+        it does not (the changed-type case — the entry carries no fields
+        for a type it never had).  For Time of Day, this is a two-sub-step
+        flow: first ``doses_per_day`` + safety fields, then
+        ``async_step_schedule_times`` for the N individual times (so
+        changing ``doses_per_day`` regenerates the time fields in the same
+        session — no save-and-re-enter).
+        """
+        tracking_type = self._data.get("tracking_type", self._entry.data.get("tracking_type"))
+
+        if user_input is not None:
+            self._data.update(user_input)
+            # For Time of Day: route to the times sub-step
+            if tracking_type == TRACKING_TIME_OF_DAY:
+                return await self.async_step_schedule_times()
+            # For Cyclic: normalize dose_time datetime.time to "HH:MM".
+            if tracking_type == TRACKING_CYCLIC:
+                self._data["dose_time"] = _time_to_str(self._data.get("dose_time"))
+            return await self.async_step_pk()
+
+        # Build the schema for the selected tracking type.  Existing
+        # entry.data/options values are reused where the field already
+        # exists (e.g. pill_limit, time_window_hours), otherwise defaults.
         options = self._entry.options
         data = self._entry.data
+        schema = {}
 
-        main_schema = {}
-        # Tracking type selector — allows changing the type post-setup.
-        main_schema[vol.Required("tracking_type", default=tracking_type)] = sel.SelectSelector(
-            sel.SelectSelectorConfig(
-                options=TRACKING_TYPES,
-                mode=sel.SelectSelectorMode.DROPDOWN,
-                translation_key="tracking_type",
-            )
-        )
         if tracking_type == TRACKING_REGULAR_INTERVAL:
-            main_schema[
+            schema[
                 vol.Required(
                     "hours_between_doses",
                     default=options.get("hours_between_doses", data.get("hours_between_doses", 8)),
@@ -853,132 +875,33 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
             tw_default = options.get(
                 "time_window_hours", data.get("time_window_hours", data.get("hours_between_doses", 8))
             )
-            main_schema[vol.Required("time_window_hours", default=tw_default)] = _TIME_WINDOW_SELECTOR
+            schema[vol.Required("time_window_hours", default=tw_default)] = _TIME_WINDOW_SELECTOR
         elif tracking_type == TRACKING_TIME_OF_DAY:
             current_doses_per_day = int(options.get("doses_per_day", data.get("doses_per_day", 1)))
-            main_schema[vol.Required("doses_per_day", default=current_doses_per_day)] = _DOSES_PER_DAY_SELECTOR
-            current_dose_times = options.get(
-                "dose_times", data.get("dose_times", generate_default_dose_times(current_doses_per_day))
-            )
-            # Add dose_time_1 through dose_time_N
-            for i in range(current_doses_per_day):
-                default_val = current_dose_times[i] if i < len(current_dose_times) else "08:00"
-                main_schema[vol.Required(f"dose_time_{i + 1}", default=default_val)] = sel.TimeSelector()
-            main_schema[
+            schema[vol.Required("doses_per_day", default=current_doses_per_day)] = _DOSES_PER_DAY_SELECTOR
+            schema[
                 vol.Required(
                     "time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24))
                 )
             ] = _TIME_WINDOW_SELECTOR
         elif tracking_type == TRACKING_AS_NEEDED:
-            main_schema[
+            schema[
                 vol.Required(
                     "time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 8))
                 )
             ] = _TIME_WINDOW_SELECTOR
         elif tracking_type == TRACKING_CYCLIC:
-            main_schema[vol.Required("days_on", default=options.get("days_on", data.get("days_on", 5)))] = (
-                _DAYS_SELECTOR
-            )
-            main_schema[vol.Required("days_off", default=options.get("days_off", data.get("days_off", 2)))] = (
-                _DAYS_SELECTOR
-            )
-            main_schema[
+            schema[vol.Required("days_on", default=options.get("days_on", data.get("days_on", 5)))] = _DAYS_SELECTOR
+            schema[vol.Required("days_off", default=options.get("days_off", data.get("days_off", 2)))] = _DAYS_SELECTOR
+            schema[
                 vol.Required(
                     "cycle_anchor_date",
                     default=options.get("cycle_anchor_date", data.get("cycle_anchor_date", date.today().isoformat())),
                 )
             ] = sel.DateSelector(sel.DateSelectorConfig())
-            main_schema[vol.Required("dose_time", default=options.get("dose_time", data.get("dose_time", "08:00")))] = (
+            schema[vol.Required("dose_time", default=options.get("dose_time", data.get("dose_time", "08:00")))] = (
                 sel.TimeSelector()
             )
-            main_schema[
-                vol.Required(
-                    "time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24))
-                )
-            ] = _TIME_WINDOW_SELECTOR
-
-        main_schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
-            _PILL_LIMIT_SELECTOR
-        )
-        # Pills per time slot (scheduled types only). Optional so existing
-        # entries keep the default of 1 with no migration.
-        if tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL):
-            main_schema[
-                vol.Optional(
-                    "pills_per_slot",
-                    default=options.get("pills_per_slot", data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT)),
-                )
-            ] = _PILLS_PER_SLOT_SELECTOR
-        # Anti-drift dose buffer (anti-schedule-creep). Optional so existing
-        # entries gain the 5-min default on next options save without a
-        # migration step.
-        main_schema[
-            vol.Optional(
-                "dose_buffer_minutes",
-                default=options.get("dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)),
-            )
-        ] = _DOSE_BUFFER_SELECTOR
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(main_schema),
-        )
-
-    async def async_step_schedule(self, user_input=None):
-        """Step 1b: Collect schedule fields for a newly-selected tracking type.
-
-        Shown only when the user changed ``tracking_type`` in
-        ``async_step_init``.  Presents the new type's schedule-specific
-        fields with config-flow defaults (since the entry's data/options
-        don't yet contain fields for the new type).  For Time of Day, this
-        is a two-sub-step flow: first ``doses_per_day`` + safety fields,
-        then ``async_step_schedule_times`` for the N individual times.
-        """
-        new_tracking_type = self._data.get("tracking_type")
-
-        if user_input is not None:
-            self._data.update(user_input)
-            # For Time of Day: route to the times sub-step
-            if new_tracking_type == TRACKING_TIME_OF_DAY:
-                return await self.async_step_schedule_times()
-            return await self.async_step_pk()
-
-        # Build the schema for the new tracking type using config-flow defaults.
-        # Existing entry.data/options values are reused where the field already
-        # exists (e.g. pill_limit, time_window_hours), otherwise defaults.
-        options = self._entry.options
-        data = self._entry.data
-        schema = {}
-
-        if new_tracking_type == TRACKING_REGULAR_INTERVAL:
-            schema[
-                vol.Required(
-                    "hours_between_doses",
-                    default=options.get("hours_between_doses", data.get("hours_between_doses", 8)),
-                )
-            ] = _HOURS_BETWEEN_SELECTOR
-            tw_default = options.get("time_window_hours", data.get("time_window_hours", 8))
-            schema[vol.Required("time_window_hours", default=tw_default)] = _TIME_WINDOW_SELECTOR
-        elif new_tracking_type == TRACKING_TIME_OF_DAY:
-            schema[vol.Required("doses_per_day", default=1)] = _DOSES_PER_DAY_SELECTOR
-            schema[
-                vol.Required(
-                    "time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24))
-                )
-            ] = _TIME_WINDOW_SELECTOR
-        elif new_tracking_type == TRACKING_AS_NEEDED:
-            schema[
-                vol.Required(
-                    "time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 8))
-                )
-            ] = _TIME_WINDOW_SELECTOR
-        elif new_tracking_type == TRACKING_CYCLIC:
-            schema[vol.Required("days_on", default=5)] = _DAYS_SELECTOR
-            schema[vol.Required("days_off", default=2)] = _DAYS_SELECTOR
-            schema[vol.Required("cycle_anchor_date", default=date.today().isoformat())] = sel.DateSelector(
-                sel.DateSelectorConfig()
-            )
-            schema[vol.Required("dose_time", default="08:00")] = sel.TimeSelector()
             schema[
                 vol.Required(
                     "time_window_hours", default=options.get("time_window_hours", data.get("time_window_hours", 24))
@@ -988,20 +911,24 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         schema[vol.Required("pill_limit", default=options.get("pill_limit", data.get("pill_limit", 1)))] = (
             _PILL_LIMIT_SELECTOR
         )
-        # Pills per time slot (scheduled types only). Config-flow default
-        # since the entry's data/options don't yet carry fields for the new
-        # tracking type.
-        if new_tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL):
+        # Pills per time slot (scheduled types only). Optional so existing
+        # entries keep the default of 1 with no migration.
+        if tracking_type in (TRACKING_TIME_OF_DAY, TRACKING_REGULAR_INTERVAL):
             schema[
                 vol.Optional(
                     "pills_per_slot",
                     default=options.get("pills_per_slot", data.get("pills_per_slot", PILLS_PER_SLOT_DEFAULT)),
                 )
             ] = _PILLS_PER_SLOT_SELECTOR
-        # Anti-drift dose buffer (anti-schedule-creep). Config-flow default
-        # since the entry's data/options don't yet carry fields for the new
-        # tracking type.
-        schema[vol.Optional("dose_buffer_minutes", default=DOSE_BUFFER_DEFAULT_MIN)] = _DOSE_BUFFER_SELECTOR
+        # Anti-drift dose buffer (anti-schedule-creep). Optional so existing
+        # entries gain the 5-min default on next options save without a
+        # migration step.
+        schema[
+            vol.Optional(
+                "dose_buffer_minutes",
+                default=options.get("dose_buffer_minutes", data.get("dose_buffer_minutes", DOSE_BUFFER_DEFAULT_MIN)),
+            )
+        ] = _DOSE_BUFFER_SELECTOR
 
         return self.async_show_form(
             step_id="schedule",
@@ -1009,14 +936,25 @@ class AxDoseLoggerOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_schedule_times(self, user_input=None):
-        """Step 1c: Configure individual dose times for a new Time of Day type.
+        """Step 2b: Configure individual dose times for Time of Day.
 
         Mirrors the config flow's ``async_step_time_of_day_times``.  Shown
-        only when switching *to* Time of Day (after ``async_step_schedule``
-        collected ``doses_per_day``).
+        after ``async_step_schedule`` collected ``doses_per_day`` — for both
+        the unchanged and changed tracking-type cases, so changing
+        ``doses_per_day`` regenerates the N time fields in the same session.
+        Prefills from the entry's stored ``dose_times`` (clamped to the new
+        ``doses_per_day`` count), falling back to generated defaults.
         """
         doses_per_day = int(self._data.get("doses_per_day", 1))
+        options = self._entry.options
+        data = self._entry.data
+        stored_times = options.get("dose_times", data.get("dose_times")) or []
         defaults = generate_default_dose_times(doses_per_day)
+        # Pre-fill from the stored schedule where available (unchanged-type
+        # case); generated defaults fill the rest (grown schedule).
+        for i in range(doses_per_day):
+            if i < len(stored_times):
+                defaults[i] = stored_times[i]
 
         if user_input is not None:
             dose_times = []

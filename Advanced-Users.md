@@ -105,13 +105,15 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 
 ### Reconfiguring After Setup
 
-Click **Configure** on the integration entry to change settings without recreating the medication. The reconfiguration flow has 3 steps:
+Click **Configure** on the integration entry to change settings without recreating the medication. The reconfiguration flow has 4 steps:
 
-**Step 1: Schedule & Dosing** — A **Dosing Schedule** dropdown at the top lets you change how the medication is scheduled (e.g. from Regular Interval to Cyclic, or to PRN). If you change it, an extra **New Schedule** step appears to collect the new type's schedule fields. If you keep the same type, the current schedule fields are shown inline. Dose history and effectiveness logs are preserved across the change.
+**Step 1: Dosing Schedule** — A **Dosing Schedule** dropdown lets you change how the medication is scheduled (e.g. from Regular Interval to Cyclic, or to PRN). Dose history and effectiveness logs are preserved across the change.
 
-**Step 2: Pharmacokinetics** (same as Step 3 above)
+**Step 2: Schedule & Dosing** — The schedule fields for the selected tracking type (prefilled with the current values). For Time of Day, a **Dose Times** sub-step follows so you can change the number of doses per day and the individual times in one pass.
 
-**Step 3: Symptom, Adherence and Tracking** (same as Step 4 above)
+**Step 3: Pharmacokinetics** (same as Step 3 above)
+
+**Step 4: Symptom, Adherence and Tracking** (same as Step 4 above)
 
 > **Note:** The medication name and release type can't be changed after creation. The tracking type *can* be changed from the Configure dialog.
 
