@@ -90,8 +90,11 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         if last_state_obj and last_state_obj.attributes.get("history_start_date"):
             self._history_start_date = dt_util.parse_datetime(last_state_obj.attributes["history_start_date"])
         # Anchor to the earliest aggregated dose from the master coordinator.
+        # Index-based access (dose[0]) — the master history is a 4-tuple
+        # (ts, strength, t_dur, source_entry_id) since B1 provenance tagging;
+        # tuple unpacking breaks on column additions.
         if self._coordinator.data and self._coordinator.data.dose_history:
-            self._history_start_date = min(ts for ts, _, _ in self._coordinator.data.dose_history)
+            self._history_start_date = min(dose[0] for dose in self._coordinator.data.dose_history)
         if self._history_start_date is None:
             self._history_start_date = dt_util.now()
         self._update_state()
@@ -125,7 +128,7 @@ class DrinkMasterAvgDosesSensor(RestoreSensor):
         cutoff = now - timedelta(days=actual_window_days)
         timestamps: list[datetime] = []
         if self._coordinator.data and self._coordinator.data.dose_history:
-            timestamps = [ts for ts, _, _ in self._coordinator.data.dose_history]
+            timestamps = [dose[0] for dose in self._coordinator.data.dose_history]
         valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
 
         # As-needed average: doses in window / window days.

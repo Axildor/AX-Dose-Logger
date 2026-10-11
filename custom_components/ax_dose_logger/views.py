@@ -74,7 +74,9 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
         # Map device_id to config entry_id via device registry
         device_reg = dr.async_get(hass)
         device = device_reg.async_get(device_id)
-        if not device or not device.config_entries:
+        # config_entry_id (single entry) replaces the deprecated
+        # DeviceEntry.config_entries set (removed in HA 2027.10).
+        if not device or not device.config_entry_id:
             return self.json([])
 
         # Master Tracker devices: identifiers carry the profile-scoped tracker
@@ -110,7 +112,7 @@ class AxDoseLoggerHistoryView(HomeAssistantView):
         # AX Dose Logger creates one device per config entry (one medication per
         # device), so device.config_entries always has exactly one member.
         # If multi-entry devices are ever supported, this must be revisited.
-        entry_id = next(iter(device.config_entries))
+        entry_id = device.config_entry_id
 
         # Get dose history from store
         history = store.get_history(entry_id)
@@ -303,7 +305,9 @@ class AxDoseLoggerGraphView(HomeAssistantView):
         # --- Device resolution (mirrors the history view) ---
         device_reg = dr.async_get(hass)
         device = device_reg.async_get(device_id)
-        if not device or not device.config_entries:
+        # config_entry_id (single entry) replaces the deprecated
+        # DeviceEntry.config_entries set (removed in HA 2027.10).
+        if not device or not device.config_entry_id:
             return self.json({"amount": [], "metrics": {}})
 
         # Master Tracker devices: sample the aggregated (profile, substance)
@@ -335,7 +339,7 @@ class AxDoseLoggerGraphView(HomeAssistantView):
                 return self.json({"amount": payload, "metrics": {}})
 
         # Medicine / granular drink device: resolve the config entry.
-        entry_id = next(iter(device.config_entries))
+        entry_id = device.config_entry_id
         entry = hass.config_entries.async_get_entry(entry_id)
         coordinator = hass.data.get(DOMAIN, {}).get(entry_id, {}).get("coordinator")
         if entry is None or coordinator is None:

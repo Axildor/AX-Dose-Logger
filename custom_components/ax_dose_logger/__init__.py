@@ -15,12 +15,15 @@ from .const import (
     DEVICE_CATEGORY_DRINKS,
     DEVICE_CATEGORY_MEDICINE,
     DOMAIN,
+    DRINK_TYPE_ALCOHOL,
+    DRINK_TYPE_CAFFEINE,
     GLOBAL_PK_DEFAULTS,
     LOGGER,
     RELEASE_INSTANT,
     STANDARD_EFFECTIVENESS_METRICS,
     TRACKING_AS_NEEDED,
     drink_master_store_key,
+    master_unique_id,
 )
 from .coordinator import AxDoseLoggerCoordinator
 from .data import AxDoseLoggerConfigEntry
@@ -100,6 +103,65 @@ def _remove_entity(ent_reg: er.EntityRegistry, platform: str, unique_id: str) ->
     entity_id = ent_reg.async_get_entity_id(platform, DOMAIN, unique_id)
     if entity_id:
         ent_reg.async_remove(entity_id)
+
+
+# Pre-M2M (v15) default-profile Master Tracker unique_ids put the substance at
+# the END; the v16 refactor rebuilt them via master_unique_id() which puts it
+# in the MIDDLE. The registry rows on existing installs still carry the OLD
+# ids, so the v16 code never re-linked them (HA created duplicate "_2" rows
+# instead). This table maps each old id to the new one for the default
+# profile only (named profiles were created post-v16 — no drift).
+_V17_MASTER_UID_RELINK: dict[str, str] = {
+    f"drink_master_{suffix}_{substance}": f"{master_unique_id(DEFAULT_PROFILE_ID, substance)}_{suffix}"
+    for substance in (DRINK_TYPE_CAFFEINE, DRINK_TYPE_ALCOHOL)
+    for suffix in (
+        "last_dose",
+        "daily_amount",
+        "daily_remaining",
+        "sleep_disruption",
+        "estimated_low_time",
+        "estimated_none_time",
+        "low_hours_until",
+        "next_band",
+        *(f"avg_{window}" for window in (7, 14, 30, 365)),
+    )
+}
+
+
+def _relink_master_unique_ids(ent_reg: er.EntityRegistry) -> None:
+    """Re-link pre-M2M Master Tracker registry rows to their v16+ unique_ids.
+
+    For each (old, new) pair in :data:`_V17_MASTER_UID_RELINK`:
+
+    1. Find the registry row holding the OLD unique_id.
+    2. If a row with the NEW unique_id already exists (a duplicate "_2"
+       entity HA created when the lookup missed), remove it first — it never
+       carried state (its entity add crashed or it was a fresh duplicate),
+       and the original row owns the canonical entity_id + recorder history.
+    3. Update the original row's unique_id to the NEW value.
+
+    Idempotent: rows already on the new ids are simply not found by step 1.
+    """
+    for old_uid, new_uid in _V17_MASTER_UID_RELINK.items():
+        old_entity_id = ent_reg.async_get_entity_id("sensor", DOMAIN, old_uid)
+        if old_entity_id is None:
+            continue
+        conflict_entity_id = ent_reg.async_get_entity_id("sensor", DOMAIN, new_uid)
+        if conflict_entity_id is not None and conflict_entity_id != old_entity_id:
+            LOGGER.info(
+                "v17 migration: removing duplicate entity %s (unique_id %s) in favor of %s",
+                conflict_entity_id,
+                new_uid,
+                old_entity_id,
+            )
+            ent_reg.async_remove(conflict_entity_id)
+        ent_reg.async_update_entity(old_entity_id, new_unique_id=new_uid)
+        LOGGER.info(
+            "v17 migration: relinked %s unique_id %s -> %s",
+            old_entity_id,
+            old_uid,
+            new_uid,
+        )
 
 
 def _profile_id_of(entry: AxDoseLoggerConfigEntry) -> str:
@@ -496,6 +558,22 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: AxDoseLoggerCon
                 legacy_pid = new_data.pop("profile_id", DEFAULT_PROFILE_ID)
                 new_data["allowed_profiles"] = [legacy_pid]
             new_data.setdefault("shared_drink", False)
+
+    if config_entry.version <= 16:
+        # Version 17: Re-link pre-M2M Master Tracker entity-registry rows.
+        # The v15->v16 refactor rebuilt the default-profile master unique_ids
+        # via master_unique_id() (substance in the MIDDLE:
+        # drink_master_caffeine_avg_7) while the registry rows on existing
+        # installs still carry the pre-M2M ids (substance at the END:
+        # drink_master_avg_caffeine_7). The lookup missed, HA created
+        # duplicate "_2" rows, and BOTH the originals (stale unique_id) and
+        # the duplicates (entity add crashed on the 4-tuple history) showed
+        # Unavailable. Re-link the original rows to the new ids (removing any
+        # never-worked duplicate first) so the original entity_ids — with
+        # their recorder history and user automations — come back to life.
+        # Named profiles were created post-v16 and never drifted: no-op.
+        if new_data.get("device_category") == DEVICE_CATEGORY_DRINK_SETTINGS:
+            _relink_master_unique_ids(er.async_get(hass))
 
     hass.config_entries.async_update_entry(config_entry, data=new_data, options=new_options, version=CURRENT_VERSION)
 
