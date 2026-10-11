@@ -6,6 +6,14 @@ only equals days left when exactly one dose is taken per day.  For multi-dose
 schedules, As-Needed medications, and drinks, the count must be divided by the
 doses taken per day.
 
+The empirical (As Needed / drink) variants derive doses/day from the trailing
+7-day history using the shared anchor-shrunk calendar-day window
+(:func:`sliding_window.effective_window_days`): the window is clamped to the
+history start (or the Reset Averages anchor) so a young tracker is not
+penalized with empty days — day 2 with 1 dose reads 0.5 doses/day, not 0.14.
+The state attributes expose ``doses_in_window`` and
+``effective_window_days`` so the estimate is fully explainable.
+
 Two variants exist because the integration has two device families, each
 with a different way to derive "doses per day":
 
@@ -36,7 +44,6 @@ undo / add-stock / manual edit).
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import (
@@ -62,16 +69,10 @@ from ..const import (
 from ..coordinator import AxDoseLoggerCoordinator
 from ..drink_coordinator import DrinkCoordinator
 from ..entity import AxDoseLoggerSensorEntity
+from ..sliding_window import effective_window_days, local_date
 
 # The averaging window (days) used for the empirical "Est. days left" variants.
 _AVG_WINDOW_DAYS = 7
-
-
-def _local_date(dt: datetime) -> date:
-    """Convert a datetime to its local calendar date (mirrors frontend)."""
-    if dt.tzinfo is not None:
-        return dt.astimezone().date()
-    return dt.date()
 
 
 # =====================================================================
@@ -194,23 +195,40 @@ class PillDaysLeftSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             return 1.0
         return days_on / cycle_length
 
-    def _doses_per_day_avg(self) -> float | None:
-        """Empirical doses/day from the trailing 7-day dose history."""
+    def _doses_per_day_avg(self) -> tuple[float, int, int] | None:
+        """Empirical doses/day from the trailing 7-day dose history.
+
+        Uses the shared anchor-shrunk calendar-day window (same math as the
+        Avg Doses per Day sensors): the window is clamped to the history
+        start / Reset Averages anchor so early history is not penalized
+        with empty days.  Returns ``(doses_per_day, doses_in_window,
+        effective_window_days)``, or ``None`` when there is no history.
+        """
         if not self.coordinator.data or not self.coordinator.data.dose_history:
             return None
         now = dt_util.now()
-        cutoff = now - timedelta(days=_AVG_WINDOW_DAYS)
         timestamps = [ts for ts, _ in self.coordinator.data.dose_history]
-        valid = [ts for ts in timestamps if ts >= cutoff]
+        window_start, eff_days = effective_window_days(
+            now,
+            _AVG_WINDOW_DAYS,
+            min(timestamps),
+            self.coordinator.data.avg_reset_time,
+        )
+        valid = [ts for ts in timestamps if local_date(ts) >= window_start]
         if not valid:
             return None
-        return len(valid) / float(_AVG_WINDOW_DAYS)
+        return len(valid) / float(eff_days), len(valid), eff_days
 
     def _update_state(self) -> None:
         """Compute days_left = stock / doses_per_day."""
         stock = self._read_stock()
+        dpd = None
+        doses_in_window = None
+        effective_days = None
         if self._tracking_type == TRACKING_AS_NEEDED:
-            dpd = self._doses_per_day_avg()
+            avg = self._doses_per_day_avg()
+            if avg is not None:
+                dpd, doses_in_window, effective_days = avg
         else:
             dpd = self._doses_per_day_scheduled()
 
@@ -220,6 +238,8 @@ class PillDaysLeftSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "doses_per_day": round(dpd, 2) if dpd is not None else None,
             "estimation": self._tracking_type == TRACKING_AS_NEEDED,
             "window_days": _AVG_WINDOW_DAYS if self._tracking_type == TRACKING_AS_NEEDED else None,
+            "doses_in_window": doses_in_window,
+            "effective_window_days": effective_days,
             "role": "days_left",
         }
 
@@ -323,26 +343,43 @@ class DrinkDaysLeftSensor(RestoreSensor):
         except ValueError, TypeError:
             return 0.0
 
-    def _doses_per_day_avg(self) -> float | None:
-        """Empirical doses/day from the trailing 7-day granular history."""
+    def _doses_per_day_avg(self) -> tuple[float, int, int] | None:
+        """Empirical doses/day from the trailing 7-day granular history.
+
+        Uses the shared anchor-shrunk calendar-day window (same math as the
+        drink Avg Doses sensors): the window is clamped to the history
+        start / Reset Averages anchor so early history is not penalized
+        with empty days.  Returns ``(doses_per_day, doses_in_window,
+        effective_window_days)``, or ``None`` when there is no history.
+        """
         if not self._coordinator.data or not self._coordinator.data.dose_history:
             return None
         now = dt_util.now()
-        cutoff = now - timedelta(days=_AVG_WINDOW_DAYS)
         timestamps = [ts for ts, _, _ in self._coordinator.data.dose_history]
-        valid = [ts for ts in timestamps if ts >= cutoff]
+        window_start, eff_days = effective_window_days(
+            now,
+            _AVG_WINDOW_DAYS,
+            min(timestamps),
+            self._coordinator.data.avg_reset_time,
+        )
+        valid = [ts for ts in timestamps if local_date(ts) >= window_start]
         if not valid:
             return None
-        return len(valid) / float(_AVG_WINDOW_DAYS)
+        return len(valid) / float(eff_days), len(valid), eff_days
 
     def _update_state(self) -> None:
         stock = self._read_stock()
-        dpd = self._doses_per_day_avg()
+        avg = self._doses_per_day_avg()
+        dpd = avg[0] if avg is not None else None
+        doses_in_window = avg[1] if avg is not None else None
+        effective_days = avg[2] if avg is not None else None
         attrs: dict[str, object] = {
             "stock": int(stock) if stock.is_integer() else stock,
             "doses_per_day": round(dpd, 2) if dpd is not None else None,
             "estimation": True,
             "window_days": _AVG_WINDOW_DAYS,
+            "doses_in_window": doses_in_window,
+            "effective_window_days": effective_days,
             "substance": self._substance,
             "device_type": "drink",
             "role": "days_left",

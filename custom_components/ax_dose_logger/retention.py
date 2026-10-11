@@ -18,10 +18,11 @@ PK safety
 Caffeine body-mass is recomputed from the full in-memory history on each tick.
 After pruning, doses older than ``retention_days`` are gone — but at 365 days
 × 24 / 5 ≈ 1752 half-lives their PK contribution is effectively zero (<1% after
-just 5 half-lives, ~25h).  Alcohol does NOT recompute from history (incremental
-zero-order simulation from persisted ``body_mass`` + ``last_decay``), so
-pruning old alcohol doses is a no-op for the alcohol simulation.  Do not
-"restore" pruned doses — they are PK-irrelevant by design.
+just 5 half-lives, ~25h).  Alcohol (history-replay, linear-ramp input +
+zero-order elimination) eliminates fully well within the window (365 days x
+the elimination rate dwarfs any dose), so replaying from pruned history
+seeded at 0 is exact.  Do not "restore" pruned doses — they are
+PK-irrelevant by design.
 """
 
 from __future__ import annotations

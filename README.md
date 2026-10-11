@@ -161,7 +161,8 @@ Not sure if your medication is actually helping? AX Dose Logger can add 0–10 d
 AX Dose Logger gives you several ways to look at your dosing history:
 
 - **Adherence Percentage** — Four rolling sensors (7, 14, 30, 365 days) showing what percentage of scheduled doses you took on time. A dose counts as "on time" if it falls within ±grace period of the expected slot. Cyclic mode only counts ON days. As Needed medications report `Unavailable` since adherence doesn't apply without a schedule.
-- **Rolling Averages** — Day-level dose coverage over 7, 14, 30, and 365 days (the fraction of scheduled days in the window on which at least one dose was taken, 0.0–1.0). Windows are anchored to your first recorded dose, so setting up a medication before you start taking it doesn't penalize the averages. A late-but-taken dose does not lower the average. Cyclic mode only counts ON days. Timing quality (on-time vs late) is reported separately by the Adherence Percentage sensors.
+- **Avg Doses per Day** — The true doses-per-day average over 7, 14, 30, and 365 days: doses logged in the window divided by window days (e.g. 20 doses over a full 7-day window → 2.9). Mirrors the drink trackers' daily-average sensors. Windows are anchored to your first recorded dose, so setting up a medication before you start taking it doesn't penalize the average, and the Reset Averages tool re-anchors it.
+- **Day Coverage** — Four rolling sensors (7, 14, 30, 365 days) showing the percentage of scheduled days in the window on which at least one dose was taken (the pharmacy-claims PDC measure, 0–100%). A late-but-taken dose does not lower coverage. Cyclic mode only counts ON days. Timing quality (on-time vs late) is reported separately by the Adherence Percentage sensors.
 - **Total Doses** — Cumulative lifetime dose counter.
 - **Last Dose** — Timestamp of your most recent dose.
 - **Days Since First Dose** — Integer days elapsed since your first recorded dose.
@@ -174,7 +175,7 @@ AX Dose Logger gives you several ways to look at your dosing history:
 <img width="441" alt="Screenshot 2026-08-11 181245" src="https://github.com/user-attachments/assets/9e4863ce-ebad-42f6-9081-75d1708e78f5" />
 
 
-- **Days Left** — How many days your current inventory lasts. Scheduled medications divide Pills Left by the configured doses/day. As-Needed medications divide by the 7-day average doses/day (shows `unknown` until enough history exists).
+- **Days Left** — How many days your current inventory lasts. Scheduled medications divide Pills Left by the configured doses/day. As-Needed medications divide by the 7-day average doses/day (shows `unknown` until enough history exists). The average window is anchored to your first recorded dose, so a newly-started medication isn't penalized with empty days — the estimate starts from your actual tracking history and refines as it accumulates.
 - **Undo Last Dose** — Pressed Take by accident? The Undo button reverts the most recent dose across all sensors, counters, and the PK model — restoring inventory, removing the timestamp, and recalculating the concentration curve from dose history.
 
 ---
@@ -203,7 +204,7 @@ Each configured drink becomes its own **Granular Drink Device** (e.g. "Morning E
 | **Last Drink** | Sensor (timestamp) | Most recent drink timestamp |
 | **Daily Average** | Sensors | 7/14/30/365-day daily-average sensors |
 | **Drinks Available** | Sensor | Cooldown state (when a cooldown window is configured) |
-| **Est. Days Left** | Sensor | Days inventory lasts at the current rate |
+| **Est. Days Left** | Sensor | Days inventory lasts at the current rate (7-day average anchored to your first logged drink, so a newly-added drink isn't penalized with empty days) |
 
 The Lovelace card's **Log Drink popup** shows a predictive **"Low: hh:mm"** line under each drink name — the wall-clock time the body-mass is expected to drop into the *Low* sleep band *if that drink were logged now*. "Low: —" means the drink would not lift body-mass above the Low band (a safe drink). The prediction is fetched live from the backend and never mutates real state.
 

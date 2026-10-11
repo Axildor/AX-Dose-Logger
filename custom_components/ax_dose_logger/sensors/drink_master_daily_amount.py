@@ -154,10 +154,13 @@ class DrinkMasterDailyAmountSensor(RestoreSensor):
         cutoff = now - timedelta(hours=_WINDOW_HOURS)
         amount = 0.0
         doses_in_window = 0
+        # Index-based access (dose[0]/dose[1]) — the master history is a
+        # 4-tuple (ts, strength, t_dur, source_entry_id) since B1 provenance
+        # tagging; tuple unpacking breaks on column additions.
         if self._coordinator.data and self._coordinator.data.dose_history:
-            for ts, strength, _t_dur in self._coordinator.data.dose_history:
-                if ts >= cutoff:
-                    amount += float(strength)
+            for dose in self._coordinator.data.dose_history:
+                if dose[0] >= cutoff:
+                    amount += float(dose[1])
                     doses_in_window += 1
 
         limit_raw = self._read_daily_limit()

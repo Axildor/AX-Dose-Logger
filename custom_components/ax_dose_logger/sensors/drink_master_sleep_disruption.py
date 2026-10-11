@@ -267,18 +267,18 @@ class DrinkMasterEstimatedLowTimeSensor(RestoreSensor):
         longer-horizon time to cross the Low -> None boundary
         (``none_threshold``: 11 mg / 1 g); ``None`` once at or below it.
 
-        The gate anchors on the **forecasted peak body mass** for caffeine
-        (``data.peak_body_mass``), not the instantaneous ``body_mass``.  At
-        the moment a caffeine dose is logged the current body mass is still
-        ~0 (absorption has not started), so gating on the current mass would
-        keep the sensor ``unknown`` for ~30 min until absorption raises the
+        The gate anchors on the **forecasted peak body mass** for both
+        substances (``data.peak_body_mass``), not the instantaneous
+        ``body_mass``.  At the moment a dose is logged the current body mass
+        is still ~0 (absorption has not started), so gating on the current
+        mass would keep the sensor ``unknown`` until absorption raises the
         mass above the Low threshold.  Anchoring on the forecasted peak
         matches the design of :meth:`estimate_time_to_body_mass` (which
         already anchors at the peak internally) and makes the sensor emit a
         real predicted time the instant a dose is logged — the intended
-        behaviour of the predictive Low feature.  For alcohol
-        ``peak_body_mass == body_mass`` (instant absorption), so the gate is
-        unchanged.
+        behaviour of the predictive Low feature.  For alcohol the peak is
+        forecasted to the end of the active drink's ramp (linear-ramp
+        input), so the gate is predictive mid-drink too.
         """
         data = self._coordinator.data
         if data is None:
@@ -398,15 +398,16 @@ class DrinkMasterLowHoursUntilSensor(RestoreSensor):
         down to the Low -> None boundary (``none_threshold``: 11 mg / 1 g);
         ``None`` once at or below it.
 
-        The gate anchors on the **forecasted peak body mass** for caffeine
-        (``data.peak_body_mass``), not the instantaneous ``body_mass`` — see
-        the matching note on :class:`DrinkMasterEstimatedLowTimeSensor`.  At
-        the moment a caffeine dose is logged the current body mass is still
-        ~0 (absorption not started), so gating on the current mass would keep
-        the countdown ``unknown`` until absorption raises the mass above the
-        threshold.  Anchoring on the forecasted peak emits a real countdown
-        the instant a dose is logged.  For alcohol ``peak_body_mass ==
-        body_mass``, so the gate is unchanged.
+        The gate anchors on the **forecasted peak body mass** for both
+        substances (``data.peak_body_mass``), not the instantaneous
+        ``body_mass`` — see the matching note on
+        :class:`DrinkMasterEstimatedLowTimeSensor`.  At the moment a dose is
+        logged the current body mass is still ~0 (absorption not started), so
+        gating on the current mass would keep the countdown ``unknown`` until
+        absorption raises the mass above the threshold.  Anchoring on the
+        forecasted peak emits a real countdown the instant a dose is logged.
+        For alcohol the peak is forecasted to the end of the active drink's
+        ramp (linear-ramp input), so the gate is predictive mid-drink too.
         """
         data = self._coordinator.data
         if data is None:
@@ -509,17 +510,19 @@ class DrinkMasterEstimatedNoneTimeSensor(RestoreSensor):
         """Recompute the estimated None wall-clock time on updates.
 
         Same peak-anchored gate as :class:`DrinkMasterEstimatedLowTimeSensor`:
-        the gate anchors on the **forecasted peak body mass** for caffeine
-        (``data.peak_body_mass``), not the instantaneous ``body_mass`` — at
-        the moment a caffeine dose is logged the current body mass is still
-        ~0 (absorption has not started).  For alcohol ``peak_body_mass ==
-        body_mass`` (instant absorption), so the gate is unchanged.
+        the gate anchors on the **forecasted peak body mass** for both
+        substances (``data.peak_body_mass``), not the instantaneous
+        ``body_mass`` — at the moment a dose is logged the current body mass
+        is still ~0 (absorption has not started).  For alcohol the peak is
+        forecasted to the end of the active drink's ramp (linear-ramp input),
+        so the gate is predictive mid-drink too.
         """
         data = self._coordinator.data
         if data is None:
             return
         mass = float(data.body_mass)
-        # Caffeine forecasts the peak; alcohol's peak == current body mass.
+        # Both substances anchor on the coordinator's forecasted peak
+        # (caffeine: end of absorption window; alcohol: end of drink ramp).
         anchor_mass = float(data.peak_body_mass) if data.peak_body_mass else mass
 
         estimated_none_time: datetime | None = None

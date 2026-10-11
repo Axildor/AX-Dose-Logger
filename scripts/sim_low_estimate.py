@@ -77,7 +77,6 @@ def _make_master(substance: str) -> dc.DrinkMasterCoordinator:
     master._caffeine_half_life = dc.GLOBAL_PK_DEFAULTS["global_caffeine_half_life"]
     master._caffeine_tmax = dc.GLOBAL_PK_DEFAULTS["global_caffeine_tmax"]
     master._alcohol_elimination_rate = dc.GLOBAL_PK_DEFAULTS["global_alcohol_elimination_rate"]
-    master._last_decay = None
     master.data = dc.DrinkMasterCoordinatorData()
     return master
 
@@ -118,10 +117,10 @@ def _run(substance: str, dose_strength: float, t_dur_hours: float, label: str) -
     print(f"  -- logging {dose_strength} at {drink_time.isoformat()} (t_dur={t_dur_hours}h) --")
     # async_add_dose is a coroutine; run it synchronously via the loop is overkill
     # for a pure-PK test, so replicate its mutation + _push_update inline.
+    # Alcohol no longer mutates body_mass on add: body mass is derived from
+    # the dose history (history-replay, linear-ramp input over t_dur).
     master.data.dose_history.append((drink_time, dose_strength, t_dur_hours))
     master.data.last_dose_time = drink_time
-    if substance == DRINK_TYPE_ALCOHOL:
-        master.data.body_mass += dose_strength
     master.data = master._recompute_data()
 
     for minutes in [0, 5, 15, 30, 60, 120, 240]:
@@ -138,17 +137,19 @@ def main() -> None:
     #   - late samples: once body decays to <= 31 mg the gate fails and the
     #     sensor reads None (Low band reached / entered).
     _run(DRINK_TYPE_CAFFEINE, 90.0, 0.25, "Caffeine 90mg / 15min")
-    # Alcohol: 14 g, instant absorption.
-    #   - t=0min: gate passes (peak == body == 14 > 11 g). eta targets
-    #     crossing 11 g (Moderate -> Low), NOT 1 g.
+    # Alcohol: 20 g over a 30-min drink (linear-ramp input).  The peak is
+    # 20 - rate*0.5 = 16 g at drink end (elimination overlaps the ramp), so
+    # the 11 g Moderate->Low gate passes.
+    #   - t=0min: gate passes (forecasted peak at drink end > 11 g). eta
+    #     targets crossing 11 g (Moderate -> Low), NOT 1 g.
     #   - late samples: once body decays to <= 11 g the sensor reads None.
-    _run(DRINK_TYPE_ALCOHOL, 14.0, 0.0, "Alcohol 14g / instant")
+    _run(DRINK_TYPE_ALCOHOL, 20.0, 0.5, "Alcohol 20g / 30min ramp")
 
     print("\n=== Interpretation ===")
     print("DRINK_LOW_THRESHOLD is the UPPER bound of the Low band:")
     print(f"  caffeine = {DRINK_LOW_THRESHOLD[DRINK_TYPE_CAFFEINE]} mg (Moderate->Low)")
     print(f"  alcohol  = {DRINK_LOW_THRESHOLD[DRINK_TYPE_ALCOHOL]} g  (Moderate->Low)")
-    print("t=0min gate_passes=YES (peak-anchored for caffeine; instant for alcohol).")
+    print("t=0min gate_passes=YES (peak-anchored for both substances).")
     print("eta_low targets the Moderate->Low boundary; sensor reads None once")
     print("body-mass is at or below that boundary (Low band reached).")
 

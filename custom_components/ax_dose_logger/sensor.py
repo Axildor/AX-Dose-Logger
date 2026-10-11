@@ -13,6 +13,7 @@ from .data import AxDoseLoggerConfigEntry
 from .drink_coordinator import DrinkCoordinator, DrinkMasterCoordinator
 from .sensors.adherence import PillAdherenceSensor
 from .sensors.avg_doses import PillAvgDosesSensor
+from .sensors.avg_dpd import PillAvgDosesPerDaySensor
 from .sensors.concentration import PillConcentrationSensor
 from .sensors.daily_remaining import PillDailyRemainingSensor
 from .sensors.days_left import (
@@ -98,6 +99,12 @@ async def _setup_medicine_sensors(
     entities.append(PillAvgDosesSensor(entry, coordinator, 14))
     entities.append(PillAvgDosesSensor(entry, coordinator, 30))
     entities.append(PillAvgDosesSensor(entry, coordinator, 365))
+    # Avg Doses per Day — the true count/days average (mirrors the drink
+    # path), separate from the PDC-aligned Day Coverage sensors above.
+    entities.append(PillAvgDosesPerDaySensor(entry, coordinator, 7))
+    entities.append(PillAvgDosesPerDaySensor(entry, coordinator, 14))
+    entities.append(PillAvgDosesPerDaySensor(entry, coordinator, 30))
+    entities.append(PillAvgDosesPerDaySensor(entry, coordinator, 365))
     # Steady state and overdue are only meaningful for scheduled medications
     # (steady state requires a fixed dosing interval τ; overdue requires a schedule)
     if tracking_type != TRACKING_AS_NEEDED:

@@ -161,6 +161,41 @@ def local_date(dt: datetime) -> date:
     return dt.date()
 
 
+def effective_window_days(
+    now: datetime,
+    window_days_target: int,
+    history_start: datetime | None,
+    avg_reset: datetime | None = None,
+) -> tuple[date, int]:
+    """
+    Return ``(window_start_date, effective_window_days)`` for a trailing
+    N-calendar-day window ending today (inclusive), shrunk to the anchor.
+
+    The window start is clamped to ``max(history_start, avg_reset)``'s
+    local calendar date so early history (or a pre-Reset-Averages era) is
+    not penalized with empty days — the same anchor-shrink semantics the
+    Avg Doses per Day / Day Coverage sensors use.  Callers divide their
+    in-window dose count by the returned day count.
+
+    Args:
+        now: Current tz-aware datetime (``dt_util.now()``).
+        window_days_target: Nominal window length in calendar days (e.g. 7).
+        history_start: Earliest dose timestamp (or ``None`` → no shrink).
+        avg_reset: Reset Averages anchor, or ``None``.
+
+    Returns:
+        Tuple of the window's first local calendar date and the effective
+        number of days in the window (always >= 1).
+    """
+    today = local_date(now)
+    window_start_date = today - timedelta(days=window_days_target - 1)
+    effective_start = history_start if history_start is not None else now
+    if avg_reset is not None and avg_reset > effective_start:
+        effective_start = avg_reset
+    window_start_date = max(window_start_date, local_date(effective_start))
+    return window_start_date, (today - window_start_date).days + 1
+
+
 def is_day_covered(check_date: date, timestamps: list[datetime]) -> bool:
     """
     Return ``True`` when any dose timestamp falls on *check_date* (local calendar day).
