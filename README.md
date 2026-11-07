@@ -116,7 +116,7 @@ AX Dose Logger supports four ways to track a medication, depending on how you ta
 
 Accidentally taking too much is easy to do, especially with medications that have a wide dosing window. AX Dose Logger helps prevent that:
 
-- **Pill Limit Tracking** — You set how many pills are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so the limit recovers one at a time. On Cyclic OFF days, the limit drops to 0 automatically.
+- **Pill Limit Tracking** — You set how many pills are safe within a rolling time window (e.g. max 3 pills in 24 hours). Each pill expires from the window individually, so the limit recovers one at a time. The count reflects **elapsed time only** — it never drops because of the calendar. On a Cyclic schedule, an OFF day is reported as *not due* rather than *limit reached*, so a planned rest day never looks like an overdose lockout.
 - **Pills per Dose** — If your prescription is more than one pill per dose time (e.g. 2 pills at 8 AM and 2 at 8 PM), set **Pills per Dose** and reminders stay active until *all* pills for that dose are logged — one pill no longer clears the reminder. Adherence and "Days Left" account for the full daily quantity automatically. Available for Time of Day and Regular Interval medications.
 - **Anti-Drift Buffer** — A small configurable buffer (default 5 minutes) lets the next dose become available slightly before the strict window elapses, so taking each dose a few minutes late doesn't gradually push the next dose later every day ("schedule creep"). Capped at 25% of the window for safety. Adjustable per medication and per drink in the options.
 - **Overdose Warning** — When the pill limit hits 0, the Take button on the dedicated AX Dose Logger Card turns red and asks you to confirm before logging.
@@ -404,11 +404,13 @@ The blueprint triggers on **Dose Status** transitions, so each state can have it
 | Dose Status | What happens |
 |---|---|
 | **Due** | Reminder notification with Take / Snooze / Skip buttons, repeated until you respond |
-| **Overdue** | Escalation notification (separate title/message) with the same buttons |
+| **Overdue** | Escalation notification (separate title/message) with the same buttons, sent **once** when the dose becomes overdue |
 | **Limit Reached** | Optional warning that the pill-count window is full (**off by default** — enable with the *Notify on Limit Reached* toggle) |
 | **24h Limit** | Optional safety warning that the daily strength limit would be exceeded (**off by default** — enable with the *Notify on 24h Limit* toggle) |
 
 Each state also has an optional **action** input (e.g. `Action on Overdue` to flash lights or notify a second device), plus a per-reminder action that runs alongside every notification in the loop. The limit-state actions run independently of the notification toggles.
+
+> **Overdue notifies once, on purpose.** `overdue` is a persistent state — it stays set until the dose is taken or skipped, which on a Cyclic schedule can be a whole cycle. Re-sending the reminder every snooze interval for that long is alarm fatigue, and a warning you learn to dismiss is a warning you will miss when it is real. The miss stays fully visible on the card, in the `overdue` duration, and in the Dose Status sensor; only the phone stops re-buzzing. **Snooze** still re-notifies as often as you ask, because that is an explicit request rather than a timer. If you want periodic nagging, add your own automation with a duration trigger on the Overdue sensor (e.g. wait until it has been overdue for 48 hours, then repeat) — that keeps the cadence a deliberate choice instead of hard-coded.
 
 > **Auto-dismiss**: The notification is cleared automatically when the dose is taken — no matter how. Taking the pill from the notification, the dashboard card, or the `take_dose` service all dismiss it. **Skip** records the skipped slot so the next dose time advances and the reminder doesn't re-fire for the same slot.
 

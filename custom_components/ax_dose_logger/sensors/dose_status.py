@@ -32,7 +32,7 @@ HA best practices applied:
   duplication with the overdue/next_dose/pill_limit sensors.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
@@ -46,11 +46,16 @@ from ..const import (
     TRACKING_TIME_OF_DAY,
     get_dose_times,
     get_pills_per_slot,
-    parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
-from ..schedule import LATENESS_UNTIL_NEXT_SLOT, compute_slot_assignments, get_next_dose_time
-from ..sliding_window import compute_safe_to_take, is_day_covered, is_on_day
+from ..schedule import (
+    LATENESS_UNTIL_NEXT_SLOT,
+    compute_cyclic_slot_assignments,
+    compute_slot_assignments,
+    get_next_cyclic_dose_time,
+    get_next_dose_time,
+)
+from ..sliding_window import compute_safe_to_take, is_on_day
 
 # Enum states (order = display order in HA UI dropdowns)
 STATUS_NOT_DUE = "not_due"
@@ -155,8 +160,9 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         schedule_timestamps = self._get_schedule_timestamps()
         pills_per_slot = get_pills_per_slot(entry)
 
-        # Gate 1 — pill-count lockout (includes Cyclic OFF days, where
-        # compute_safe_to_take returns 0). Mirrors the card's isLockedOut.
+        # Gate 1 — rolling-window pill-count lockout. Elapsed-time only: it
+        # can NOT report a lockout on a Cyclic OFF day (see
+        # sliding_window.compute_safe_to_take).
         safe_count = compute_safe_to_take(entry, dose_timestamps, now, self._tracking_type)
 
         # Gate 2 — 24h strength limit (already exceeded OR next dose would
@@ -170,12 +176,20 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             entry.data.get("adherence_grace_minutes", 60),
         )
 
+        # Cyclic phase, reported for informatics and used to suppress the
+        # "limit reached" reading on a planned rest day.
+        is_off_day = self._tracking_type == TRACKING_CYCLIC and not is_on_day(entry, now.date(), now.date())
+
         status = None
         next_dose_at = None
         overdue_since = None
         next_transition = None  # earliest instant the status may change
 
         if safe_count <= 0:
+            # A genuine rolling-window lockout. On a Cyclic OFF day this can
+            # still legitimately happen (an early dose inside the window), so
+            # the OFF-day phase never suppresses a real safety lockout either
+            # way — lockout_reason explains which case it is.
             status = STATUS_LIMIT_REACHED
             # Transition back when the oldest in-window dose expires
             # (buffered cutoff — mirrors PillLimitSensor.window_expires_at).
@@ -198,6 +212,8 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 # due → overdue at slot + grace/2
                 next_transition = next_dose_at + timedelta(minutes=grace_minutes / 2)
             else:
+                # Includes a Cyclic OFF day: rest days are not_due, never
+                # limit_reached (the two gates are independent).
                 status = STATUS_NOT_DUE
                 # not_due → due when the slot arrives
                 next_transition = next_dose_at
@@ -218,6 +234,11 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             "daily_limit": daily_limit,
             "pills_per_slot": pills_per_slot,
             "slot_remaining": slot_remaining,
+            # Explainability: only the rolling window can lock out, so a
+            # "limit_reached" reading always had a real cause. cyclic_off_day
+            # reports the schedule phase without ever altering the count.
+            "lockout_reason": "window_full" if safe_count <= 0 else None,
+            "cyclic_off_day": is_off_day,
         }
 
         self._arm_status_timer(next_transition, now)
@@ -284,50 +305,20 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         return None  # As Needed handled earlier
 
     def _compute_next_dose_cyclic(self, entry, now, schedule_timestamps):
-        """Cyclic next-dose — mirrors PillNextDoseSensor's cyclic branch."""
-        days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
-        days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
-        anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
-        dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
-        try:
-            anchor_date = date.fromisoformat(anchor_str)
-        except ValueError, TypeError:
-            anchor_date = now.date()
-        dose_hour, dose_minute = parse_dose_time(dose_time_str)
+        """Cyclic next-dose — delegates to the shared next-ON-day helper.
 
-        cycle_length = days_on + days_off
-        if cycle_length <= 0:
-            cycle_length = 1
-        days_since_anchor = (now.date() - anchor_date).days
-        position_in_cycle = days_since_anchor % cycle_length
-        dose_time_today = now.replace(hour=dose_hour, minute=dose_minute, second=0, microsecond=0)
-
-        if not is_on_day(entry, now.date(), now.date()):
-            days_until_next_on = cycle_length - position_in_cycle
-            return dose_time_today + timedelta(days=days_until_next_on)
-        if schedule_timestamps:
-            last_ts = schedule_timestamps[-1]
-            if last_ts.date() == now.date() and now >= dose_time_today:
-                days_until_next_on = cycle_length - position_in_cycle
-                if days_until_next_on == 0:
-                    days_until_next_on = cycle_length
-                return dose_time_today + timedelta(days=days_until_next_on)
-            if now < dose_time_today:
-                return dose_time_today
-            return dose_time_today
-        if now < dose_time_today:
-            return dose_time_today
-        days_until_next_on = cycle_length - position_in_cycle
-        if days_until_next_on == 0:
-            days_until_next_on = cycle_length
-        return dose_time_today + timedelta(days=days_until_next_on)
+        ``schedule_timestamps`` is accepted for signature parity with the
+        sibling branches; the ON-day grid already encodes whether today's dose
+        has been logged, because a logged dose arrives as ``overdue_since is
+        None`` and the next ON slot is then simply the following one.
+        """
+        return get_next_cyclic_dose_time(entry, now)
 
     def _compute_overdue(self, entry, now, schedule_timestamps):
         """Most recent missed scheduled slot, or None.
 
         Mirrors PillOverdueSensor: shared slot-assignment model for Time of
-        Day, chained-deadline model for Regular Interval, day-level
-        coverage for Cyclic.
+        Day and Cyclic, chained-deadline model for Regular Interval.
         """
         if self._tracking_type == TRACKING_TIME_OF_DAY:
             return self._compute_overdue_time_of_day(entry, now, schedule_timestamps)
@@ -358,6 +349,10 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             future_days=0,
             early_grace=early_grace,
             lateness_mode=LATENESS_UNTIL_NEXT_SLOT,
+            # Parity with overdue.py: without this the enum and the overdue
+            # sensor disagree for pills_per_slot > 1 (an uncovered second pill
+            # in the slot read as covered here).
+            pills_per_slot=get_pills_per_slot(entry),
         )
 
         overdue_since = None
@@ -385,17 +380,32 @@ class PillDoseStatusSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         return anchor + n * interval
 
     def _compute_overdue_cyclic(self, entry, now, timestamps):
-        """Today's dose_time if on an ON day and the day is uncovered."""
-        dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
-        dose_hour, dose_minute = parse_dose_time(dose_time_str)
-        if not is_on_day(entry, now.date(), now.date()):
-            return None
-        dose_time_today = now.replace(hour=dose_hour, minute=dose_minute, second=0, microsecond=0)
-        if now < dose_time_today:
-            return None
-        if is_day_covered(now.date(), timestamps):
-            return None
-        return dose_time_today
+        """Latest uncovered ON-day slot, or None (parity with overdue.py).
+
+        Uses the shared Cyclic slot-assignment model so a miss survives
+        midnight into an OFF day and a catch-up dose taken on that OFF day
+        clears it.  Previously this only inspected today, so the enum fell
+        back to not_due at 00:00 while the user was in fact still behind.
+        """
+        days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+        days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
+
+        assignments = compute_cyclic_slot_assignments(
+            entry,
+            timestamps,
+            now,
+            lookback_days=max(1, days_on + days_off),
+            future_days=0,
+            pills_per_slot=get_pills_per_slot(entry),
+        )
+
+        overdue_since = None
+        for a in assignments:
+            if a.slot_time > now:
+                break
+            if not a.covered:
+                overdue_since = a.slot_time
+        return overdue_since
 
     def _compute_slot_remaining(self, entry, now, schedule_timestamps, pills_per_slot):
         """Pills still owed in the current (most recently reached) slot.

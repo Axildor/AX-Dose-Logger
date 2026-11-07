@@ -4,13 +4,19 @@ blueprint:
     State-driven reminder automation for the AX Dose Logger integration.
 
     Triggers on Dose Status sensor transitions so each state can have its own
-    behavior: Due and Overdue run a reminder loop with Take / Snooze / Skip
-    notification actions; Limit Reached and 24h Limit send an optional
-    warning (off by default). The phone notification is dismissed
-    automatically when the dose is taken by ANY path — notification action,
-    dashboard card, or the take_dose service — and an optional "dose taken"
-    confirmation (with adjustable auto-dismiss) can be shown. Skip records
-    the skipped slot so the next dose time advances.
+    behavior: Due repeats a reminder until you respond, while Overdue notifies
+    once (the miss stays visible on the card and in the Overdue sensor).
+    Both carry Take / Snooze / Skip notification actions; Limit Reached and
+    24h Limit send an optional warning (off by default). The phone
+    notification is dismissed automatically when the dose is taken by ANY
+    path — notification action, dashboard card, or the take_dose service —
+    and an optional "dose taken" confirmation (with adjustable auto-dismiss)
+    can be shown. Skip records the skipped slot so the next dose time advances.
+
+    Want periodic nagging on an overdue dose? Add your own automation with a
+    duration trigger on the Overdue sensor (e.g. wait until it has been
+    overdue for 48 hours, then repeat) rather than relying on this blueprint
+    to re-buzz on a timer.
 
     Only two selections are needed: the medication's Dose Status sensor and
     your phone. Everything else (take, skip, safety guard) is derived from
@@ -44,11 +50,16 @@ blueprint:
       default: "It's time to take your medication"
     notification_title_overdue:
       name: Overdue — notification title
-      description: "Sent when the dose becomes overdue. Default: Medicine overdue"
+      description: >-
+        Sent ONCE when the dose becomes overdue (not repeated on a timer).
+        Default: Medicine overdue
       default: "Medicine overdue"
     notification_message_overdue:
       name: Overdue — notification message
-      description: "Default: You missed your medication time — take it as soon as possible."
+      description: >-
+        Sent once on the transition to overdue. The overdue state stays
+        visible on the card and on the Overdue sensor afterwards.
+        Default: You missed your medication time — take it as soon as possible.
       default: "You missed your medication time — take it as soon as possible."
     notify_on_limit_reached:
       name: Notify on Limit Reached
@@ -291,9 +302,31 @@ action:
               - conditions: "{{ trigger.id == 'due' }}"
                 sequence: !input action_on_due
             default: !input action_on_overdue
+          # Overdue notifies ONCE, on the transition only.
+          #
+          # "overdue" is a PERSISTENT state: it stays set until the dose is
+          # taken or skipped, which on a Cyclic schedule can be a whole cycle.
+          # Re-notifying on a timer for that long is alarm fatigue, and a red
+          # warning that fires every 30 minutes for days is one the user
+          # learns to dismiss — including when it is genuine.
+          #
+          # So when the reminder loop times out without a response the loop
+          # ENDS. The overdue state (and the card, and the Overdue sensor's
+          # duration) keeps reporting it; the phone does not keep buzzing.
+          # Pressing Snooze still re-notifies exactly as often as the user
+          # asks, because that is an explicit request rather than a timer.
+          #
+          # Want periodic nagging? That is a deliberate per-user policy, so
+          # build it in your own automation as a `for:` duration trigger on the
+          # Overdue sensor (e.g. wait for > 48h, then repeat) rather than
+          # hard-coding one cadence into the shared blueprint.
           - repeat:
               while:
-                # Loop while the medication is still due or overdue
+                # Loop while the medication is still due or overdue.  The
+                # timeout handler below stops the automation when an
+                # unacknowledged reminder is for an OVERDUE dose, so this
+                # condition still serves Due (repeat until you respond) while
+                # Overdue notifies exactly once (see the note above).
                 - condition: template
                   value_template: "{{ states(dose_status_sensor) in ['due', 'overdue'] }}"
               sequence:
@@ -488,5 +521,20 @@ action:
                           data:
                             tag: "{{ tag_id }}"
 
-                  # No response (timeout) — loop and remind again
-                  default: []
+                  # No response within snooze_time.
+                  #
+                  # * DUE — loop again: an upcoming dose deserves persistence.
+                  # * OVERDUE — stop. The miss is already recorded and stays
+                  #   visible on the card + Overdue sensor duration; re-buzzing
+                  #   on a timer for what may be days is alarm fatigue, and a
+                  #   warning the user learns to ignore is worse than no warning.
+                  #   Snooze still re-notifies on explicit request.
+                  default:
+                    - choose:
+                        - conditions: "{{ states(dose_status_sensor) == 'overdue' }}"
+                          sequence:
+                            - stop: >-
+                                Overdue reminder sent once. The overdue state
+                                remains visible on the card and the Overdue
+                                sensor; build a repeat rule in your own
+                                automation if you want periodic nagging.

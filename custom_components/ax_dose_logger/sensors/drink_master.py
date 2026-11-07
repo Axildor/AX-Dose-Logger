@@ -9,6 +9,7 @@ from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.core import callback
 
 from ..const import (
+    AMOUNT_IN_BODY_ROUNDING,
     DRINK_TYPE_ALCOHOL,
     DRINK_TYPE_CAFFEINE,
     master_unique_id,
@@ -43,7 +44,10 @@ class DrinkMasterSensor(RestoreSensor):
 
     _attr_has_entity_name = False  # Master Tracker device name is the entity name
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_suggested_display_precision = 0  # default to no decimal places in HA UI
+    # Display default stays 0 (whole-unit default); the native value carries 2
+    # decimals so a user who raises this entity's display precision can see
+    # sub-unit amounts (e.g. a small caffeine or alcohol load tailing out).
+    _attr_suggested_display_precision = 0
     _attr_should_poll = False
 
     def __init__(
@@ -104,7 +108,7 @@ class DrinkMasterSensor(RestoreSensor):
         data = self._coordinator.data
         if data is None:
             return
-        self._attr_native_value = round(data.body_mass, 1)
+        self._attr_native_value = round(data.body_mass, AMOUNT_IN_BODY_ROUNDING)
         self._attr_extra_state_attributes = {
             "substance": self._substance,
             "pk_model": self._pk_model,

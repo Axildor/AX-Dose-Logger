@@ -241,6 +241,20 @@ PK_DEFAULTS: dict[str, float] = {
 
 MAX_DOSES_PER_DAY = 18
 
+# Decimal places carried by an Amount-in-Body native value (medicine
+# ``PillConcentrationSensor`` and Master Tracker ``DrinkMasterSensor``) and by
+# its diagnostic compartment attributes.
+#
+# 2 is the real fidelity of the PK model output consumed by the card's graph
+# endpoint (views.py rounds samples to 2 as well), so the state string never
+# advertises precision the model cannot back up. Sub-unit amounts matter for
+# low-bioavailability drugs (e.g. oral morphine at F=30% tails to ~0.20 mg).
+#
+# NOTE: this is NOT the display precision. ``suggested_display_precision``
+# stays 0 because most medicines are dosed in whole units; a user raises the
+# entity's display precision in Home Assistant when a drug needs decimals.
+AMOUNT_IN_BODY_ROUNDING = 2
+
 # Pills per time slot: how many pills a single scheduled slot prescribes
 # (e.g. 2 pills at 08:00 + 2 at 20:00 = 4/day). Default 1 keeps every
 # existing entry's behavior identical (no migration needed). Read via

@@ -3,7 +3,7 @@ from homeassistant.components.sensor import RestoreSensor, SensorStateClass
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback
 
-from ..const import PK_DEFAULTS, RELEASE_INSTANT, RELEASE_SUSTAINED
+from ..const import AMOUNT_IN_BODY_ROUNDING, PK_DEFAULTS, RELEASE_INSTANT, RELEASE_SUSTAINED
 from ..entity import AxDoseLoggerSensorEntity
 from ..pk_model import PKParams
 
@@ -21,6 +21,10 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
 
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = self._strength_unit
+        # Display default stays 0: most medicines are dosed in whole units.
+        # The native value below carries 2 decimals of real fidelity so a user
+        # who raises this entity's display precision in Home Assistant can see
+        # sub-unit amounts (e.g. low-bioavailability opioids tailing to 0.20 mg).
         self._attr_suggested_display_precision = 0
         self._attr_native_value = 0.0
         self._attr_extra_state_attributes = {"last_updated": None, "gut_mass": 0.0, "ka": 0.0, "lag_time": 0.0}
@@ -71,7 +75,7 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         if last_state is not None and last_state.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             try:
                 old_mass = float(last_state.state)
-                self._attr_native_value = round(old_mass, 1)
+                self._attr_native_value = round(old_mass, AMOUNT_IN_BODY_ROUNDING)
             except ValueError, TypeError:
                 pass
 
@@ -99,15 +103,15 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             and self.coordinator.data.pk_result is not None
         ):
             pk = self.coordinator.data.pk_result
-            self._attr_native_value = round(self.coordinator.data.concentration, 1)
+            self._attr_native_value = round(self.coordinator.data.concentration, AMOUNT_IN_BODY_ROUNDING)
 
             if self._release_type == RELEASE_SUSTAINED:
                 self._attr_extra_state_attributes = {
                     "last_updated": dt_util.now().isoformat(),
-                    "gut_mass": round(pk.gut_ir, 1),
-                    "gut_ir_mass": round(pk.gut_ir, 1),
-                    "matrix_sr_mass": round(pk.matrix_sr, 1),
-                    "gut_sr_mass": round(pk.gut_sr, 1),
+                    "gut_mass": round(pk.gut_ir, AMOUNT_IN_BODY_ROUNDING),
+                    "gut_ir_mass": round(pk.gut_ir, AMOUNT_IN_BODY_ROUNDING),
+                    "matrix_sr_mass": round(pk.matrix_sr, AMOUNT_IN_BODY_ROUNDING),
+                    "gut_sr_mass": round(pk.gut_sr, AMOUNT_IN_BODY_ROUNDING),
                     "ka": pk.ka,
                     "kr": pk.kr,
                     "lag_time": self._build_pk_params().lag_time,
@@ -115,7 +119,7 @@ class PillConcentrationSensor(AxDoseLoggerSensorEntity, RestoreSensor):
             else:
                 self._attr_extra_state_attributes = {
                     "last_updated": dt_util.now().isoformat(),
-                    "gut_mass": round(pk.gut_ir, 1),
+                    "gut_mass": round(pk.gut_ir, AMOUNT_IN_BODY_ROUNDING),
                     "ka": pk.ka,
                     "lag_time": self._build_pk_params().lag_time,
                 }

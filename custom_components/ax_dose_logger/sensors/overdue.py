@@ -9,7 +9,7 @@ of the missed slot, enabling automations and custom cards to display absolute
 times without doing math.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass, SensorStateClass
@@ -22,11 +22,13 @@ from ..const import (
     TRACKING_TIME_OF_DAY,
     get_dose_times,
     get_pills_per_slot,
-    parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
-from ..schedule import LATENESS_UNTIL_NEXT_SLOT, compute_slot_assignments
-from ..sliding_window import is_day_covered, is_on_day
+from ..schedule import (
+    LATENESS_UNTIL_NEXT_SLOT,
+    compute_cyclic_slot_assignments,
+    compute_slot_assignments,
+)
 
 
 class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
@@ -214,37 +216,47 @@ class PillOverdueSensor(AxDoseLoggerSensorEntity, RestoreSensor):
     # ── Cyclic / Calendar Pattern ───────────────────────────────────────
 
     def _compute_overdue_cyclic(self, entry, now, timestamps):
-        """Return today's dose_time if on an ON day and dose missed, else None."""
-        days_on = entry.options.get("days_on", entry.data.get("days_on", 5))
-        days_off = entry.options.get("days_off", entry.data.get("days_off", 2))
-        anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
-        dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
+        """Return the most recent uncovered ON-day slot, or None.
 
-        try:
-            anchor_date = date.fromisoformat(anchor_str)
-        except ValueError, TypeError:
-            anchor_date = now.date()
+        Uses the shared Cyclic slot-assignment model
+        (:func:`schedule.compute_cyclic_slot_assignments`): one slot per ON
+        day, lateness extending until the next ON slot.
 
-        dose_hour, dose_minute = parse_dose_time(dose_time_str)
+        Two properties matter here and both were previously broken by the
+        today-only ``is_day_covered()`` check:
 
-        # Not on an ON day → not overdue
-        if not is_on_day(entry, now.date(), now.date()):
-            return None
+        1. **A miss survives midnight.**  The timeline spans a full cycle
+           (``days_on + days_off``) back, so missing an ON-day dose and only
+           realising it after midnight — on an OFF day — still reports the
+           missed slot.  Previously the miss was erased at 00:00, which is
+           exactly the "it was overdue, then it just disappeared" report.
+        2. **A catch-up dose clears it.**  Lateness extends to the next ON
+           slot, so taking the missed dose at 00:30 still consumes that slot
+           even though the dose carries the next calendar date.  A day-level
+           coverage check could not express this.
 
-        dose_time_today = now.replace(hour=dose_hour, minute=dose_minute, second=0, microsecond=0)
+        OFF days themselves can never be overdue: they contribute no slots.
+        """
+        days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+        days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
 
-        # Dose time hasn't arrived yet today → not overdue
-        if now < dose_time_today:
-            return None
+        assignments = compute_cyclic_slot_assignments(
+            entry,
+            timestamps,
+            now,
+            # A full cycle back, so nothing inside the running cycle is lost
+            # however long the cycle is.
+            lookback_days=max(1, days_on + days_off),
+            future_days=0,
+            pills_per_slot=get_pills_per_slot(entry),
+        )
 
-        # Day-level coverage: any dose taken on this ON calendar day
-        # covers the slot.  This aligns with pill_limit (24h rolling
-        # window), avg_doses (PDC day coverage), and next_dose, so a
-        # late-but-taken dose clears overdue instead of producing the
-        # impossible "LIMIT REACHED + OVERDUE" state.  Timing quality
-        # is still tracked separately by the adherence sensor (±grace).
-        if is_day_covered(now.date(), timestamps):
-            return None
-
-        # On an ON day, dose time has passed, no dose today → overdue
-        return dose_time_today
+        # Latest uncovered slot at or before now → overdue anchor.  Future
+        # ON slots cannot be overdue yet.
+        overdue_since = None
+        for a in assignments:
+            if a.slot_time > now:
+                break
+            if not a.covered:
+                overdue_since = a.slot_time
+        return overdue_since

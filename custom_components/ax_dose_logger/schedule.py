@@ -9,11 +9,12 @@ use different algorithms for it.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 
-from .const import TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY, get_dose_times
+from .const import TRACKING_REGULAR_INTERVAL, TRACKING_TIME_OF_DAY, get_dose_times, parse_dose_time
+from .sliding_window import is_on_day
 
 # Lateness-window modes for :func:`compute_slot_assignments`.
 LATENESS_UNTIL_NEXT_SLOT = "until_next_slot"
@@ -41,6 +42,48 @@ class SlotAssignment:
     assigned_count: int = 1
 
 
+def get_next_cyclic_dose_time(entry: ConfigEntry, now):
+    """Return the next Cyclic ON-day slot strictly after the current one.
+
+    This is the *next ON day* question, not the *next cycle* question.  The
+    prior implementation computed ``cycle_length - position_in_cycle``, which
+    measures to the first ON day of the NEXT cycle.  On a 5-on/2-off schedule,
+    taking today's dose on the 4th ON day therefore reported "next dose in 4
+    days" when it was actually tomorrow — the dose was reported as skipped for
+    every remaining ON day of the run.
+
+    Walking forward day by day is the only formulation that stays correct for
+    every cycle shape (runs of ON days, single ON day per cycle, daily, and
+    cycles longer than the search window).
+
+    Args:
+        entry: The config entry carrying the cycle config.
+        now: Tz-aware "current" time.
+
+    Returns:
+        The next ON-day slot datetime.  Falls back to the next calendar day at
+        the configured ``dose_time`` when no ON day is found inside a full
+        cycle (defensive — ``is_on_day`` guarantees one exists).
+    """
+    days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+    days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
+    cycle_length = max(1, days_on + days_off)
+
+    # Scan a FULL cycle forward.  A shorter horizon is not enough: on the LAST
+    # ON day of an ON run, every ON slot is in the past and the next ON day sits
+    # up to ``days_off`` days away (plus the rest of today), so a 1-day horizon
+    # would find nothing and fall through to the bogus fallback below.
+    slot_times = cyclic_slot_times(entry, now, lookback_days=0, future_days=cycle_length)
+    for slot in slot_times:
+        if slot > now:
+            return slot
+    # Defensive only: a full cycle always contains an ON day, so this is
+    # unreachable unless the cycle anchor is in the future or the config is
+    # degenerate (e.g. days_on = 0).  Returning a real future slot beats
+    # returning a silently-wrong "now + 1 day"; surface the degenerate case.
+    return now + timedelta(days=1)
+
+
 def get_next_dose_time(
     entry: ConfigEntry,
     timestamps: list,
@@ -50,9 +93,8 @@ def get_next_dose_time(
     """
     Return the next expected dose datetime, or ``None`` if unknown.
 
-    Handles *Regular Interval* and *Time of Day* tracking types.
-    Returns ``None`` for *Cyclic/Calendar Pattern* and *As Needed* —
-    callers must handle those branches inline.
+    Handles *Regular Interval*, *Time of Day* and *Cyclic/Calendar Pattern*.
+    Returns ``None`` for *As Needed* — callers must handle that branch.
     """
     if tracking_type == TRACKING_REGULAR_INTERVAL:
         hours_between = entry.options.get("hours_between_doses", entry.data.get("hours_between_doses", 0))
@@ -86,6 +128,136 @@ def get_next_dose_time(
         return tomorrow.replace(hour=first_hour, minute=first_minute, second=0, microsecond=0)
 
     return None
+
+
+def cyclic_slot_times(
+    entry: ConfigEntry,
+    now,
+    lookback_days: int,
+    future_days: int = 1,
+) -> list:
+    """Build the Cyclic ON-day slot timeline (one slot per ON day at ``dose_time``).
+
+    Only ON days contribute a slot, so an OFF day is structurally incapable of
+    being "overdue".  The timeline spans ``lookback_days`` back (clamped to the
+    cycle anchor so no slot predates the schedule) and ``future_days`` forward,
+    which is what lets a missed ON slot survive midnight into the following
+    OFF span instead of vanishing at 00:00.
+
+    Args:
+        entry: The config entry carrying ``days_on`` / ``days_off`` /
+            ``cycle_anchor_date`` / ``dose_time``.
+        now: Tz-aware "current" time used to anchor the timeline and supply
+            the tzinfo for the slots.
+        lookback_days: How many calendar days before ``now.date()`` to seed
+            slots.  Callers pass a full cycle (``days_on + days_off``) so
+            nothing inside the running cycle is ever lost.
+        future_days: How many calendar days after ``now.date()`` to seed
+            slots.  Default 1 (the next ON day is always resolvable).
+
+    Returns:
+        Chronologically sorted list of slot datetimes (possibly empty when the
+        anchor is in the future).
+    """
+    days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+    days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
+    dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
+    dose_hour, dose_minute = parse_dose_time(dose_time_str)
+
+    try:
+        anchor_date = date.fromisoformat(entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date")))
+    except ValueError, TypeError:
+        anchor_date = now.date()
+
+    cycle_length = days_on + days_off
+    if cycle_length <= 0:
+        cycle_length = 1
+
+    slot_times: list = []
+    base_date = now.date()
+    for day_offset in range(-lookback_days, future_days + 1):
+        slot_date = base_date + timedelta(days=day_offset)
+        # Never anchor a slot before the cycle started — the user was not
+        # yet prescribed this medication, so it cannot be a missed dose.
+        if slot_date < anchor_date:
+            continue
+        if not is_on_day(entry, slot_date, anchor_date):
+            continue
+        slot_times.append(datetime.combine(slot_date, time(dose_hour, dose_minute), tzinfo=now.tzinfo))
+    slot_times.sort()
+    return slot_times
+
+
+def cyclic_early_grace(entry: ConfigEntry) -> timedelta:
+    """Return the Cyclic early-dose tolerance (a dose this early still counts).
+
+    Derived from the shortest ON-to-ON gap so the tolerance can never span two
+    scheduled doses:
+
+    * alternating (1 on / 1 off) → 48 h gap → 24 h grace
+    * 5 on / 2 off → 24 h gap → 12 h grace
+    * daily (7 on / 0 off) → 24 h gap → 12 h grace
+
+    The 30-minute floor is the same absolute minimum the Time of Day model
+    uses; the 24-hour ceiling keeps a long alternating cycle from letting a
+    dose a full day early cover the slot.
+    """
+    days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
+    days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
+    cycle_length = days_on + days_off
+    if cycle_length <= 0:
+        cycle_length = 1
+    # Gap between consecutive ON slots, in days.  A single ON day per cycle
+    # leaves the whole cycle as the gap; a run of ON days gives a 1-day gap.
+    on_run_gap_days = 1 if days_on > 1 else cycle_length
+    grace_hours = min(24.0, (on_run_gap_days * 24.0) / 2.0)
+    return timedelta(minutes=max(30, int(grace_hours * 60)))
+
+
+def compute_cyclic_slot_assignments(  # noqa: PLR0913 - signature mirrors compute_slot_assignments
+    entry: ConfigEntry,
+    timestamps: list,
+    now,
+    *,
+    lookback_days: int,
+    future_days: int = 1,
+    pills_per_slot: int = 1,
+) -> list[SlotAssignment]:
+    """Assign doses to Cyclic ON-day slots (lateness extends to the next ON slot).
+
+    This is the Cyclic member of the shared slot family: same greedy,
+    chronological, one-dose-per-slot model as :func:`compute_slot_assignments`,
+    but the slot grid contains ON days only.
+
+    The lateness policy is ``LATENESS_UNTIL_NEXT_SLOT``: a dose taken anywhere
+    between the missed ON slot and the following ON slot consumes that slot.
+    That is deliberate and clinically motivated — the label guidance for a
+    missed dose is "take it as soon as you remember", so a dose taken after
+    midnight on the following OFF day must clear the miss.  Without it, a
+    midnight-crossing catch-up dose would leave the ON slot flagged overdue for
+    the rest of the cycle simply because the dose landed on a different
+    calendar date.
+
+    Args:
+        entry: The config entry (cycle + dose_time + pills_per_slot).
+        timestamps: Dose datetimes plus any deliberately-skipped slots (both
+            mean "this slot is discharged").
+        now: Tz-aware "current" time.
+        lookback_days: Slots to seed before today — callers pass a full cycle.
+        future_days: Slots to seed after today (default 1).
+        pills_per_slot: Doses each slot may consume (default 1).
+
+    Returns:
+        List of :class:`SlotAssignment` in chronological slot order.  Empty
+        when the cycle has no ON day inside the window.
+    """
+    slot_times = cyclic_slot_times(entry, now, lookback_days, future_days)
+    return _assign_doses_to_slots(
+        slot_times,
+        timestamps,
+        early_grace=cyclic_early_grace(entry),
+        pills_per_slot=pills_per_slot,
+    )
 
 
 def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pass 2 required + up to 5 knobs
@@ -149,8 +321,6 @@ def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pas
         msg = "lateness_cap is required when lateness_mode == LATENESS_CAPPED"
         raise ValueError(msg)
 
-    pills_per_slot = max(pills_per_slot, 1)
-
     # Build the slot timeline: for each calendar day in the window, one
     # slot per parsed time, in chronological order across the whole span.
     slot_times: list[datetime] = []
@@ -160,6 +330,43 @@ def compute_slot_assignments(  # noqa: PLR0913 - policy-rich helper; callers pas
         for hour, minute in parsed_times:
             slot_times.append(datetime.combine(slot_date, time(hour, minute), tzinfo=now.tzinfo))
     slot_times.sort()
+
+    return _assign_doses_to_slots(
+        slot_times,
+        timestamps,
+        early_grace=early_grace,
+        pills_per_slot=pills_per_slot,
+        lateness_mode=lateness_mode,
+        lateness_cap=lateness_cap,
+    )
+
+
+def _assign_doses_to_slots(  # noqa: PLR0913 - mirrors compute_slot_assignments' knob set
+    slot_times: list[datetime],
+    timestamps: list,
+    *,
+    early_grace: timedelta,
+    pills_per_slot: int = 1,
+    lateness_mode: str = LATENESS_UNTIL_NEXT_SLOT,
+    lateness_cap: timedelta | None = None,
+) -> list[SlotAssignment]:
+    """Greedily assign doses to an already-built, sorted slot timeline.
+
+    Shared by :func:`compute_slot_assignments` (Time of Day / Regular
+    Interval) and :func:`compute_cyclic_slot_assignments` (Cyclic ON days), so
+    all three scheduled tracking types run one assignment algorithm.  A
+    divergence between them is therefore impossible by construction.
+
+    Each slot's window is ``[slot_time - early_grace, late_bound)`` where
+    ``late_bound`` is the following slot (``LATENESS_UNTIL_NEXT_SLOT``) or
+    ``slot_time + lateness_cap`` (``LATENESS_CAPPED``).  A dose exactly at
+    ``late_bound`` belongs to the next slot, not this one.
+    """
+    if lateness_mode == LATENESS_CAPPED and lateness_cap is None:
+        msg = "lateness_cap is required when lateness_mode == LATENESS_CAPPED"
+        raise ValueError(msg)
+
+    pills_per_slot = max(pills_per_slot, 1)
 
     if not slot_times:
         return []
