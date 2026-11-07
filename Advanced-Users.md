@@ -68,6 +68,17 @@ For the pharmacokinetic model math (formulas, worked examples, steady-state deri
 | Pill Limit | 1–20 pills | Maximum pills you can take within the time window | 1 |
 | Time Window | 0.5–168 h | Rolling window for the pill limit | 24 |
 
+> **Cyclic schedules: two independent gates.** Keep these separate when reasoning about your sensors — they answer different questions and never share a value.
+>
+> | Gate | Question it answers | Sensors | Sees the calendar? |
+> |---|---|---|---|
+> | **Safety** | *If I swallowed one now, would I exceed my limit within the time window?* | `Pills Safe to Take`, `safe_count`, `window_expires_at` | **No** — elapsed time only |
+> | **Schedule** | *Is today a dose day, and is it still owed?* | `Dose Status`, `Overdue`, `Next Dose` | Yes — cycle phase |
+>
+> A practical consequence: on an every-other-day schedule with a 30 h window and a pill limit of 1, the safety gate reads 0 for 30 hours after each dose and then returns to 1 — **regardless of whether that moment falls on an ON day or an OFF day**. It will not drop to 0 at midnight just because the day changed. An OFF day is reported as `not_due` (a rest day), never as `limit_reached` (an overdose lockout).
+>
+> A missed ON day is reported as `overdue` and **stays** overdue across midnight and through the following OFF days until you take or skip the dose — because the label guidance for a missed dose is to take it as soon as you remember. The lookback is one full cycle (`Days On + Days Off`), so nothing inside the running cycle is ever lost. Taking the catch-up dose late, even after midnight on an OFF day, counts as the missed dose and clears it.
+
 ### Step 3: Pharmacokinetics
 
 > ⚠️ **Important:** PK parameters should be sourced from official pharmacokinetic data (e.g., FDA labels, EMA assessments, peer-reviewed literature). Do not guess — incorrect values will produce misleading results. See the [PK Search Guide](Pharmacokinetics.md#pk-search-guide) for help.
@@ -198,15 +209,18 @@ Key entities and their attributes for template references:
 - State: number of pills safe to take remaining (integer)
 - `timestamps`: list of recent dose timestamps within the window
 - `time_window_hours`: configured rolling window size
-- `in_on_window`: (Cyclic only) whether currently in an ON period
 - `window_expires_at`: when the oldest in-window dose expires and the limit will increment (ISO datetime); `null` when not at the limit. This is the true "when can I safely take another" time, distinct from the Next Dose schedule.
+- `lockout_reason`: `"window_full"` when the count is 0, otherwise `null`. Only the rolling window can produce a 0, so a 0 is always explainable.
+- `cyclic_off_day`: (Cyclic only) `true` on a planned OFF day. **Informational only** — it does not change the count. A rest day is a scheduling fact, not a safety lockout; see the two-gate note below.
 
 **Next Dose** (`sensor.ibuprofen_next_dose`)
 - State: datetime of next scheduled dose. For scheduled medications (Time of Day, Cyclic), this is always the next prescribed clock slot — taking a dose late does not drift the schedule. For multi-dose Time of Day schedules, a dose taken late is assigned to the slot it covers (lateness extends until the next scheduled slot), so a 17:30 dose on a 13:00 + 21:00 schedule counts as the late 13:00 dose and leaves 21:00 as the next due slot. The safety gate (whether it's actually safe to take now) is the separate Pills Safe to Take sensor.
 - `safe_to_take`: number of pills safe to take right now
 
 **Amount in Body** (`sensor.ibuprofen_amount_in_body`)
-- State: current drug amount in mg (float, 1 decimal)
+- State: current drug amount in mg (float, 2 decimals)
+- *Display precision:* defaults to **0 decimals**, because most medicines are dosed in whole units. Raise it per entity via **Settings → Devices & Services → Entities → (this sensor) → Display precision** to see sub-unit amounts. This matters for low-bioavailability drugs: oral morphine at 30% bioavailability from a 10 mg tablet tails down to roughly 0.20 mg, which rounds away at 0 decimals.
+- The amount is stored to **2 decimals**, and the dashboard card caps its display at 2 regardless of the setting, so it never shows padded zeros. Selecting 3–6 in the precision picker is allowed by Home Assistant but has no effect for this entity — it would advertise precision the value does not have.
 - *Immediate Release (IR) attributes:*
   - `gut_mass`: drug remaining in gut compartment (mg)
   - `ka`: absorption rate constant (h⁻¹)
@@ -241,15 +255,17 @@ Key entities and their attributes for template references:
   - `not_due` — scheduled medication, next slot still in the future
   - `due` — the scheduled slot has arrived (within the first half of the grace window)
   - `overdue` — past half the grace window (latency warning)
-  - `limit_reached` — pill-count rolling window is full (or Cyclic OFF day)
+  - `limit_reached` — pill-count rolling window is genuinely full. **A Cyclic OFF day is NOT a lockout** (see the two-gate note below); a rest day reports `not_due`.
   - `limit_24h` — 24h strength limit already exceeded, or the next dose would push over it
   - `ok` — As-Needed medication, available to take
 - `next_dose_at`: next scheduled slot (ISO datetime; `null` for As-Needed)
-- `overdue_since`: when the missed slot began (ISO datetime; `null` when not overdue)
+- `overdue_since`: when the missed slot began (ISO datetime; `null` when not overdue). For Cyclic schedules this scans back a **full cycle**, so a missed ON day stays reported after midnight and on the following OFF days until it is taken or skipped.
 - `grace_minutes`: configured on-time window
 - `safe_count`: pills safe to take right now (mirrors the Pills Safe to Take sensor)
 - `amount_24h` / `daily_limit`: 24h strength sum and configured cap
 - `tracking_type`: the medication's tracking type
+- `lockout_reason`: `"window_full"` when `limit_reached`, otherwise `null`
+- `cyclic_off_day`: (Cyclic only) `true` on a planned OFF day — informational, never alters the count
 - The sensor flips states at the exact transition instants (slot arrival, half-grace boundary, window expiry) via point-in-time timers — no waiting for the next minute tick. Use it in automations with a State trigger, e.g. `trigger: state → entity_id: sensor.ibuprofen_dose_status → to: due`.
 
 **24h Limit Exceeded** (`binary_sensor.ibuprofen_24h_limit_exceeded`)
@@ -310,8 +326,8 @@ Each medication and drink shows up as a **Device** in Home Assistant. Replace `i
 | Total Doses | `sensor.ibuprofen_total_doses` | Cumulative lifetime dose count | — |
 | Days Since First Dose | `sensor.ibuprofen_days_since_first_dose` | Integer days elapsed since the first recorded dose | `first_dose_timestamp`, `history_start_date` |
 | Last Dose | `sensor.ibuprofen_last_dose` | Timestamp of most recent dose | — |
-| Pills Safe to Take | `sensor.ibuprofen_pills_safe_to_take` | Remaining pills safe to take in the current window | `timestamps`, `time_window_hours`, `in_on_window` (Cyclic only), `window_expires_at` (when the limit resets; `null` if not at the limit) |
-| Amount in Body | `sensor.ibuprofen_amount_in_body` | Current drug amount in body (mg) — requires PK fields | `last_updated`, `gut_mass`, `ka`, `lag_time`, `dose_history` (IR); `gut_ir_mass`, `matrix_sr_mass`, `gut_sr_mass`, `ka`, `kr`, `lag_time`, `dose_history` (ER) |
+| Pills Safe to Take | `sensor.ibuprofen_pills_safe_to_take` | Remaining pills safe to take in the current window (elapsed-time only) | `timestamps`, `time_window_hours`, `window_expires_at` (when the limit resets; `null` if not at the limit), `lockout_reason` (`window_full` or `null`), `cyclic_off_day` (Cyclic only; informational — does not change the count) |
+| Amount in Body | `sensor.ibuprofen_amount_in_body` | Current drug amount in body (mg, 2 decimals; display defaults to 0 and follows the entity's Display precision setting, capped at 2 in the card) — requires PK fields | `last_updated`, `gut_mass`, `ka`, `lag_time`, `dose_history` (IR); `gut_ir_mass`, `matrix_sr_mass`, `gut_sr_mass`, `ka`, `kr`, `lag_time`, `dose_history` (ER) |
 | Amount in Last 24h | `sensor.ibuprofen_amount_in_last_24h` | Total dose strength consumed in the last 24 hours (mg/μg/g) | `window_hours`, `doses_in_window`, `daily_limit` (`null` when 0), `remaining` (deprecated — use Daily Remaining), `unit_of_measurement` |
 | Daily Remaining | `sensor.ibuprofen_daily_remaining` | Remaining daily allowance (`daily_limit − amount_24h`; negative = overage; only when `daily_limit > 0`) | `window_hours`, `daily_limit`, `amount_24h`, `unit_of_measurement` |
 | 24h Limit Exceeded | `binary_sensor.ibuprofen_24h_limit_exceeded` | On when 24h strength limit is/would be exceeded (only when `daily_limit > 0`) | `current_amount`, `daily_limit`, `next_dose_strength`, `remaining`, `already_exceeded`, `would_exceed`, `unit_of_measurement` |

@@ -14,6 +14,26 @@ _TIMESTAMPS_MAX_COUNT = 100
 
 
 class PillLimitSensor(AxDoseLoggerSensorEntity, RestoreSensor):
+    """Pills safe to take — the pharmacological safety gate ONLY.
+
+    Answers one question: *if a dose were taken now, would it exceed
+    ``pill_limit`` within ``time_window_hours``?*  It reads the dose history
+    and the rolling window and nothing else.
+
+    **Cyclic OFF days no longer force this to 0.**  That clamp conflated a
+    schedule fact with a safety measurement: a 48-hour schedule with a
+    30-hour window is legitimately available for 30 of every 48 hours, and
+    reporting 0 on the intervening OFF day produced a false "LIMIT REACHED"
+    (which the card offers to override and the reminder blueprint hard-blocks
+    on).  Whether *today* is a dose day is the ``due`` / ``overdue`` /
+    ``not_due`` schedule gate's job — see ``schedule.compute_cyclic_slot_assignments``.
+    The ``cyclic_off_day`` attribute below still reports the phase for
+    informatics, but it never alters the count.
+
+    ``lockout_reason`` makes a 0 self-explanatory: only ``window_full`` can
+    produce it, so "limit reached" can never again mean "it's a rest day".
+    """
+
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 0
@@ -62,27 +82,16 @@ class PillLimitSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         )
         timestamps = self._get_timestamps()
 
-        # Cyclic OFF days: force pill_limit to 0 regardless of window
-        if self._tracking_type == TRACKING_CYCLIC and not is_on_day(entry, now.date(), now.date()):
-            self._attr_native_value = 0
-            # Prune timestamps to last 365 days and cap at 100 entries
-            cutoff = now - timedelta(days=_TIMESTAMPS_MAX_DAYS)
-            recent = [ts for ts in timestamps if ts >= cutoff][-_TIMESTAMPS_MAX_COUNT:]
-            self._attr_extra_state_attributes = {
-                "timestamps": [ts.isoformat() for ts in recent],
-                "time_window_hours": time_window,
-                "in_on_window": False,
-                "dose_buffer_minutes": raw_buffer,
-                "effective_buffer_minutes": buffer_minutes,
-            }
-            return
-
-        # Unified sliding window for ALL modes. The cutoff is moved forward
-        # by the buffer so the oldest dose expires `buffer` minutes earlier
-        # than the strict window, re-anchoring doses taken a few minutes late.
+        # ONE unified sliding window for EVERY tracking type — including
+        # Cyclic.  The cutoff is moved forward by the buffer so the oldest
+        # dose expires `buffer` minutes earlier than the strict window,
+        # re-anchoring doses taken a few minutes late.  There is deliberately
+        # no calendar/cycle branch here: only an elapsed-time window may
+        # report a lockout (see the class docstring).
         cutoff = now - timedelta(hours=time_window) + timedelta(minutes=buffer_minutes)
         valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
-        self._attr_native_value = max(0, max_pills - len(valid_timestamps))
+        safe_to_take = max(0, max_pills - len(valid_timestamps))
+        self._attr_native_value = safe_to_take
 
         window_expires_at = None
         if max_pills > 0 and len(valid_timestamps) >= max_pills and valid_timestamps:
@@ -92,10 +101,23 @@ class PillLimitSensor(AxDoseLoggerSensorEntity, RestoreSensor):
                 valid_timestamps[0] + timedelta(hours=time_window) - timedelta(minutes=buffer_minutes)
             ).isoformat()
 
+        # Prune the informational timestamps attribute to the last 365 days
+        # and cap it at 100 entries (unchanged budget — the attribute exists
+        # for automations/card detail, not for the gate maths above).
+        recent_cutoff = now - timedelta(days=_TIMESTAMPS_MAX_DAYS)
+        recent = [ts for ts in valid_timestamps if ts >= recent_cutoff][-_TIMESTAMPS_MAX_COUNT:]
+
+        # Phase reported for informatics ONLY — it never alters the count.
+        is_off_day = self._tracking_type == TRACKING_CYCLIC and not is_on_day(entry, now.date(), now.date())
+
         self._attr_extra_state_attributes = {
-            "timestamps": [ts.isoformat() for ts in valid_timestamps],
+            "timestamps": [ts.isoformat() for ts in recent],
             "time_window_hours": time_window,
             "window_expires_at": window_expires_at,
+            # Only the rolling window can lock out.  Exposing the reason stops
+            # "limit reached" from ever again ambiguously meaning "rest day".
+            "lockout_reason": "window_full" if safe_to_take <= 0 else None,
+            "cyclic_off_day": is_off_day,
             "dose_buffer_minutes": raw_buffer,
             "effective_buffer_minutes": buffer_minutes,
             "pills_per_slot": get_pills_per_slot(entry),

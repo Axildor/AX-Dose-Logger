@@ -14,7 +14,6 @@ from .const import (
     DOSE_BUFFER_CAP_FRACTION,
     DOSE_BUFFER_DEFAULT_MIN,
     TRACKING_AS_NEEDED,
-    TRACKING_CYCLIC,
     TRACKING_REGULAR_INTERVAL,
 )
 
@@ -118,10 +117,23 @@ def compute_safe_to_take(
     tracking_type: str,
 ) -> int:
     """
-    Compute remaining pills safe to take using the unified sliding window.
+    Compute remaining pills safe to take from the rolling window ONLY.
 
-    Returns ``0`` on Cyclic OFF days.  This is the pure (side-effect-free)
-    version of the logic that lived inline in ``next_dose._compute_safe_to_take``.
+    This answers a single pharmacological question: *if a dose were taken
+    right now, would it exceed the configured ``pill_limit`` within
+    ``time_window_hours``?*  It deliberately knows nothing about the calendar,
+    the cycle phase, or whether today is an ON day.
+
+    **Do not reintroduce a Cyclic OFF-day clamp here.**  A tracker with a
+    48-hour schedule and a 30-hour window is legitimately lockout-free for
+    30 of every 48 hours; that is the window working, not a scheduling
+    statement.  Forcing ``0`` on an OFF day forges a safety lockout out of a
+    calendar fact, which then (a) shows a false "LIMIT REACHED" on the card,
+    (b) makes the reminder blueprint hard-block its Take action, and (c)
+    trains the user to dismiss a genuine lockout.  Schedule phase is
+    :func:`schedule.compute_cyclic_slot_assignments`' job and belongs to the
+    ``due`` / ``overdue`` / ``not_due`` states — the two gates must never be
+    merged again.
 
     The rolling window is relaxed by the anti-drift dose buffer
     (:func:`effective_dose_buffer_minutes`): doses expire ``buffer`` minutes
@@ -135,12 +147,7 @@ def compute_safe_to_take(
     buffer_minutes = effective_dose_buffer_minutes(entry, time_window)
     cutoff = now - timedelta(hours=time_window) + timedelta(minutes=buffer_minutes)
     valid_timestamps = [ts for ts in timestamps if ts >= cutoff]
-    safe_to_take = max(0, max_pills - len(valid_timestamps))
-
-    if tracking_type == TRACKING_CYCLIC and not is_on_day(entry, now.date(), now.date()):
-        safe_to_take = 0
-
-    return safe_to_take
+    return max(0, max_pills - len(valid_timestamps))
 
 
 def local_date(dt: datetime) -> date:

@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 import homeassistant.util.dt as dt_util
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
@@ -11,11 +11,14 @@ from ..const import (
     TRACKING_TIME_OF_DAY,
     get_dose_times,
     get_pills_per_slot,
-    parse_dose_time,
 )
 from ..entity import AxDoseLoggerSensorEntity
-from ..schedule import LATENESS_UNTIL_NEXT_SLOT, compute_slot_assignments
-from ..sliding_window import compute_safe_to_take, effective_dose_buffer_minutes, is_on_day
+from ..schedule import (
+    LATENESS_UNTIL_NEXT_SLOT,
+    compute_slot_assignments,
+    get_next_cyclic_dose_time,
+)
+from ..sliding_window import compute_safe_to_take, effective_dose_buffer_minutes
 
 # Cap for timestamps attribute: prune older than 365 days, keep last 100
 _TIMESTAMPS_MAX_DAYS = 365
@@ -112,47 +115,13 @@ class PillNextDoseSensor(AxDoseLoggerSensorEntity, RestoreSensor):
         elif self._tracking_type == TRACKING_TIME_OF_DAY:
             self._update_state_time_of_day(entry, now, schedule_timestamps)
         elif self._tracking_type == TRACKING_CYCLIC:
-            # HA's NumberSelector stores these as floats; coerce to int
-            # for correct modulo/cycle arithmetic.
-            days_on = int(entry.options.get("days_on", entry.data.get("days_on", 5)))
-            days_off = int(entry.options.get("days_off", entry.data.get("days_off", 2)))
-            anchor_str = entry.options.get("cycle_anchor_date", entry.data.get("cycle_anchor_date"))
-            dose_time_str = entry.options.get("dose_time", entry.data.get("dose_time", "08:00"))
-            try:
-                anchor_date = date.fromisoformat(anchor_str)
-            except ValueError, TypeError:
-                anchor_date = now.date()
-            dose_hour, dose_minute = parse_dose_time(dose_time_str)
-
-            cycle_length = days_on + days_off
-            if cycle_length <= 0:
-                cycle_length = 1
-            days_since_anchor = (now.date() - anchor_date).days
-            position_in_cycle = days_since_anchor % cycle_length
-
-            dose_time_today = now.replace(hour=dose_hour, minute=dose_minute, second=0, microsecond=0)
-
-            if not is_on_day(entry, now.date(), now.date()):
-                days_until_next_on = cycle_length - position_in_cycle
-                self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
-            elif schedule_timestamps:
-                last_ts = schedule_timestamps[-1]
-                if last_ts.date() == now.date() and now >= dose_time_today:
-                    days_until_next_on = cycle_length - position_in_cycle
-                    if days_until_next_on == 0:
-                        days_until_next_on = cycle_length
-                    self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
-                elif now < dose_time_today:
-                    self._attr_native_value = dose_time_today
-                else:
-                    self._attr_native_value = dose_time_today
-            elif now < dose_time_today:
-                self._attr_native_value = dose_time_today
-            else:
-                days_until_next_on = cycle_length - position_in_cycle
-                if days_until_next_on == 0:
-                    days_until_next_on = cycle_length
-                self._attr_native_value = dose_time_today + timedelta(days=days_until_next_on)
+            # The next dose is the next ON-day slot after now.  This replaces
+            # the old ``cycle_length - position_in_cycle`` arithmetic, which
+            # measured to the first ON day of the NEXT cycle — reporting "in 4
+            # days" on a 5on/2off schedule when the next dose was tomorrow.  A
+            # logged dose needs no special case: today's slot is then already
+            # in the past, so the next ON slot wins.
+            self._attr_native_value = get_next_cyclic_dose_time(entry, now)
 
         elif self._tracking_type == TRACKING_AS_NEEDED:
             max_pills = entry.options.get("pill_limit", entry.data.get("pill_limit", 1))
